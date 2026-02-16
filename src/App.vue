@@ -2,7 +2,6 @@
 import { ref, onMounted, computed } from 'vue'
 import { supabase } from './supabase'
 
-// ⚠️ 繼續用那位測試員-喬
 const MOCK_USER_ID = 'U_TEST_JOE_001'
 const DEFAULT_AVATAR = 'https://meee.com.tw/D45hJIi.PNG' 
 const DEFAULT_COVER = 'https://meee.com.tw/VInVFKh.PNG'   
@@ -168,6 +167,8 @@ onMounted(() => { fetchData() })
             </div>
           </div>
         </transition>
+        
+        <div class="version-tag">System V6.9</div>
       </div>
 
       <div class="bottom-nav-glass">
@@ -197,7 +198,7 @@ onMounted(() => { fetchData() })
   --bg-dark: #0f0f13;
   --glass-border: rgba(255, 255, 255, 0.2); 
   --text-main: #ffffff;
-  --card-width: 600px;
+  --card-width: 600px; /* 這裡預設寬一點 */
 }
 
 body { margin: 0; background: #000; font-family: 'Helvetica Neue', Arial, sans-serif; overflow-x: hidden; }
@@ -214,7 +215,7 @@ body { margin: 0; background: #000; font-family: 'Helvetica Neue', Arial, sans-s
   width: 100%; max-width: var(--card-width); position: relative; z-index: 1;
   display: flex; flex-direction: column; min-height: 100vh;
   box-shadow: 0 0 50px rgba(0,0,0,0.5); background: rgba(0,0,0,0.2);
-  overflow-x: hidden; /* 防止小螢幕左右滑動 */
+  overflow-x: hidden;
 }
 .content-area { flex: 1; overflow-y: auto; padding: 20px; padding-bottom: 120px; }
 
@@ -246,7 +247,7 @@ body { margin: 0; background: #000; font-family: 'Helvetica Neue', Arial, sans-s
 .card-main { display: flex; padding: 15px; gap: 12px; align-items: center;}
 .thumb-col { width: 70px; height: 70px; border-radius: 10px; overflow: hidden; flex-shrink: 0; border: 1px solid #444; background: #000; }
 .script-thumb { width: 100%; height: 100%; object-fit: cover; }
-.card-info-content { flex: 1; display: flex; flex-direction: column; justify-content: center; min-width: 0; /* 防止文字撐爆 */ }
+.card-info-content { flex: 1; display: flex; flex-direction: column; justify-content: center; min-width: 0; }
 .header-row { margin-bottom: 4px; }
 .script-title { margin: 0; font-size: 1.1rem; color: #fff; font-weight: bold; line-height: 1.3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .gm-row { margin-bottom: 6px; font-size: 0.9rem; color: #ccc; display: flex; align-items: center; gap: 5px; }
@@ -267,7 +268,6 @@ body { margin: 0; background: #000; font-family: 'Helvetica Neue', Arial, sans-s
 .top-logo { max-height: 130px; width: auto; filter: drop-shadow(0 0 15px rgba(255, 215, 0, 0.3)); }
 .character-stage { display: flex; justify-content: center; align-items: center; margin-top: 15px; margin-bottom: 25px; position: relative; }
 
-/* 頭貼動態調整 (Clamp + VW) */
 .avatar-wrapper { 
   width: clamp(120px, 35vw, 160px); 
   height: clamp(120px, 35vw, 160px); 
@@ -292,7 +292,6 @@ body { margin: 0; background: #000; font-family: 'Helvetica Neue', Arial, sans-s
 .section-separator .line { flex: 1; height: 1px; background: linear-gradient(90deg, transparent, rgba(255,255,255,0.5), transparent); }
 .section-separator .diamond { width: 8px; height: 8px; background: var(--primary); transform: rotate(45deg); box-shadow: 0 0 10px var(--primary); }
 
-/* 數據區 (響應式修正) */
 .stats-grid { display: flex; justify-content: space-around; align-items: center; padding: 25px 0; margin-bottom: 30px; flex-wrap: nowrap; }
 .stat-item { display: flex; flex-direction: column; align-items: center; width: 32%; }
 .stat-val { 
@@ -305,10 +304,10 @@ body { margin: 0; background: #000; font-family: 'Helvetica Neue', Arial, sans-s
 .page-title { font-size: 1.8rem; margin-bottom: 30px; color: #fff; display: flex; align-items: baseline; gap: 12px; }
 .page-title small { font-size: 0.9rem; color: var(--primary); font-weight: 300; letter-spacing: 2px; }
 
-/* 底部導航 (修正與 RWD) */
+/* 底部導航 */
 .bottom-nav-glass {
   position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
-  width: 90%; max-width: 450px; /* 手機寬度90%，平板限制寬度 */
+  width: calc(var(--card-width) - 40px);
   height: 60px;
   background: rgba(20, 20, 20, 0.9); backdrop-filter: blur(20px); border: 1px solid rgba(255, 255, 255, 0.15); border-radius: 30px;
   display: flex; justify-content: space-around; align-items: center;
@@ -319,7 +318,27 @@ body { margin: 0; background: #000; font-family: 'Helvetica Neue', Arial, sans-s
 .nav-item.active { color: var(--primary); background: rgba(255, 215, 0, 0.1); border-radius: 50%; transform: translateY(-5px); }
 .nav-item .badge { position: absolute; top: 8px; right: 8px; width: 8px; height: 8px; background: #ff4444; border-radius: 50%; }
 
-/* 其他通用樣式 */
+/* 🔥 小螢幕強制修正 (Media Queries) 🔥 */
+@media (max-width: 480px) {
+  /* 導航欄與螢幕同寬 */
+  .bottom-nav-glass { width: 90%; }
+  
+  /* 數據區字體稍微縮小以免換行 */
+  .stat-val { font-size: 1.6rem; }
+  .stat-label { font-size: 0.7rem; }
+  
+  /* 內容區邊距縮小，爭取空間 */
+  .content-area { padding: 15px; }
+  
+  /* 卡片縮圖小一點 */
+  .thumb-col { width: 60px; height: 60px; }
+}
+
+.version-tag {
+  text-align: center; color: #444; font-size: 0.6rem; margin-top: 30px;
+}
+
+/* 其他表單、票券等保持原樣 */
 .settings-form { padding: 30px; }
 .form-group { margin-bottom: 25px; }
 .form-group label { display: block; color: #aaa; margin-bottom: 10px; font-size: 1rem; }

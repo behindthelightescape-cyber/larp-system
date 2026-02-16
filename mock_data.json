@@ -1,0 +1,44 @@
+{
+  "U_TEST_JOE_001": {
+    "profile": {
+      "serialNumber": "00000002",
+      "level": "LV3-主角光環的勇者",
+      "points": 491,
+      "createdAt": "2023-05-24 21:40",
+      "displayName": "測試員-喬"
+    },
+    "records": [
+      {
+        "name": "不靠譜魔法指南",
+        "playTime": "2023-11-22 12:00",
+        "point": 100,
+        "host": "喬巴"
+      },
+      {
+        "name": "那一束月光",
+        "playTime": "2023-11-03 19:00",
+        "point": 60,
+        "host": "沙拉"
+      }
+    ],
+    "coupons": [
+      {
+        "name": "生日優惠券",
+        "description": "當月壽星折抵100元",
+        "createdAt": "2025-02-01 10:00",
+        "expireAt": "2026-03-01 00:00",
+        "redeemedAt": null
+      },
+      {
+        "name": "已使用過的券",
+        "description": "測試歷史紀錄",
+        "createdAt": "2024-01-01 10:00",
+        "expireAt": "2024-12-31 00:00",
+        "redeemedAt": "2024-06-01 12:00"
+      }
+    ],
+    "achievements": [
+      { "name": "元老級玩家", "bonusPoint": 500, "createdAt": "2023-01-01 12:00" }
+    ]
+  }
+}

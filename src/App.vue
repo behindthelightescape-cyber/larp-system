@@ -2,11 +2,12 @@
 import { ref, onMounted, computed } from 'vue'
 import { supabase } from './supabase'
 
-// ⚠️ 繼續用那位測試員-喬
+// --- 資料設定 ---
 const MOCK_USER_ID = 'U_TEST_JOE_001'
 const DEFAULT_AVATAR = 'https://meee.com.tw/D45hJIi.PNG' 
 const DEFAULT_COVER = 'https://meee.com.tw/VInVFKh.PNG'   
 
+// --- 狀態變數 ---
 const user = ref({}) 
 const coupons = ref([])
 const history = ref([])
@@ -15,8 +16,12 @@ const saving = ref(false)
 const currentTab = ref('home')
 const expandedRecordId = ref(null) 
 
+// 🔥 改用變數控制「哪一張票券被展開」，不再使用彈窗
+const expandedTicketId = ref(null)
+
 const editForm = ref({ display_name: '', phone: '', birthday: '' })
 
+// --- API 資料獲取 ---
 const fetchData = async () => {
   let { data: userData } = await supabase.from('users').select('*').eq('id', MOCK_USER_ID).single()
   if (userData) {
@@ -54,6 +59,25 @@ const saveProfile = async () => {
 }
 
 const toggleRecord = (id) => { expandedRecordId.value = expandedRecordId.value === id ? null : id }
+
+// 🔥 新的票券邏輯：點擊展開/收合
+const toggleTicket = (id) => {
+  if (expandedTicketId.value === id) {
+    expandedTicketId.value = null // 再次點擊則收合
+  } else {
+    expandedTicketId.value = id // 展開這張
+  }
+}
+
+const useTicket = (c) => {
+  if(confirm(`確定要核銷使用「${c.title}」嗎？`)) {
+    alert('✅ 票券已核銷！')
+    expandedTicketId.value = null // 核銷後自動收合
+    // 這裡可以加入 API 更新邏輯
+  }
+}
+
+// --- Computed & Helpers ---
 const validCoupons = computed(() => coupons.value.filter(c => c.status === 'available'))
 const historyCoupons = computed(() => coupons.value.filter(c => c.status !== 'available'))
 const formatDate = (d) => d ? new Date(d).toLocaleDateString('zh-TW') : '無期限'
@@ -68,9 +92,14 @@ onMounted(() => { fetchData() })
 
 <template>
   <div class="bg-layer"></div>
+
   <div class="app-wrapper">
     <div class="app-container">
-      <div v-if="loading" class="loading-screen"><div class="loader"></div><p>系統連線中...</p></div>
+      
+      <div v-if="loading" class="loading-screen">
+        <div class="loader"></div><p>系統連線中...</p>
+      </div>
+
       <div v-else class="content-area">
         <transition name="fade" mode="out-in">
           
@@ -80,7 +109,6 @@ onMounted(() => { fetchData() })
             </div>
             <div class="character-section">
               <div class="character-stage">
-                <div class="avatar-glow"></div>
                 <div class="avatar-wrapper">
                   <img :src="user.picture_url || DEFAULT_AVATAR" class="main-avatar" />
                 </div>
@@ -90,9 +118,7 @@ onMounted(() => { fetchData() })
                   <span class="level-tag">LV.{{ user.level }}</span>
                   <h1 class="display-name">{{ user.display_name }}</h1>
                 </div>
-                
                 <p class="member-id">ID: {{ user.id }}</p>
-
                 <div class="title-badge"><span class="title-text">✨ 傳說中的劇本殺手 ✨</span></div>
                 <div class="exp-container">
                   <div class="exp-text"><span>EXP</span><span>{{ user.total_exp }} / {{ (Math.floor(user.total_exp/1000)+1)*1000 }}</span></div>
@@ -100,9 +126,7 @@ onMounted(() => { fetchData() })
                 </div>
               </div>
             </div>
-            
             <div class="section-separator"><div class="line"></div><div class="diamond"></div><div class="line"></div></div>
-            
             <div class="stats-grid heavy-glass">
               <div class="stat-item"><span class="stat-val">{{ daysJoined }}</span><span class="stat-label">加入天數</span></div>
               <div class="stat-divider"></div>
@@ -136,9 +160,9 @@ onMounted(() => { fetchData() })
                     <div class="card-main">
                       <div class="thumb-col"><img :src="record.games.scripts?.cover_url || DEFAULT_COVER" class="script-thumb" /></div>
                       <div class="card-info-content">
-                        <div class="header-row"><h3 class="script-title">{{ record.games.scripts?.title }}</h3></div>
+                        <h3 class="script-title">{{ record.games.scripts?.title }}</h3>
                         <div class="gm-row"><span class="gm-label">GM:</span><span class="gm-value">{{ record.games.gm_name }}</span></div>
-                        <div class="exp-row"><span class="exp-badge">+{{ record.exp_gained }} EXP</span><span class="expand-hint">{{ expandedRecordId === record.id ? '▲' : '▼' }}</span></div>
+                        <div class="exp-row"><span class="exp-badge">+{{ record.exp_gained }} EXP</span></div>
                       </div>
                     </div>
                     <div v-if="expandedRecordId === record.id" class="card-details">
@@ -156,23 +180,60 @@ onMounted(() => { fetchData() })
           <div v-else-if="currentTab === 'wallet'" key="wallet" class="tab-page">
             <h2 class="page-title">隨身票夾 <small>WALLET</small></h2>
             <div class="ticket-list">
-              <div v-for="c in validCoupons" :key="c.id" class="ticket active heavy-glass">
-                <div class="ticket-hole-left"></div><div class="ticket-hole-right"></div>
-                <div class="ticket-main">
-                  <div class="ticket-icon">🎁</div>
-                  <div class="ticket-info"><h4>{{ c.title }}</h4><p>{{ c.description }}</p><span class="expiry">有效期至 {{ formatDate(c.expiry_date) }}</span></div>
+              
+              <div 
+                v-for="c in validCoupons" 
+                :key="c.id" 
+                class="new-ticket active" 
+                :class="{ 'is-expanded': expandedTicketId === c.id }"
+                @click="toggleTicket(c.id)"
+              >
+                <div class="ticket-summary">
+                  <div class="ticket-left">
+                    <div class="ticket-title">{{ c.title }}</div>
+                    <div v-if="expandedTicketId !== c.id" class="ticket-desc">{{ c.description }}</div>
+                    <div class="ticket-date">有效期至 {{ formatDate(c.expiry_date) }}</div>
+                  </div>
+                  <div class="ticket-split"></div>
+                  <div class="ticket-right">
+                    <span class="expand-icon">{{ expandedTicketId === c.id ? '▲' : '▼' }}</span>
+                    <span class="click-text">INFO</span>
+                  </div>
                 </div>
-                <button class="use-btn">使用</button>
+
+                <div v-if="expandedTicketId === c.id" class="ticket-expanded-content">
+                  <div class="ticket-full-desc">
+                    <p class="desc-label">使用說明：</p>
+                    <p>{{ c.description }}</p>
+                    <p class="ticket-id">NO. {{ c.id.split('-')[0] }}</p>
+                  </div>
+                  <button class="use-btn-large" @click.stop="useTicket(c)">立即核銷使用</button>
+                </div>
+
+                <div class="notch notch-top"></div><div class="notch notch-bottom"></div>
               </div>
+
               <div v-if="historyCoupons.length > 0" class="divider">歷史紀錄</div>
-              <div v-for="c in historyCoupons" :key="c.id" class="ticket used">
-                <div class="ticket-main"><div class="ticket-info"><h4>{{ c.title }}</h4><p>{{ c.status === 'used' ? '已核銷' : '已過期' }}</p></div></div>
+              
+              <div v-for="c in historyCoupons" :key="c.id" class="new-ticket used">
+                 <div class="ticket-summary">
+                   <div class="ticket-left">
+                    <div class="ticket-title">{{ c.title }}</div>
+                    <div class="ticket-desc">{{ c.status === 'used' ? '已核銷兌換' : '票券已過期' }}</div>
+                  </div>
+                  <div class="ticket-split"></div>
+                  <div class="ticket-right">
+                    <span class="status-text">{{ c.status === 'used' ? 'USED' : 'EXP' }}</span>
+                  </div>
+                </div>
+                <div class="notch notch-top"></div><div class="notch notch-bottom"></div>
               </div>
+
             </div>
           </div>
         </transition>
         
-        <div class="version-tag">System V7.0</div>
+        <div class="version-tag">System V8.1</div>
       </div>
 
       <div class="bottom-nav-glass">
@@ -196,199 +257,201 @@ onMounted(() => { fetchData() })
 </template>
 
 <style>
-/* CSS Reset */
+/* =========================================
+   全流體響應式核心設定 (Fluid Core)
+   ========================================= */
 :root {
   --primary: #ffd700;
   --bg-dark: #0f0f13;
-  --glass-border: rgba(255, 255, 255, 0.2); 
+  --glass-border: rgba(255, 255, 255, 0.15);
   --text-main: #ffffff;
   --card-width: 600px;
+  
+  --space-xs: clamp(4px, 1vw, 8px);
+  --space-sm: clamp(8px, 2vw, 12px);
+  --space-md: clamp(12px, 4vw, 20px);
+  --space-lg: clamp(20px, 6vw, 35px);
+  --space-xl: clamp(30px, 8vw, 50px);
 }
 
-body { margin: 0; background: #000; font-family: 'Helvetica Neue', Arial, sans-serif; overflow-x: hidden; }
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 
+body { 
+  margin: 0; background: #000; font-family: 'Helvetica Neue', Arial, sans-serif; 
+  overflow-x: hidden; color: #fff; background-color: var(--bg-dark);
+}
 .bg-layer {
   position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 0;
   background: url('https://images.unsplash.com/photo-1519608487953-e999c86e7455?q=80&w=1000&auto=format&fit=crop');
-  background-size: cover; background-position: center;
-  filter: brightness(0.4) blur(3px);
+  background-size: cover; background-position: center; filter: brightness(0.4) blur(3px);
 }
-
 .app-wrapper { display: flex; justify-content: center; min-height: 100vh; }
 .app-container {
   width: 100%; max-width: var(--card-width); position: relative; z-index: 1;
   display: flex; flex-direction: column; min-height: 100vh;
-  box-shadow: 0 0 50px rgba(0,0,0,0.5); background: rgba(0,0,0,0.2);
-  overflow-x: hidden;
+  box-shadow: 0 0 50px rgba(0,0,0,0.8); background: rgba(0,0,0,0.4); overflow-x: hidden;
 }
-.content-area { flex: 1; overflow-y: auto; padding: 20px; padding-bottom: 120px; }
-
-/* Heavy Glass */
+.content-area { flex: 1; overflow-y: auto; padding: var(--space-md); padding-bottom: 120px; }
 .heavy-glass {
-  background: linear-gradient(135deg, rgba(255, 255, 255, 0.15) 0%, rgba(255, 255, 255, 0.05) 100%);
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.1) 0%, rgba(255, 255, 255, 0.02) 100%);
   backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
-  border: 1px solid rgba(255, 255, 255, 0.3);
-  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.5);
-  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.2); box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.5); border-radius: 16px;
 }
 
-/* Timeline */
-.timeline { padding: 0 5px; }
-.timeline-row { display: flex; margin-bottom: 25px; }
-.time-col { width: 50px; text-align: right; padding-right: 15px; display: flex; flex-direction: column; padding-top: 5px; }
-.time-col .date { font-weight: bold; font-size: 1.2rem; color: #eee; }
-.time-col .year { font-size: 0.8rem; color: #666; }
-.line-col { position: relative; width: 20px; display: flex; justify-content: center; }
-.line-col .dot { width: 12px; height: 12px; background: var(--primary); border-radius: 50%; box-shadow: 0 0 8px var(--primary); z-index: 2; margin-top: 10px; }
-.line-col .line { position: absolute; top: 20px; bottom: -30px; width: 3px; background: rgba(255,255,255,0.1); }
-.timeline-row:last-child .line { display: none; }
-.info-col { flex: 1; padding-left: 5px; }
-
-/* History Card */
-.history-card { overflow: hidden; transition: all 0.3s ease; cursor: pointer; width: 100%; }
-.history-card:active { transform: scale(0.98); background: rgba(255,255,255,0.2); }
-.history-card.expanded { border-color: var(--primary); background: rgba(20,20,20,0.85); }
-.card-main { display: flex; padding: 15px; gap: 12px; align-items: center;}
-.thumb-col { width: 70px; height: 70px; border-radius: 10px; overflow: hidden; flex-shrink: 0; border: 1px solid #444; background: #000; }
-.script-thumb { width: 100%; height: 100%; object-fit: cover; }
-.card-info-content { flex: 1; display: flex; flex-direction: column; justify-content: center; min-width: 0; }
-.header-row { margin-bottom: 4px; }
-.script-title { margin: 0; font-size: 1.1rem; color: #fff; font-weight: bold; line-height: 1.3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.gm-row { margin-bottom: 6px; font-size: 0.9rem; color: #ccc; display: flex; align-items: center; gap: 5px; }
-.gm-label { color: #666; font-size: 0.75rem; text-transform: uppercase; }
-.gm-value { font-weight: 500; }
-.exp-row { display: flex; justify-content: space-between; align-items: center; }
-.exp-badge { color: var(--primary); font-size: 0.95rem; font-weight: bold; }
-.expand-hint { font-size: 0.8rem; color: #555; }
-.card-details { border-top: 1px solid rgba(255,255,255,0.1); padding: 18px; background: rgba(0,0,0,0.2); animation: slideDown 0.3s ease; }
-@keyframes slideDown { from { opacity: 0; transform: translateY(-5px); } to { opacity: 1; transform: translateY(0); } }
-.detail-quote { font-style: italic; color: #ddd; font-size: 1rem; border-left: 3px solid var(--primary); padding-left: 12px; margin-bottom: 15px; line-height: 1.5; }
-.detail-link-btn { display: block; width: 100%; padding: 12px; background: rgba(255,255,255,0.1); border: 1px solid #555; border-radius: 10px; color: var(--primary); text-align: center; text-decoration: none; font-size: 1rem; transition: background 0.2s; }
-.detail-link-btn:hover { background: rgba(255,255,255,0.2); }
-.detail-empty { color: #666; font-size: 0.9rem; text-align: center; margin: 0; }
-
-/* Styles */
-.top-logo-container { text-align: center; margin-bottom: 15px; margin-top: -50px; position: relative; z-index: 10; }
-.top-logo { max-height: 130px; width: auto; filter: drop-shadow(0 0 15px rgba(255, 215, 0, 0.3)); }
-.character-stage { display: flex; justify-content: center; align-items: center; margin-top: 15px; margin-bottom: 25px; position: relative; }
-
+/* Home & UI Components */
+.top-logo-container { text-align: center; margin-bottom: var(--space-md); margin-top: -20px; }
+.top-logo { width: clamp(100px, 30vw, 150px); height: auto; filter: drop-shadow(0 0 15px rgba(255, 215, 0, 0.3)); }
+.character-section { display: flex; flex-direction: column; align-items: center; }
 .avatar-wrapper { 
-  width: clamp(120px, 35vw, 160px); 
-  height: clamp(120px, 35vw, 160px); 
-  border-radius: 50%; border: 4px solid rgba(255, 215, 0, 0.5); padding: 5px; box-shadow: 0 0 35px rgba(0,0,0,0.6); background: rgba(0,0,0,0.3); backdrop-filter: blur(5px); z-index: 2; overflow: hidden; 
+  width: clamp(100px, 35vw, 160px); height: clamp(100px, 35vw, 160px); border-radius: 50%; 
+  border: 3px solid rgba(255, 215, 0, 0.5); padding: 5px; background: rgba(0,0,0,0.3); backdrop-filter: blur(5px);
+  margin-bottom: var(--space-md);
 }
 .main-avatar { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; }
-.character-info { text-align: center; margin-bottom: 15px; }
-.name-row { display: flex; align-items: center; justify-content: center; gap: 10px; margin-bottom: 12px; }
-.display-name { 
-  font-size: clamp(1.8rem, 6vw, 2.2rem); 
-  font-weight: 800; color: #fff; margin: 0; text-shadow: 0 2px 10px rgba(0,0,0,0.5); 
-}
-.level-tag { background: var(--primary); color: #000; font-weight: 900; font-size: 0.9rem; padding: 4px 10px; border-radius: 6px; }
-
-/* 🔥 Member ID Style 🔥 */
-.member-id {
-  font-family: monospace;
-  color: rgba(255, 255, 255, 0.5);
-  font-size: 0.85rem;
-  margin: -5px 0 15px 0;
-  letter-spacing: 1px;
-}
-
-.title-badge { margin-bottom: 25px; }
-.title-text { display: inline-block; border: 1px solid rgba(255, 215, 0, 0.4); background: rgba(255, 215, 0, 0.1); color: #ffd700; padding: 6px 25px; border-radius: 20px; font-size: 1rem; letter-spacing: 1px; box-shadow: 0 0 15px rgba(255, 215, 0, 0.1); }
-.exp-container { width: 100%; margin: 0 auto; }
-.exp-text { display: flex; justify-content: space-between; font-size: 0.9rem; color: #aaa; margin-bottom: 6px; padding: 0 2px; }
-.progress-track { height: 12px; background: rgba(255,255,255,0.1); border-radius: 6px; overflow: hidden; }
-.progress-bar { height: 100%; background: var(--primary); box-shadow: 0 0 10px var(--primary); transition: width 0.5s ease; }
-
-.section-separator { display: flex; align-items: center; justify-content: center; gap: 15px; margin: 35px 0; opacity: 0.6; }
+.character-info { text-align: center; width: 100%; }
+.name-row { display: flex; align-items: center; justify-content: center; gap: 8px; margin-bottom: 8px; flex-wrap: wrap; }
+.display-name { font-size: clamp(1.5rem, 6vw, 2.2rem); font-weight: 800; color: #fff; margin: 0; line-height: 1.2; }
+.level-tag { background: var(--primary); color: #000; font-weight: 900; font-size: clamp(0.7rem, 2.5vw, 0.9rem); padding: 3px 8px; border-radius: 6px; flex-shrink: 0; }
+.member-id { font-family: monospace; color: rgba(255, 255, 255, 0.5); font-size: clamp(0.75rem, 3vw, 0.9rem); margin: 0 0 var(--space-md) 0; letter-spacing: 1px; }
+.title-badge { margin-bottom: var(--space-lg); }
+.title-text { border: 1px solid rgba(255, 215, 0, 0.4); background: rgba(255, 215, 0, 0.1); color: #ffd700; padding: 6px 20px; border-radius: 20px; font-size: clamp(0.85rem, 3.5vw, 1rem); letter-spacing: 1px; }
+.exp-container { width: 90%; max-width: 400px; margin: 0 auto; }
+.exp-text { display: flex; justify-content: space-between; font-size: 0.8rem; color: #aaa; margin-bottom: 5px; }
+.progress-track { height: 8px; background: rgba(255,255,255,0.1); border-radius: 4px; overflow: hidden; }
+.progress-bar { height: 100%; background: var(--primary); width: 0%; transition: width 0.5s ease; box-shadow: 0 0 10px var(--primary); }
+.stats-grid { display: flex; justify-content: space-evenly; align-items: center; padding: var(--space-lg) 0; margin: var(--space-lg) 0; }
+.stat-item { display: flex; flex-direction: column; align-items: center; }
+.stat-val { font-size: clamp(1.4rem, 7vw, 2.2rem); font-weight: 800; color: #fff; line-height: 1; margin-bottom: 5px; }
+.stat-label { font-size: 0.75rem; color: #aaa; }
+.stat-divider { width: 1px; height: 30px; background: rgba(255,255,255,0.15); }
+.section-separator { display: flex; align-items: center; gap: 10px; margin: var(--space-lg) 0; opacity: 0.6; }
 .section-separator .line { flex: 1; height: 1px; background: linear-gradient(90deg, transparent, rgba(255,255,255,0.5), transparent); }
-.section-separator .diamond { width: 8px; height: 8px; background: var(--primary); transform: rotate(45deg); box-shadow: 0 0 10px var(--primary); }
+.section-separator .diamond { width: 6px; height: 6px; background: var(--primary); transform: rotate(45deg); }
 
-.stats-grid { display: flex; justify-content: space-around; align-items: center; padding: 25px 0; margin-bottom: 30px; flex-wrap: nowrap; }
-.stat-item { display: flex; flex-direction: column; align-items: center; width: 32%; }
-.stat-val { 
-  font-size: clamp(1.5rem, 5vw, 2.2rem); 
-  font-weight: 800; color: #fff; margin-bottom: 8px; 
+/* History */
+.timeline { padding: 0; }
+.timeline-row { display: flex; margin-bottom: var(--space-md); }
+.time-col { width: clamp(40px, 12vw, 55px); text-align: right; padding-right: 10px; flex-shrink: 0; }
+.time-col .date { font-weight: bold; font-size: clamp(0.9rem, 3.5vw, 1.2rem); display: block; color: #eee; }
+.time-col .year { font-size: 0.7rem; color: #666; display: block; }
+.line-col { width: 20px; position: relative; display: flex; justify-content: center; flex-shrink: 0; }
+.line-col .dot { width: 10px; height: 10px; background: var(--primary); border-radius: 50%; z-index: 2; margin-top: 6px; box-shadow: 0 0 5px var(--primary); }
+.line-col .line { position: absolute; top: 15px; bottom: -20px; width: 2px; background: rgba(255,255,255,0.1); }
+.timeline-row:last-child .line { display: none; }
+.info-col { flex: 1; padding-left: 10px; min-width: 0; }
+.history-card { width: 100%; transition: all 0.3s; }
+.card-main { display: flex; padding: var(--space-sm); gap: var(--space-sm); align-items: center; }
+.thumb-col { width: clamp(50px, 15vw, 70px); height: clamp(50px, 15vw, 70px); border-radius: 8px; overflow: hidden; flex-shrink: 0; background: #000; border: 1px solid #333; }
+.script-thumb { width: 100%; height: 100%; object-fit: cover; }
+.card-info-content { flex: 1; display: flex; flex-direction: column; justify-content: center; align-items: flex-start; min-width: 0; }
+.script-title { font-size: clamp(0.95rem, 4vw, 1.15rem); font-weight: bold; color: #fff; margin: 0 0 4px 0; display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical; overflow: hidden; line-height: 1.3; text-align: left; }
+.history-card.expanded .script-title { -webkit-line-clamp: unset; }
+.gm-row { font-size: 0.8rem; color: #ccc; margin-bottom: 4px; display: flex; align-items: center; gap: 4px; }
+.exp-row { width: 100%; display: flex; justify-content: space-between; align-items: center; }
+.exp-badge { color: var(--primary); font-size: 0.85rem; font-weight: bold; }
+.card-details { border-top: 1px solid rgba(255,255,255,0.1); padding: var(--space-md); background: rgba(0,0,0,0.2); }
+.detail-quote { font-style: italic; color: #ddd; font-size: clamp(0.9rem, 3.5vw, 1rem); border-left: 3px solid var(--primary); padding-left: 10px; margin-bottom: 10px; }
+.detail-link-btn { display: block; width: 100%; padding: 10px; background: rgba(255,255,255,0.1); border: 1px solid #555; border-radius: 8px; color: var(--primary); text-align: center; text-decoration: none; font-size: 0.9rem; }
+.detail-empty { color: #666; font-size: 0.9rem; text-align: center; margin: 0; }
+
+/* =========================================
+   🔥 Wallet (New Accordion Style)
+   ========================================= */
+.ticket-list { display: flex; flex-direction: column; gap: var(--space-md); }
+.new-ticket { 
+  display: flex; flex-direction: column; /* 改成直式排列，內部再分區 */
+  position: relative; 
+  background: rgba(30, 30, 35, 0.8); backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 12px;
+  overflow: hidden; 
+  transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1); /* 平滑過渡 */
 }
-.stat-label { font-size: 0.8rem; color: #aaa; white-space: nowrap; }
-.stat-divider { width: 1px; height: 35px; background: rgba(255,255,255,0.1); }
+.new-ticket.active { cursor: pointer; }
+.new-ticket.active:active { transform: scale(0.98); }
+.new-ticket.is-expanded { border-color: var(--primary); background: rgba(20, 20, 20, 0.95); box-shadow: 0 5px 20px rgba(0,0,0,0.5); }
 
-.page-title { font-size: 1.8rem; margin-bottom: 30px; color: #fff; display: flex; align-items: baseline; gap: 12px; }
-.page-title small { font-size: 0.9rem; color: var(--primary); font-weight: 300; letter-spacing: 2px; }
+/* 票券上半部 (摘要) */
+.ticket-summary { display: flex; width: 100%; min-height: 100px; }
+.ticket-left { flex: 1; padding: var(--space-md); display: flex; flex-direction: column; justify-content: center; min-width: 0; }
+.ticket-title { font-size: clamp(1rem, 4.5vw, 1.3rem); font-weight: bold; color: var(--primary); margin-bottom: 4px; line-height: 1.2; }
+.ticket-desc { font-size: clamp(0.8rem, 3.5vw, 0.9rem); color: #ccc; margin-bottom: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ticket-date { font-size: 0.7rem; color: #666; }
+.ticket-split { width: 1px; border-left: 1px dashed rgba(255,255,255,0.2); position: relative; margin: 10px 0; }
+.ticket-right { width: clamp(70px, 20vw, 90px); display: flex; flex-direction: column; align-items: center; justify-content: center; background: rgba(255, 215, 0, 0.05); flex-shrink: 0; color: var(--primary); }
+.expand-icon { font-size: 1.2rem; margin-bottom: 2px; }
+.click-text { font-size: 0.7rem; font-weight: bold; opacity: 0.8; }
 
-/* 底部導航 */
+/* 票券展開內容區 */
+.ticket-expanded-content {
+  padding: 0 var(--space-md) var(--space-md) var(--space-md);
+  border-top: 1px solid rgba(255,255,255,0.1);
+  animation: slideDown 0.3s ease;
+}
+@keyframes slideDown { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
+
+.ticket-full-desc { margin: 15px 0; color: #ccc; font-size: 0.95rem; line-height: 1.6; }
+.desc-label { color: #888; font-size: 0.8rem; margin-bottom: 5px; }
+.ticket-id { font-family: monospace; color: #555; text-align: right; font-size: 0.8rem; margin-top: 10px; }
+
+/* 大按鈕 */
+.use-btn-large {
+  width: 100%; padding: 15px;
+  background: var(--primary); border: none; border-radius: 8px;
+  color: #000; font-weight: 800; font-size: 1.1rem;
+  cursor: pointer; transition: transform 0.2s;
+}
+.use-btn-large:active { transform: scale(0.96); }
+
+/* 歷史票券樣式 */
+.new-ticket.used { opacity: 0.7; }
+.new-ticket.used .ticket-right { background: rgba(50, 50, 50, 0.3); color: #666; }
+.status-text { font-weight: bold; color: #666; font-size: 1rem; transform: rotate(-15deg); border: 2px solid #666; padding: 3px; border-radius: 5px; opacity: 0.5; }
+
+.notch { position: absolute; width: 16px; height: 16px; background: #0f0f13; border-radius: 50%; z-index: 2; border: 1px solid rgba(255,255,255,0.1); left: calc(100% - clamp(70px, 20vw, 90px)); transform: translateX(-50%); }
+.notch-top { top: -9px; }
+.notch-bottom { bottom: -9px; }
+
+/* =========================================
+   🔥 Version Tag (Fixed)
+   ========================================= */
+.version-tag {
+  text-align: center;
+  color: rgba(255, 255, 255, 0.3); /* 透明度 0.3 */
+  font-size: 0.6rem; /* 小字體 */
+  margin-top: 40px;
+  margin-bottom: 20px;
+  font-family: monospace;
+}
+
+/* Other UI */
+.page-title { font-size: clamp(1.5rem, 6vw, 2rem); margin-bottom: var(--space-lg); color: #fff; }
+.page-title small { font-size: 0.5em; color: var(--primary); margin-left: 8px; }
+.settings-form { padding: var(--space-lg); }
+.form-group { margin-bottom: var(--space-md); }
+.form-group label { font-size: 0.9rem; margin-bottom: 5px; display: block; }
+.form-group input { width: 100%; padding: 12px; background: rgba(0,0,0,0.3); border: 1px solid #444; border-radius: 8px; color: white; font-size: 1rem; }
+.save-btn { width: 100%; padding: 15px; background: var(--primary); border-radius: 25px; border: none; font-size: 1.1rem; font-weight: bold; margin-top: 10px; cursor: pointer; }
+
 .bottom-nav-glass {
   position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
-  width: calc(var(--card-width) - 40px);
-  height: 60px;
-  background: rgba(20, 20, 20, 0.9); backdrop-filter: blur(20px); border: 1px solid rgba(255, 255, 255, 0.15); border-radius: 30px;
-  display: flex; justify-content: space-around; align-items: center;
-  box-shadow: 0 10px 40px rgba(0,0,0,0.6); z-index: 100;
+  width: 90%; max-width: 400px; height: 60px;
+  background: rgba(20, 20, 20, 0.9); backdrop-filter: blur(20px); 
+  border: 1px solid rgba(255, 255, 255, 0.15); border-radius: 30px;
+  display: flex; justify-content: space-evenly; align-items: center;
+  z-index: 100; box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
 }
-@media (max-width: 480px) { .bottom-nav-glass { width: 90%; } }
+.nav-item { width: 50px; height: 100%; display: flex; align-items: center; justify-content: center; position: relative; color: #666; cursor: pointer; }
+.nav-icon { width: 24px; height: 24px; }
+.nav-item.active { color: var(--primary); }
+.nav-item.active::after { content: ''; position: absolute; bottom: 8px; width: 4px; height: 4px; background: var(--primary); border-radius: 50%; }
 
-.nav-item { width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; transition: all 0.3s; position: relative; cursor: pointer; color: #666; }
-.nav-icon { width: 24px; height: 24px; transition: fill 0.3s; }
-.nav-item.active { color: var(--primary); background: rgba(255, 215, 0, 0.1); border-radius: 50%; transform: translateY(-5px); }
-.nav-item .badge { position: absolute; top: 8px; right: 8px; width: 8px; height: 8px; background: #ff4444; border-radius: 50%; }
-
-.version-tag {
-  text-align: center; color: #444; font-size: 0.6rem; margin-top: 30px;
-}
-
-.settings-form { padding: 30px; }
-.form-group { margin-bottom: 25px; }
-.form-group label { display: block; color: #aaa; margin-bottom: 10px; font-size: 1rem; }
-.form-group input { width: 100%; padding: 15px; background: rgba(0,0,0,0.3); border: 1px solid #444; border-radius: 10px; color: white; font-size: 1.1rem; box-sizing: border-box; }
-.form-group input:focus { outline: none; border-color: var(--primary); }
-.hint { font-size: 0.9rem; color: #eab308; margin-top: 8px; }
-.save-btn { width: 100%; padding: 18px; background: var(--primary); border: none; border-radius: 30px; color: #000; font-weight: bold; font-size: 1.1rem; cursor: pointer; margin-top: 15px; }
-.save-btn:disabled { opacity: 0.7; cursor: not-allowed; }
-
-/* 🔥 Ticket List Styles (Responsive) 🔥 */
-.ticket-list { display: flex; flex-direction: column; gap: 20px; }
-.ticket { position: relative; display: flex; align-items: center; overflow: hidden; padding: 5px 0; }
-.ticket-hole-left, .ticket-hole-right { position: absolute; top: 50%; width: 24px; height: 24px; background: #0f0f13; border-radius: 50%; transform: translateY(-50%); z-index: 2; }
-.ticket-hole-left { left: -12px; }
-.ticket-hole-right { right: -12px; }
-.ticket.active { border: 1px solid rgba(255, 215, 0, 0.3); } 
-.ticket.active .ticket-icon { 
-  font-size: clamp(2rem, 8vw, 2.5rem); /* icon 縮放 */
-  padding: 0 15px 0 25px; 
-  filter: drop-shadow(0 0 5px gold); 
-}
-.ticket-main { flex: 1; display: flex; align-items: center; padding: 25px 0; min-width: 0; }
-.ticket-info { min-width: 0; /* 防止溢出 */ }
-.ticket-info h4 { 
-  margin: 0 0 8px 0; color: var(--primary); 
-  font-size: clamp(1.1rem, 4vw, 1.3rem); /* 標題縮放 */
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-}
-.ticket-info p { 
-  margin: 0; color: #ccc; 
-  font-size: clamp(0.85rem, 3.5vw, 0.95rem); /* 內文縮放 */
-}
-.ticket-info .expiry { 
-  font-size: 0.8rem; color: #666; display: block; margin-top: 10px; 
-}
-.use-btn { 
-  background: var(--primary); border: none; padding: 10px 20px; 
-  border-radius: 25px; font-weight: bold; margin-right: 20px; 
-  font-size: clamp(0.9rem, 3vw, 1rem); /* 按鈕字體縮放 */
-  cursor: pointer; flex-shrink: 0;
-}
-.ticket.used { opacity: 0.5; filter: grayscale(1); border: 1px solid #333; background: #1a1a1a; border-radius: 12px;}
-.ticket.used .ticket-icon { display: none; }
-.ticket.used .ticket-info { padding-left: 30px; }
 .divider { text-align: center; color: #555; font-size: 0.9rem; margin: 35px 0 15px 0; position: relative; }
 .divider::before { content:''; position: absolute; left: 0; top: 50%; width: 40%; height: 1px; background: #333; }
 .divider::after { content:''; position: absolute; right: 0; top: 50%; width: 40%; height: 1px; background: #333; }
-.loading-screen { height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; }
-.loader { width: 50px; height: 50px; border: 4px solid rgba(255,255,255,0.1); border-top-color: var(--primary); border-radius: 50%; animation: spin 1s linear infinite; margin-bottom: 25px; }
+.loading-screen { height: 80vh; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+.loader { width: 40px; height: 40px; border: 3px solid rgba(255,255,255,0.1); border-top-color: var(--primary); border-radius: 50%; animation: spin 0.8s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
-.fade-enter-active, .fade-leave-active { transition: opacity 0.3s ease, transform 0.3s ease; }
-.fade-enter-from { opacity: 0; transform: translateY(10px); }
-.fade-leave-to { opacity: 0; transform: translateY(-10px); }
+.fade-enter-active, .fade-leave-active { transition: opacity 0.2s ease; }
+.fade-enter-from, .fade-leave-to { opacity: 0; }
 </style>

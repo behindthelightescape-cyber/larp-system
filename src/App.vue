@@ -2,6 +2,7 @@
 import { ref, onMounted, computed } from 'vue'
 import { supabase } from './supabase'
 
+// ⚠️ 繼續用那位測試員-喬
 const MOCK_USER_ID = 'U_TEST_JOE_001'
 const DEFAULT_AVATAR = 'https://meee.com.tw/D45hJIi.PNG' 
 const DEFAULT_COVER = 'https://meee.com.tw/VInVFKh.PNG'   
@@ -89,6 +90,9 @@ onMounted(() => { fetchData() })
                   <span class="level-tag">LV.{{ user.level }}</span>
                   <h1 class="display-name">{{ user.display_name }}</h1>
                 </div>
+                
+                <p class="member-id">ID: {{ user.id }}</p>
+
                 <div class="title-badge"><span class="title-text">✨ 傳說中的劇本殺手 ✨</span></div>
                 <div class="exp-container">
                   <div class="exp-text"><span>EXP</span><span>{{ user.total_exp }} / {{ (Math.floor(user.total_exp/1000)+1)*1000 }}</span></div>
@@ -168,7 +172,7 @@ onMounted(() => { fetchData() })
           </div>
         </transition>
         
-        <div class="version-tag">System V6.9</div>
+        <div class="version-tag">System V7.0</div>
       </div>
 
       <div class="bottom-nav-glass">
@@ -198,7 +202,7 @@ onMounted(() => { fetchData() })
   --bg-dark: #0f0f13;
   --glass-border: rgba(255, 255, 255, 0.2); 
   --text-main: #ffffff;
-  --card-width: 600px; /* 這裡預設寬一點 */
+  --card-width: 600px;
 }
 
 body { margin: 0; background: #000; font-family: 'Helvetica Neue', Arial, sans-serif; overflow-x: hidden; }
@@ -281,6 +285,16 @@ body { margin: 0; background: #000; font-family: 'Helvetica Neue', Arial, sans-s
   font-weight: 800; color: #fff; margin: 0; text-shadow: 0 2px 10px rgba(0,0,0,0.5); 
 }
 .level-tag { background: var(--primary); color: #000; font-weight: 900; font-size: 0.9rem; padding: 4px 10px; border-radius: 6px; }
+
+/* 🔥 Member ID Style 🔥 */
+.member-id {
+  font-family: monospace;
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 0.85rem;
+  margin: -5px 0 15px 0;
+  letter-spacing: 1px;
+}
+
 .title-badge { margin-bottom: 25px; }
 .title-text { display: inline-block; border: 1px solid rgba(255, 215, 0, 0.4); background: rgba(255, 215, 0, 0.1); color: #ffd700; padding: 6px 25px; border-radius: 20px; font-size: 1rem; letter-spacing: 1px; box-shadow: 0 0 15px rgba(255, 215, 0, 0.1); }
 .exp-container { width: 100%; margin: 0 auto; }
@@ -313,32 +327,17 @@ body { margin: 0; background: #000; font-family: 'Helvetica Neue', Arial, sans-s
   display: flex; justify-content: space-around; align-items: center;
   box-shadow: 0 10px 40px rgba(0,0,0,0.6); z-index: 100;
 }
+@media (max-width: 480px) { .bottom-nav-glass { width: 90%; } }
+
 .nav-item { width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; transition: all 0.3s; position: relative; cursor: pointer; color: #666; }
 .nav-icon { width: 24px; height: 24px; transition: fill 0.3s; }
 .nav-item.active { color: var(--primary); background: rgba(255, 215, 0, 0.1); border-radius: 50%; transform: translateY(-5px); }
 .nav-item .badge { position: absolute; top: 8px; right: 8px; width: 8px; height: 8px; background: #ff4444; border-radius: 50%; }
 
-/* 🔥 小螢幕強制修正 (Media Queries) 🔥 */
-@media (max-width: 480px) {
-  /* 導航欄與螢幕同寬 */
-  .bottom-nav-glass { width: 90%; }
-  
-  /* 數據區字體稍微縮小以免換行 */
-  .stat-val { font-size: 1.6rem; }
-  .stat-label { font-size: 0.7rem; }
-  
-  /* 內容區邊距縮小，爭取空間 */
-  .content-area { padding: 15px; }
-  
-  /* 卡片縮圖小一點 */
-  .thumb-col { width: 60px; height: 60px; }
-}
-
 .version-tag {
   text-align: center; color: #444; font-size: 0.6rem; margin-top: 30px;
 }
 
-/* 其他表單、票券等保持原樣 */
 .settings-form { padding: 30px; }
 .form-group { margin-bottom: 25px; }
 .form-group label { display: block; color: #aaa; margin-bottom: 10px; font-size: 1rem; }
@@ -347,18 +346,39 @@ body { margin: 0; background: #000; font-family: 'Helvetica Neue', Arial, sans-s
 .hint { font-size: 0.9rem; color: #eab308; margin-top: 8px; }
 .save-btn { width: 100%; padding: 18px; background: var(--primary); border: none; border-radius: 30px; color: #000; font-weight: bold; font-size: 1.1rem; cursor: pointer; margin-top: 15px; }
 .save-btn:disabled { opacity: 0.7; cursor: not-allowed; }
+
+/* 🔥 Ticket List Styles (Responsive) 🔥 */
 .ticket-list { display: flex; flex-direction: column; gap: 20px; }
 .ticket { position: relative; display: flex; align-items: center; overflow: hidden; padding: 5px 0; }
 .ticket-hole-left, .ticket-hole-right { position: absolute; top: 50%; width: 24px; height: 24px; background: #0f0f13; border-radius: 50%; transform: translateY(-50%); z-index: 2; }
 .ticket-hole-left { left: -12px; }
 .ticket-hole-right { right: -12px; }
 .ticket.active { border: 1px solid rgba(255, 215, 0, 0.3); } 
-.ticket.active .ticket-icon { font-size: 2.5rem; padding: 0 25px 0 35px; filter: drop-shadow(0 0 5px gold); }
-.ticket-main { flex: 1; display: flex; align-items: center; padding: 25px 0; }
-.ticket-info h4 { margin: 0 0 8px 0; color: var(--primary); font-size: 1.3rem; }
-.ticket-info p { margin: 0; font-size: 0.95rem; color: #ccc; }
-.ticket-info .expiry { font-size: 0.85rem; color: #666; display: block; margin-top: 10px; }
-.use-btn { background: var(--primary); border: none; padding: 10px 25px; border-radius: 25px; font-weight: bold; margin-right: 30px; font-size: 1rem; cursor: pointer; }
+.ticket.active .ticket-icon { 
+  font-size: clamp(2rem, 8vw, 2.5rem); /* icon 縮放 */
+  padding: 0 15px 0 25px; 
+  filter: drop-shadow(0 0 5px gold); 
+}
+.ticket-main { flex: 1; display: flex; align-items: center; padding: 25px 0; min-width: 0; }
+.ticket-info { min-width: 0; /* 防止溢出 */ }
+.ticket-info h4 { 
+  margin: 0 0 8px 0; color: var(--primary); 
+  font-size: clamp(1.1rem, 4vw, 1.3rem); /* 標題縮放 */
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.ticket-info p { 
+  margin: 0; color: #ccc; 
+  font-size: clamp(0.85rem, 3.5vw, 0.95rem); /* 內文縮放 */
+}
+.ticket-info .expiry { 
+  font-size: 0.8rem; color: #666; display: block; margin-top: 10px; 
+}
+.use-btn { 
+  background: var(--primary); border: none; padding: 10px 20px; 
+  border-radius: 25px; font-weight: bold; margin-right: 20px; 
+  font-size: clamp(0.9rem, 3vw, 1rem); /* 按鈕字體縮放 */
+  cursor: pointer; flex-shrink: 0;
+}
 .ticket.used { opacity: 0.5; filter: grayscale(1); border: 1px solid #333; background: #1a1a1a; border-radius: 12px;}
 .ticket.used .ticket-icon { display: none; }
 .ticket.used .ticket-info { padding-left: 30px; }

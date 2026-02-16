@@ -16,7 +16,7 @@ const saving = ref(false)
 const currentTab = ref('home')
 const expandedRecordId = ref(null)
 
-// 🔥 票券展開狀態控制
+// 票券展開狀態控制
 const expandedTicketId = ref(null)
 
 const editForm = ref({ display_name: '', phone: '', birthday: '' })
@@ -25,7 +25,7 @@ const editForm = ref({ display_name: '', phone: '', birthday: '' })
 const fetchData = async () => {
   try {
     // user
-    let { data: userData } = await supabase
+    const { data: userData } = await supabase
       .from('users')
       .select('*')
       .eq('id', MOCK_USER_ID)
@@ -41,7 +41,7 @@ const fetchData = async () => {
     }
 
     // coupons
-    let { data: userCoupons } = await supabase
+    const { data: userCoupons } = await supabase
       .from('coupons')
       .select('*')
       .eq('user_id', MOCK_USER_ID)
@@ -50,7 +50,7 @@ const fetchData = async () => {
     if (userCoupons) coupons.value = userCoupons
 
     // history
-    let { data: records } = await supabase
+    const { data: records } = await supabase
       .from('game_participants')
       .select(`id, exp_gained, games ( play_time, gm_name, scripts ( title, cover_url, intro_text, extra_link ) )`)
       .eq('user_id', MOCK_USER_ID)
@@ -93,14 +93,13 @@ const toggleRecord = (id) => {
   expandedRecordId.value = expandedRecordId.value === id ? null : id
 }
 
-// 🔥 票券折疊邏輯：點擊同一張卡片時收合，點擊不同張時切換
 const toggleTicket = (id) => {
   expandedTicketId.value = expandedTicketId.value === id ? null : id
 }
 
 const useTicket = (c) => {
   if (confirm(`確定要核銷使用「${c.title}」嗎？\n(注意：此操作無法復原)`)) {
-    // TODO: 這裡記得接後端 API 真正扣除票券
+    // TODO: 這裡接後端 API 真正扣除票券
     alert('✅ 票券已核銷！(模擬)')
     expandedTicketId.value = null
   }
@@ -110,7 +109,18 @@ const useTicket = (c) => {
 const validCoupons = computed(() => coupons.value.filter(c => c.status === 'available'))
 const historyCoupons = computed(() => coupons.value.filter(c => c.status !== 'available'))
 
+// 保留給票券用（expiry_date）
 const formatDate = (d) => (d ? new Date(d).toLocaleDateString('zh-TW') : '無期限')
+
+// ✅ 穩定的日期拆解：不要在 template split locale 字串
+const formatDateParts = (d) => {
+  if (!d) return { y: '--', m: '--', day: '--' }
+  const dt = new Date(d)
+  const y = String(dt.getFullYear())
+  const m = String(dt.getMonth() + 1).padStart(2, '0')
+  const day = String(dt.getDate()).padStart(2, '0')
+  return { y, m, day }
+}
 
 const daysJoined = computed(() => {
   if (!user.value.created_at) return 1
@@ -119,7 +129,7 @@ const daysJoined = computed(() => {
   return Math.ceil(Math.abs(now - start) / (1000 * 60 * 60 * 24))
 })
 
-// ✅ 補洞：避免 total_exp / level undefined 造成 NaN%
+// 避免 total_exp / level undefined 造成 NaN%
 const level = computed(() => user.value?.level ?? 1)
 const totalExp = computed(() => user.value?.total_exp ?? 0)
 const nextMilestone = computed(() => (Math.floor(totalExp.value / 1000) + 1) * 1000)
@@ -150,7 +160,7 @@ onMounted(() => { fetchData() })
             <div class="character-section">
               <div class="character-stage">
                 <div class="avatar-wrapper">
-                  <img :src="user.picture_url || DEFAULT_AVATAR" class="main-avatar" />
+                  <img :src="user.picture_url || DEFAULT_AVATAR" class="main-avatar" alt="avatar" />
                 </div>
               </div>
 
@@ -213,29 +223,35 @@ onMounted(() => { fetchData() })
             <div class="timeline">
               <div v-for="record in history" :key="record.id" class="timeline-row">
                 <div class="time-col">
-                  <span class="date">{{ formatDate(record.games.play_time).split('/')[1] }}/{{ formatDate(record.games.play_time).split('/')[2] }}</span>
-                  <span class="year">{{ formatDate(record.games.play_time).split('/')[0] }}</span>
+                  <span class="date">
+                    {{ formatDateParts(record.games?.play_time).m }}/{{ formatDateParts(record.games?.play_time).day }}
+                  </span>
+                  <span class="year">{{ formatDateParts(record.games?.play_time).y }}</span>
                 </div>
 
                 <div class="line-col"><div class="dot"></div><div class="line"></div></div>
 
                 <div class="info-col">
-                  <div class="history-card heavy-glass" :class="{ expanded: expandedRecordId === record.id }" @click="toggleRecord(record.id)">
+                  <div
+                    class="history-card heavy-glass"
+                    :class="{ expanded: expandedRecordId === record.id }"
+                    @click="toggleRecord(record.id)"
+                  >
                     <div class="card-main">
                       <div class="thumb-col">
-                        <img :src="record.games.scripts?.cover_url || DEFAULT_COVER" class="script-thumb" />
+                        <img :src="record.games?.scripts?.cover_url || DEFAULT_COVER" class="script-thumb" alt="script cover" />
                       </div>
                       <div class="card-info-content">
-                        <h3 class="script-title">{{ record.games.scripts?.title }}</h3>
-                        <div class="gm-row"><span class="gm-label">GM:</span><span class="gm-value">{{ record.games.gm_name }}</span></div>
+                        <h3 class="script-title">{{ record.games?.scripts?.title }}</h3>
+                        <div class="gm-row"><span class="gm-label">GM:</span><span class="gm-value">{{ record.games?.gm_name }}</span></div>
                         <div class="exp-row"><span class="exp-badge">+{{ record.exp_gained }} EXP</span></div>
                       </div>
                     </div>
 
                     <div v-if="expandedRecordId === record.id" class="card-details">
-                      <div v-if="record.games.scripts?.intro_text" class="detail-quote">"{{ record.games.scripts.intro_text }}"</div>
-                      <a v-if="record.games.scripts?.extra_link" :href="record.games.scripts.extra_link" target="_blank" class="detail-link-btn">🔗 查看回憶/連結</a>
-                      <p v-if="!record.games.scripts?.intro_text && !record.games.scripts?.extra_link" class="detail-empty">本次冒險暫無額外紀錄</p>
+                      <div v-if="record.games?.scripts?.intro_text" class="detail-quote">"{{ record.games.scripts.intro_text }}"</div>
+                      <a v-if="record.games?.scripts?.extra_link" :href="record.games.scripts.extra_link" target="_blank" class="detail-link-btn">🔗 查看回憶/連結</a>
+                      <p v-if="!record.games?.scripts?.intro_text && !record.games?.scripts?.extra_link" class="detail-empty">本次冒險暫無額外紀錄</p>
                     </div>
                   </div>
                 </div>
@@ -246,12 +262,11 @@ onMounted(() => { fetchData() })
             <div v-if="history.length===0" class="empty-state">尚無冒險紀錄</div>
           </div>
 
-          <!-- WALLET ✅（完整修好：展開 + 核銷按鈕一定會出現） -->
+          <!-- WALLET -->
           <div v-else-if="currentTab === 'wallet'" key="wallet" class="tab-page">
             <h2 class="page-title">隨身票夾 <small>WALLET</small></h2>
 
             <div class="ticket-list">
-
               <!-- 可用票券 -->
               <div
                 v-for="c in validCoupons"
@@ -309,7 +324,6 @@ onMounted(() => { fetchData() })
                 <div class="notch notch-top"></div>
                 <div class="notch notch-bottom"></div>
               </div>
-
             </div>
           </div>
 
@@ -344,7 +358,7 @@ onMounted(() => { fetchData() })
 
 <style>
 /* =========================================
-   全流體響應式核心設定 (Fluid Core)
+   全流體響應式核心設定 (Refactored Core)
    ========================================= */
 :root {
   --primary: #ffd700;
@@ -358,34 +372,87 @@ onMounted(() => { fetchData() })
   --space-md: clamp(12px, 4vw, 20px);
   --space-lg: clamp(20px, 6vw, 35px);
   --space-xl: clamp(30px, 8vw, 50px);
+
+  /* ✅ nav 與 safe-area 統一 */
+  --nav-h: 60px;
+  --nav-gap: 20px;
+  --safe-b: env(safe-area-inset-bottom, 0px);
+  --content-pad-b: calc(var(--nav-h) + var(--nav-gap) + var(--safe-b) + 30px);
 }
 
-* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+* {
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+  min-width: 0; /* ✅ 防 flex 長字爆版 */
+}
+
+html, body { height: 100%; }
 
 body {
-  margin: 0; background: #000; font-family: 'Helvetica Neue', Arial, sans-serif;
-  overflow-x: hidden; color: #fff; background-color: var(--bg-dark);
+  margin: 0;
+  background: #000;
+  font-family: 'Helvetica Neue', Arial, sans-serif;
+  color: #fff;
+  background-color: var(--bg-dark);
+  overflow-x: clip; /* ✅ 不靠 hidden 掩蓋 */
 }
+
 .bg-layer {
-  position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 0;
+  position: fixed;
+  inset: 0; /* ✅ 取代 100vw/100vh */
+  z-index: 0;
   background: url('https://images.unsplash.com/photo-1519608487953-e999c86e7455?q=80&w=1000&auto=format&fit=crop');
-  background-size: cover; background-position: center; filter: brightness(0.4) blur(3px);
+  background-size: cover;
+  background-position: center;
+  filter: brightness(0.4) blur(3px);
+  transform: translateZ(0);
 }
-.app-wrapper { display: flex; justify-content: center; min-height: 100vh; }
+
+.app-wrapper {
+  display: flex;
+  justify-content: center;
+  min-height: 100vh;
+  min-height: 100dvh;
+}
+
 .app-container {
-  width: 100%; max-width: var(--card-width); position: relative; z-index: 1;
-  display: flex; flex-direction: column; min-height: 100vh;
-  box-shadow: 0 0 50px rgba(0,0,0,0.8); background: rgba(0,0,0,0.4); overflow-x: hidden;
+  width: 100%;
+  max-width: var(--card-width);
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  min-height: 100dvh;
+  box-shadow: 0 0 50px rgba(0,0,0,0.8);
+  background: rgba(0,0,0,0.4);
+  overflow: hidden;
 }
-.content-area { flex: 1; overflow-y: auto; padding: var(--space-md); padding-bottom: 120px; }
+
+.content-area {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--space-md);
+  padding-bottom: var(--content-pad-b);
+  overscroll-behavior: contain;
+}
+
 .heavy-glass {
   background: linear-gradient(135deg, rgba(255, 255, 255, 0.1) 0%, rgba(255, 255, 255, 0.02) 100%);
-  backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
-  border: 1px solid rgba(255, 255, 255, 0.2); box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.5); border-radius: 16px;
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.5);
+  border-radius: 16px;
+}
+
+/* ✅ backdrop-filter fallback */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .heavy-glass { background: rgba(30,30,35,0.85); }
 }
 
 /* Home & UI Components */
-.top-logo-container { text-align: center; margin-bottom: var(--space-md); margin-top: -20px; }
+.top-logo-container { text-align: center; margin-bottom: var(--space-md); margin-top:15px; }
 .top-logo { width: clamp(100px, 30vw, 150px); height: auto; filter: drop-shadow(0 0 15px rgba(255, 215, 0, 0.3)); }
 .character-section { display: flex; flex-direction: column; align-items: center; }
 .avatar-wrapper {
@@ -393,15 +460,15 @@ body {
   border: 3px solid rgba(255, 215, 0, 0.5); padding: 5px; background: rgba(0,0,0,0.3); backdrop-filter: blur(5px);
   margin-bottom: var(--space-md);
 }
-.main-avatar { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; }
+.main-avatar { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; display: block; }
 .character-info { text-align: center; width: 100%; }
 .name-row { display: flex; align-items: center; justify-content: center; gap: 8px; margin-bottom: 8px; flex-wrap: wrap; }
 .display-name { font-size: clamp(1.5rem, 6vw, 2.2rem); font-weight: 800; color: #fff; margin: 0; line-height: 1.2; }
 .level-tag { background: var(--primary); color: #000; font-weight: 900; font-size: clamp(0.7rem, 2.5vw, 0.9rem); padding: 3px 8px; border-radius: 6px; flex-shrink: 0; }
-.member-id { font-family: monospace; color: rgba(255, 255, 255, 0.5); font-size: clamp(0.75rem, 3vw, 0.9rem); margin: 0 0 var(--space-md) 0; letter-spacing: 1px; }
+.member-id { font-family: monospace; color: rgba(255, 255, 255, 0.5); font-size: clamp(0.75rem, 3vw, 0.9rem); margin: 0 0 var(--space-md) 0; letter-spacing: 1px; word-break: break-all; }
 .title-badge { margin-bottom: var(--space-lg); }
 .title-text { border: 1px solid rgba(255, 215, 0, 0.4); background: rgba(255, 215, 0, 0.1); color: #ffd700; padding: 6px 20px; border-radius: 20px; font-size: clamp(0.85rem, 3.5vw, 1rem); letter-spacing: 1px; }
-.exp-container { width: 90%; max-width: 400px; margin: 0 auto; }
+.exp-container { width: min(90%, 420px); margin: 0 auto; }
 .exp-text { display: flex; justify-content: space-between; font-size: 0.8rem; color: #aaa; margin-bottom: 5px; }
 .progress-track { height: 8px; background: rgba(255,255,255,0.1); border-radius: 4px; overflow: hidden; }
 .progress-bar { height: 100%; background: var(--primary); width: 0%; transition: width 0.5s ease; box-shadow: 0 0 10px var(--primary); }
@@ -428,7 +495,7 @@ body {
 .history-card { width: 100%; transition: all 0.3s; }
 .card-main { display: flex; padding: var(--space-sm); gap: var(--space-sm); align-items: center; }
 .thumb-col { width: clamp(50px, 15vw, 70px); height: clamp(50px, 15vw, 70px); border-radius: 8px; overflow: hidden; flex-shrink: 0; background: #000; border: 1px solid #333; }
-.script-thumb { width: 100%; height: 100%; object-fit: cover; }
+.script-thumb { width: 100%; height: 100%; object-fit: cover; display: block; }
 .card-info-content { flex: 1; display: flex; flex-direction: column; justify-content: center; align-items: flex-start; min-width: 0; }
 .script-title { font-size: clamp(0.95rem, 4vw, 1.15rem); font-weight: bold; color: #fff; margin: 0 0 4px 0; display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical; overflow: hidden; line-height: 1.3; text-align: left; }
 .history-card.expanded .script-title { -webkit-line-clamp: unset; }
@@ -529,18 +596,37 @@ body {
 .save-btn { width: 100%; padding: 15px; background: var(--primary); border-radius: 25px; border: none; font-size: 1.1rem; font-weight: bold; margin-top: 10px; cursor: pointer; }
 
 .bottom-nav-glass {
-  position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
-  width: 90%; max-width: 400px; height: 60px;
-  background: rgba(20, 20, 20, 0.9); backdrop-filter: blur(20px);
-  border: 1px solid rgba(255, 255, 255, 0.15); border-radius: 30px;
-  display: flex; justify-content: space-evenly; align-items: center;
-  z-index: 100; box-shadow: 0 10px 30px rgba(0,0,0,0.5);
-  padding-bottom: env(safe-area-inset-bottom, 0px);
+  position: fixed;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: calc(var(--nav-gap) + var(--safe-b));
+  width: min(90%, 400px);
+  height: var(--nav-h);
+  background: rgba(20, 20, 20, 0.9);
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 30px;
+  display: flex;
+  justify-content: space-evenly;
+  align-items: center;
+  z-index: 100;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.5);
 }
 .nav-item { width: 50px; height: 100%; display: flex; align-items: center; justify-content: center; position: relative; color: #666; cursor: pointer; }
 .nav-icon { width: 24px; height: 24px; }
 .nav-item.active { color: var(--primary); }
 .nav-item.active::after { content: ''; position: absolute; bottom: 8px; width: 4px; height: 4px; background: var(--primary); border-radius: 50%; }
+
+.badge {
+  position: absolute;
+  right: 10px;
+  top: 14px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--primary);
+  box-shadow: 0 0 8px var(--primary);
+}
 
 .divider { text-align: center; color: #555; font-size: 0.9rem; margin: 35px 0 15px 0; position: relative; }
 .divider::before { content:''; position: absolute; left: 0; top: 50%; width: 40%; height: 1px; background: #333; }

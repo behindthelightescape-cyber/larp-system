@@ -16,7 +16,7 @@ const saving = ref(false)
 const currentTab = ref('home')
 const expandedRecordId = ref(null) 
 
-// 🔥 改用變數控制「哪一張票券被展開」，不再使用彈窗
+// 🔥 票券展開狀態控制
 const expandedTicketId = ref(null)
 
 const editForm = ref({ display_name: '', phone: '', birthday: '' })
@@ -60,12 +60,12 @@ const saveProfile = async () => {
 
 const toggleRecord = (id) => { expandedRecordId.value = expandedRecordId.value === id ? null : id }
 
-// 🔥 新的票券邏輯：點擊展開/收合
+// 🔥 票券折疊邏輯：跟冒險檔案一模一樣
 const toggleTicket = (id) => {
   if (expandedTicketId.value === id) {
-    expandedTicketId.value = null // 再次點擊則收合
+    expandedTicketId.value = null // 收合
   } else {
-    expandedTicketId.value = id // 展開這張
+    expandedTicketId.value = id // 展開
   }
 }
 
@@ -73,7 +73,6 @@ const useTicket = (c) => {
   if(confirm(`確定要核銷使用「${c.title}」嗎？`)) {
     alert('✅ 票券已核銷！')
     expandedTicketId.value = null // 核銷後自動收合
-    // 這裡可以加入 API 更新邏輯
   }
 }
 
@@ -188,26 +187,27 @@ onMounted(() => { fetchData() })
                 :class="{ 'is-expanded': expandedTicketId === c.id }"
                 @click="toggleTicket(c.id)"
               >
-                <div class="ticket-summary">
+                <div class="ticket-main-row">
                   <div class="ticket-left">
                     <div class="ticket-title">{{ c.title }}</div>
-                    <div v-if="expandedTicketId !== c.id" class="ticket-desc">{{ c.description }}</div>
                     <div class="ticket-date">有效期至 {{ formatDate(c.expiry_date) }}</div>
                   </div>
+                  
                   <div class="ticket-split"></div>
+                  
                   <div class="ticket-right">
                     <span class="expand-icon">{{ expandedTicketId === c.id ? '▲' : '▼' }}</span>
-                    <span class="click-text">INFO</span>
+                    <span class="click-text">{{ expandedTicketId === c.id ? 'CLOSE' : 'OPEN' }}</span>
                   </div>
                 </div>
 
-                <div v-if="expandedTicketId === c.id" class="ticket-expanded-content">
-                  <div class="ticket-full-desc">
-                    <p class="desc-label">使用說明：</p>
-                    <p>{{ c.description }}</p>
-                    <p class="ticket-id">NO. {{ c.id.split('-')[0] }}</p>
+                <div v-if="expandedTicketId === c.id" class="ticket-expanded-area">
+                  <div class="ticket-desc-box">
+                    <p class="desc-title">詳細說明</p>
+                    <p class="desc-content">{{ c.description }}</p>
+                    <p class="ticket-id-tag">ID: {{ c.id.split('-')[0] }}</p>
                   </div>
-                  <button class="use-btn-large" @click.stop="useTicket(c)">立即核銷使用</button>
+                  <button class="confirm-use-btn" @click.stop="useTicket(c)">立即核銷使用</button>
                 </div>
 
                 <div class="notch notch-top"></div><div class="notch notch-bottom"></div>
@@ -216,10 +216,10 @@ onMounted(() => { fetchData() })
               <div v-if="historyCoupons.length > 0" class="divider">歷史紀錄</div>
               
               <div v-for="c in historyCoupons" :key="c.id" class="new-ticket used">
-                 <div class="ticket-summary">
+                 <div class="ticket-main-row">
                    <div class="ticket-left">
                     <div class="ticket-title">{{ c.title }}</div>
-                    <div class="ticket-desc">{{ c.status === 'used' ? '已核銷兌換' : '票券已過期' }}</div>
+                    <div class="ticket-desc-short">{{ c.status === 'used' ? '已核銷兌換' : '票券已過期' }}</div>
                   </div>
                   <div class="ticket-split"></div>
                   <div class="ticket-right">
@@ -233,7 +233,7 @@ onMounted(() => { fetchData() })
           </div>
         </transition>
         
-        <div class="version-tag">System V8.1</div>
+        <div class="version-tag">System V8.2</div>
       </div>
 
       <div class="bottom-nav-glass">
@@ -355,55 +355,59 @@ body {
 .detail-empty { color: #666; font-size: 0.9rem; text-align: center; margin: 0; }
 
 /* =========================================
-   🔥 Wallet (New Accordion Style)
+   🔥 Wallet (Accordion Fixed - 冒險檔案風格)
    ========================================= */
 .ticket-list { display: flex; flex-direction: column; gap: var(--space-md); }
 .new-ticket { 
-  display: flex; flex-direction: column; /* 改成直式排列，內部再分區 */
+  display: flex; flex-direction: column; 
   position: relative; 
   background: rgba(30, 30, 35, 0.8); backdrop-filter: blur(10px);
   border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 12px;
   overflow: hidden; 
-  transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1); /* 平滑過渡 */
+  transition: all 0.3s ease; 
+  cursor: pointer;
 }
-.new-ticket.active { cursor: pointer; }
-.new-ticket.active:active { transform: scale(0.98); }
-.new-ticket.is-expanded { border-color: var(--primary); background: rgba(20, 20, 20, 0.95); box-shadow: 0 5px 20px rgba(0,0,0,0.5); }
+.new-ticket.is-expanded { border-color: var(--primary); background: rgba(25, 25, 25, 0.95); box-shadow: 0 5px 20px rgba(0,0,0,0.5); }
 
-/* 票券上半部 (摘要) */
-.ticket-summary { display: flex; width: 100%; min-height: 100px; }
+/* 主內容區 (總是顯示) */
+.ticket-main-row { display: flex; width: 100%; min-height: 100px; }
 .ticket-left { flex: 1; padding: var(--space-md); display: flex; flex-direction: column; justify-content: center; min-width: 0; }
 .ticket-title { font-size: clamp(1rem, 4.5vw, 1.3rem); font-weight: bold; color: var(--primary); margin-bottom: 4px; line-height: 1.2; }
-.ticket-desc { font-size: clamp(0.8rem, 3.5vw, 0.9rem); color: #ccc; margin-bottom: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ticket-desc-short { font-size: clamp(0.8rem, 3.5vw, 0.9rem); color: #ccc; margin-bottom: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ticket-date { font-size: 0.7rem; color: #666; }
+
 .ticket-split { width: 1px; border-left: 1px dashed rgba(255,255,255,0.2); position: relative; margin: 10px 0; }
-.ticket-right { width: clamp(70px, 20vw, 90px); display: flex; flex-direction: column; align-items: center; justify-content: center; background: rgba(255, 215, 0, 0.05); flex-shrink: 0; color: var(--primary); }
+
+/* 右側：純指示，不當按鈕用 */
+.ticket-right { width: clamp(70px, 20vw, 90px); display: flex; flex-direction: column; align-items: center; justify-content: center; background: rgba(255, 215, 0, 0.05); flex-shrink: 0; color: var(--primary); transition: background 0.3s; }
+.new-ticket.is-expanded .ticket-right { background: rgba(255, 215, 0, 0.1); }
 .expand-icon { font-size: 1.2rem; margin-bottom: 2px; }
 .click-text { font-size: 0.7rem; font-weight: bold; opacity: 0.8; }
 
-/* 票券展開內容區 */
-.ticket-expanded-content {
+/* 展開區域 */
+.ticket-expanded-area {
   padding: 0 var(--space-md) var(--space-md) var(--space-md);
   border-top: 1px solid rgba(255,255,255,0.1);
   animation: slideDown 0.3s ease;
 }
-@keyframes slideDown { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes slideDown { from { opacity: 0; transform: translateY(-5px); } to { opacity: 1; transform: translateY(0); } }
 
-.ticket-full-desc { margin: 15px 0; color: #ccc; font-size: 0.95rem; line-height: 1.6; }
-.desc-label { color: #888; font-size: 0.8rem; margin-bottom: 5px; }
-.ticket-id { font-family: monospace; color: #555; text-align: right; font-size: 0.8rem; margin-top: 10px; }
+.ticket-desc-box { margin: 15px 0; background: rgba(0,0,0,0.3); padding: 15px; border-radius: 8px; }
+.desc-title { color: #888; font-size: 0.8rem; margin: 0 0 5px 0; }
+.desc-content { color: #ddd; font-size: 1rem; line-height: 1.6; margin: 0; }
+.ticket-id-tag { font-family: monospace; color: #555; text-align: right; font-size: 0.8rem; margin-top: 10px; }
 
-/* 大按鈕 */
-.use-btn-large {
+/* 大顆確認按鈕 */
+.confirm-use-btn {
   width: 100%; padding: 15px;
   background: var(--primary); border: none; border-radius: 8px;
   color: #000; font-weight: 800; font-size: 1.1rem;
-  cursor: pointer; transition: transform 0.2s;
+  cursor: pointer; 
 }
-.use-btn-large:active { transform: scale(0.96); }
+.confirm-use-btn:active { transform: scale(0.98); opacity: 0.9; }
 
-/* 歷史票券樣式 */
-.new-ticket.used { opacity: 0.7; }
+/* 歷史樣式 */
+.new-ticket.used { opacity: 0.6; cursor: default; }
 .new-ticket.used .ticket-right { background: rgba(50, 50, 50, 0.3); color: #666; }
 .status-text { font-weight: bold; color: #666; font-size: 1rem; transform: rotate(-15deg); border: 2px solid #666; padding: 3px; border-radius: 5px; opacity: 0.5; }
 
@@ -411,16 +415,10 @@ body {
 .notch-top { top: -9px; }
 .notch-bottom { bottom: -9px; }
 
-/* =========================================
-   🔥 Version Tag (Fixed)
-   ========================================= */
+/* Version Tag (透明化) */
 .version-tag {
-  text-align: center;
-  color: rgba(255, 255, 255, 0.3); /* 透明度 0.3 */
-  font-size: 0.6rem; /* 小字體 */
-  margin-top: 40px;
-  margin-bottom: 20px;
-  font-family: monospace;
+  text-align: center; color: rgba(255, 255, 255, 0.25);
+  font-size: 0.6rem; margin-top: 40px; margin-bottom: 20px; font-family: monospace;
 }
 
 /* Other UI */

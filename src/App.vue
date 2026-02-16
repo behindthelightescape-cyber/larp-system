@@ -179,57 +179,58 @@ onMounted(() => { fetchData() })
           <div v-else-if="currentTab === 'wallet'" key="wallet" class="tab-page">
             <h2 class="page-title">隨身票夾 <small>WALLET</small></h2>
             <div class="ticket-list">
-              
-              <div 
-                v-for="c in validCoupons" 
-                :key="c.id" 
-                class="new-ticket active" 
-                :class="{ 'is-expanded': expandedTicketId === c.id }"
-                @click="toggleTicket(c.id)"
-              >
-                <div class="ticket-main-row">
-                  <div class="ticket-left">
-                    <div class="ticket-title">{{ c.title }}</div>
-                    <div class="ticket-date">有效期至 {{ formatDate(c.expiry_date) }}</div>
-                  </div>
-                  
-                  <div class="ticket-split"></div>
-                  
-                  <div class="ticket-right">
-                    <span class="expand-icon">{{ expandedTicketId === c.id ? '▲' : '▼' }}</span>
-                    <span class="click-text">{{ expandedTicketId === c.id ? 'CLOSE' : 'OPEN' }}</span>
-                  </div>
-                </div>
+  
+  <div 
+    v-for="c in validCoupons" 
+    :key="c.id" 
+    class="new-ticket active" 
+    :class="{ 'is-expanded': expandedTicketId === c.id }"
+    @click="toggleTicket(c.id)"
+  >
+    <div class="ticket-main-row">
+      <div class="ticket-left">
+        <div class="ticket-title">{{ c.title }}</div>
+        <div class="ticket-desc-short">{{ c.description }}</div> 
+        <div class="ticket-date">有效期至 {{ formatDate(c.expiry_date) }}</div>
+      </div>
+      
+      <div class="ticket-split"></div>
+      
+      <div class="ticket-right">
+        <span class="expand-icon">{{ expandedTicketId === c.id ? '▲' : '▼' }}</span>
+        <span class="click-text">{{ expandedTicketId === c.id ? 'CLOSE' : 'OPEN' }}</span>
+      </div>
+    </div>
 
-                <div v-if="expandedTicketId === c.id" class="ticket-expanded-area">
-                  <div class="ticket-desc-box">
-                    <p class="desc-title">詳細說明</p>
-                    <p class="desc-content">{{ c.description }}</p>
-                    <p class="ticket-id-tag">ID: {{ c.id.split('-')[0] }}</p>
-                  </div>
-                  <button class="confirm-use-btn" @click.stop="useTicket(c)">立即核銷使用</button>
-                </div>
+    <div v-if="expandedTicketId === c.id" class="ticket-expanded-area">
+      <div class="ticket-desc-box">
+        <p class="desc-title">詳細使用規則</p>
+        <p class="desc-content">{{ c.description }}</p>
+        <p class="ticket-id-tag">No. {{ c.id.split('-')[0] }}</p>
+      </div>
+      <button class="confirm-use-btn" @click.stop="useTicket(c)">立即核銷使用</button>
+    </div>
 
-                <div class="notch notch-top"></div><div class="notch notch-bottom"></div>
-              </div>
+    <div class="notch notch-top"></div><div class="notch notch-bottom"></div>
+  </div>
 
-              <div v-if="historyCoupons.length > 0" class="divider">歷史紀錄</div>
-              
-              <div v-for="c in historyCoupons" :key="c.id" class="new-ticket used">
-                 <div class="ticket-main-row">
-                   <div class="ticket-left">
-                    <div class="ticket-title">{{ c.title }}</div>
-                    <div class="ticket-desc-short">{{ c.status === 'used' ? '已核銷兌換' : '票券已過期' }}</div>
-                  </div>
-                  <div class="ticket-split"></div>
-                  <div class="ticket-right">
-                    <span class="status-text">{{ c.status === 'used' ? 'USED' : 'EXP' }}</span>
-                  </div>
-                </div>
-                <div class="notch notch-top"></div><div class="notch notch-bottom"></div>
-              </div>
+  <div v-if="historyCoupons.length > 0" class="divider">歷史紀錄</div>
+  
+  <div v-for="c in historyCoupons" :key="c.id" class="new-ticket used">
+      <div class="ticket-main-row">
+        <div class="ticket-left">
+        <div class="ticket-title">{{ c.title }}</div>
+        <div class="ticket-desc-short">{{ c.description }}</div>
+      </div>
+      <div class="ticket-split"></div>
+      <div class="ticket-right">
+        <span class="status-text">{{ c.status === 'used' ? 'USED' : 'EXP' }}</span>
+      </div>
+    </div>
+    <div class="notch notch-top"></div><div class="notch notch-bottom"></div>
+  </div>
 
-            </div>
+</div>
           </div>
         </transition>
         
@@ -373,7 +374,36 @@ body {
 .ticket-main-row { display: flex; width: 100%; min-height: 100px; }
 .ticket-left { flex: 1; padding: var(--space-md); display: flex; flex-direction: column; justify-content: center; min-width: 0; }
 .ticket-title { font-size: clamp(1rem, 4.5vw, 1.3rem); font-weight: bold; color: var(--primary); margin-bottom: 4px; line-height: 1.2; }
-.ticket-desc-short { font-size: clamp(0.8rem, 3.5vw, 0.9rem); color: #ccc; margin-bottom: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ticket-desc-short { 
+  font-size: clamp(0.8rem, 3.5vw, 0.9rem); 
+  color: #ccc; 
+  margin-bottom: 6px; 
+  
+  /* 限制顯示一行，保持版面整潔 */
+  white-space: nowrap; 
+  overflow: hidden; 
+  text-overflow: ellipsis; 
+  
+  /* 稍微增加透明度，區分標題 */
+  opacity: 0.8;
+}
+
+/* 展開後的詳細內容：支援換行 */
+.desc-content { 
+  color: #ddd; 
+  font-size: 1rem; 
+  line-height: 1.6; 
+  margin: 0;
+  
+  /* 🔥 關鍵修正：保留資料庫裡的換行符號 */
+  white-space: pre-wrap; 
+  text-align: justify; /* 讓文字排版比較像文件 */
+}
+
+/* 微調標題間距，讓塞入簡述後不會太擠 */
+.ticket-title {
+  margin-bottom: 6px; /* 增加一點點距離 */
+}
 .ticket-date { font-size: 0.7rem; color: #666; }
 
 .ticket-split { width: 1px; border-left: 1px dashed rgba(255,255,255,0.2); position: relative; margin: 10px 0; }

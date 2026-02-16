@@ -2,30 +2,35 @@
 import { ref, onMounted, computed } from 'vue'
 import { supabase } from './supabase'
 
-// --- 資料設定 ---
+// --- 資料設定 (Mock Data / Config) ---
 const MOCK_USER_ID = 'U_TEST_JOE_001'
-const DEFAULT_AVATAR = 'https://meee.com.tw/D45hJIi.PNG' 
-const DEFAULT_COVER = 'https://meee.com.tw/VInVFKh.PNG'   
+const DEFAULT_AVATAR = 'https://meee.com.tw/D45hJIi.PNG'
+const DEFAULT_COVER  = 'https://meee.com.tw/VInVFKh.PNG'
 
-// --- 狀態變數 ---
-const user = ref({}) 
+// --- 狀態變數 (State) ---
+const user = ref({})
 const coupons = ref([])
 const history = ref([])
 const loading = ref(true)
-const saving = ref(false) 
+const saving = ref(false)
 const currentTab = ref('home')
-const expandedRecordId = ref(null) 
+const expandedRecordId = ref(null)
 
-// 🔥 彈窗控制 (這次我們用最強硬的方式)
-const showTicketModal = ref(false)
-const selectedTicket = ref(null)
+// 🔥 票券展開狀態控制
+const expandedTicketId = ref(null)
 
 const editForm = ref({ display_name: '', phone: '', birthday: '' })
 
 // --- API 資料獲取 ---
 const fetchData = async () => {
   try {
-    let { data: userData } = await supabase.from('users').select('*').eq('id', MOCK_USER_ID).single()
+    // user
+    let { data: userData } = await supabase
+      .from('users')
+      .select('*')
+      .eq('id', MOCK_USER_ID)
+      .single()
+
     if (userData) {
       user.value = userData
       editForm.value = {
@@ -34,68 +39,91 @@ const fetchData = async () => {
         birthday: userData.birthday || ''
       }
     }
-    let { data: userCoupons } = await supabase.from('coupons').select('*').eq('user_id', MOCK_USER_ID).order('created_at', { ascending: false })
+
+    // coupons
+    let { data: userCoupons } = await supabase
+      .from('coupons')
+      .select('*')
+      .eq('user_id', MOCK_USER_ID)
+      .order('created_at', { ascending: false })
+
     if (userCoupons) coupons.value = userCoupons
-    
-    let { data: records } = await supabase.from('game_participants')
+
+    // history
+    let { data: records } = await supabase
+      .from('game_participants')
       .select(`id, exp_gained, games ( play_time, gm_name, scripts ( title, cover_url, intro_text, extra_link ) )`)
-      .eq('user_id', MOCK_USER_ID).order('created_at', { ascending: false })
+      .eq('user_id', MOCK_USER_ID)
+      .order('created_at', { ascending: false })
+
     if (records) history.value = records
-  } catch (e) {
-    console.error("小四：連線掛了", e)
+  } catch (error) {
+    console.error('小四警告：資料庫連線失敗，請檢查 Supabase Key。', error)
   } finally {
     loading.value = false
   }
 }
 
+// --- 用戶資料更新 ---
 const saveProfile = async () => {
   saving.value = true
-  const { error } = await supabase.from('users').update({
+  const { error } = await supabase
+    .from('users')
+    .update({
       display_name: editForm.value.display_name,
       phone: editForm.value.phone,
       birthday: editForm.value.birthday
-    }).eq('id', MOCK_USER_ID)
+    })
+    .eq('id', MOCK_USER_ID)
+
   if (!error) {
     user.value.display_name = editForm.value.display_name
     user.value.phone = editForm.value.phone
     user.value.birthday = editForm.value.birthday
     alert('✅ 資料更新成功！')
     currentTab.value = 'home'
+  } else {
+    alert('❌ 更新失敗，請稍後再試。')
   }
   saving.value = false
 }
 
-const toggleRecord = (id) => { expandedRecordId.value = expandedRecordId.value === id ? null : id }
-
-// 🔥 開啟彈窗邏輯
-const openTicket = (ticket) => {
-  console.log("小四：正在開啟票券", ticket.title)
-  selectedTicket.value = ticket
-  showTicketModal.value = true
+// --- 互動邏輯 ---
+const toggleRecord = (id) => {
+  expandedRecordId.value = expandedRecordId.value === id ? null : id
 }
 
-// 🔥 關閉彈窗
-const closeTicket = () => {
-  showTicketModal.value = false
-  setTimeout(() => { selectedTicket.value = null }, 300) // 等動畫跑完再清空
+// 🔥 票券折疊邏輯：點擊同一張卡片時收合，點擊不同張時切換
+const toggleTicket = (id) => {
+  expandedTicketId.value = expandedTicketId.value === id ? null : id
 }
 
 const useTicket = (c) => {
-  if(confirm(`確定要核銷使用「${c.title}」嗎？`)) {
-    alert('✅ 票券已核銷！')
-    closeTicket() // 核銷後關閉彈窗
+  if (confirm(`確定要核銷使用「${c.title}」嗎？\n(注意：此操作無法復原)`)) {
+    // TODO: 這裡記得接後端 API 真正扣除票券
+    alert('✅ 票券已核銷！(模擬)')
+    expandedTicketId.value = null
   }
 }
 
 // --- Computed & Helpers ---
 const validCoupons = computed(() => coupons.value.filter(c => c.status === 'available'))
 const historyCoupons = computed(() => coupons.value.filter(c => c.status !== 'available'))
-const formatDate = (d) => d ? new Date(d).toLocaleDateString('zh-TW') : '無期限'
+
+const formatDate = (d) => (d ? new Date(d).toLocaleDateString('zh-TW') : '無期限')
+
 const daysJoined = computed(() => {
   if (!user.value.created_at) return 1
-  const start = new Date(user.value.created_at); const now = new Date();
+  const start = new Date(user.value.created_at)
+  const now = new Date()
   return Math.ceil(Math.abs(now - start) / (1000 * 60 * 60 * 24))
 })
+
+// ✅ 補洞：避免 total_exp / level undefined 造成 NaN%
+const level = computed(() => user.value?.level ?? 1)
+const totalExp = computed(() => user.value?.total_exp ?? 0)
+const nextMilestone = computed(() => (Math.floor(totalExp.value / 1000) + 1) * 1000)
+const expPercent = computed(() => ((totalExp.value % 1000) / 10) + '%')
 
 onMounted(() => { fetchData() })
 </script>
@@ -105,38 +133,55 @@ onMounted(() => { fetchData() })
 
   <div class="app-wrapper">
     <div class="app-container">
-      
+
       <div v-if="loading" class="loading-screen">
         <div class="loader"></div><p>系統連線中...</p>
       </div>
 
       <div v-else class="content-area">
         <transition name="fade" mode="out-in">
-          
+
+          <!-- HOME -->
           <div v-if="currentTab === 'home'" key="home" class="tab-page home-layout">
             <div class="top-logo-container">
-               <img src="https://meee.com.tw/VInVFKh.PNG" alt="Brand Logo" class="top-logo" />
+              <img src="https://meee.com.tw/VInVFKh.PNG" alt="Brand Logo" class="top-logo" />
             </div>
+
             <div class="character-section">
               <div class="character-stage">
                 <div class="avatar-wrapper">
                   <img :src="user.picture_url || DEFAULT_AVATAR" class="main-avatar" />
                 </div>
               </div>
+
               <div class="character-info">
                 <div class="name-row">
-                  <span class="level-tag">LV.{{ user.level }}</span>
+                  <span class="level-tag">LV.{{ level }}</span>
                   <h1 class="display-name">{{ user.display_name }}</h1>
                 </div>
+
                 <p class="member-id">ID: {{ user.id }}</p>
-                <div class="title-badge"><span class="title-text">✨ 傳說中的劇本殺手 ✨</span></div>
+
+                <div class="title-badge">
+                  <span class="title-text">✨ 傳說中的劇本殺手 ✨</span>
+                </div>
+
                 <div class="exp-container">
-                  <div class="exp-text"><span>EXP</span><span>{{ user.total_exp }} / {{ (Math.floor(user.total_exp/1000)+1)*1000 }}</span></div>
-                  <div class="progress-track"><div class="progress-bar" :style="{ width: (user.total_exp % 1000) / 10 + '%' }"></div></div>
+                  <div class="exp-text">
+                    <span>EXP</span>
+                    <span>{{ totalExp }} / {{ nextMilestone }}</span>
+                  </div>
+                  <div class="progress-track">
+                    <div class="progress-bar" :style="{ width: expPercent }"></div>
+                  </div>
                 </div>
               </div>
             </div>
-            <div class="section-separator"><div class="line"></div><div class="diamond"></div><div class="line"></div></div>
+
+            <div class="section-separator">
+              <div class="line"></div><div class="diamond"></div><div class="line"></div>
+            </div>
+
             <div class="stats-grid heavy-glass">
               <div class="stat-item"><span class="stat-val">{{ daysJoined }}</span><span class="stat-label">加入天數</span></div>
               <div class="stat-divider"></div>
@@ -146,35 +191,47 @@ onMounted(() => { fetchData() })
             </div>
           </div>
 
+          <!-- SETTINGS -->
           <div v-else-if="currentTab === 'settings'" key="settings" class="tab-page">
             <h2 class="page-title">個人設定 <small>PROFILE</small></h2>
             <div class="settings-form heavy-glass">
               <div class="form-group"><label>玩家暱稱</label><input v-model="editForm.display_name" type="text" /></div>
               <div class="form-group"><label>手機號碼</label><input v-model="editForm.phone" type="tel" /></div>
-              <div class="form-group"><label>生日</label><input v-model="editForm.birthday" type="date" /><p class="hint">⚠️ 生日填寫後將無法隨意更改</p></div>
+              <div class="form-group">
+                <label>生日</label>
+                <input v-model="editForm.birthday" type="date" />
+                <p class="hint">⚠️ 生日填寫後將無法隨意更改</p>
+              </div>
               <button class="save-btn" @click="saveProfile" :disabled="saving">{{ saving ? '儲存中...' : '確認修改' }}</button>
             </div>
           </div>
 
+          <!-- HISTORY -->
           <div v-else-if="currentTab === 'history'" key="history" class="tab-page">
             <h2 class="page-title">冒險檔案 <small>HISTORY</small></h2>
+
             <div class="timeline">
               <div v-for="record in history" :key="record.id" class="timeline-row">
                 <div class="time-col">
                   <span class="date">{{ formatDate(record.games.play_time).split('/')[1] }}/{{ formatDate(record.games.play_time).split('/')[2] }}</span>
                   <span class="year">{{ formatDate(record.games.play_time).split('/')[0] }}</span>
                 </div>
+
                 <div class="line-col"><div class="dot"></div><div class="line"></div></div>
+
                 <div class="info-col">
                   <div class="history-card heavy-glass" :class="{ expanded: expandedRecordId === record.id }" @click="toggleRecord(record.id)">
                     <div class="card-main">
-                      <div class="thumb-col"><img :src="record.games.scripts?.cover_url || DEFAULT_COVER" class="script-thumb" /></div>
+                      <div class="thumb-col">
+                        <img :src="record.games.scripts?.cover_url || DEFAULT_COVER" class="script-thumb" />
+                      </div>
                       <div class="card-info-content">
                         <h3 class="script-title">{{ record.games.scripts?.title }}</h3>
                         <div class="gm-row"><span class="gm-label">GM:</span><span class="gm-value">{{ record.games.gm_name }}</span></div>
                         <div class="exp-row"><span class="exp-badge">+{{ record.exp_gained }} EXP</span></div>
                       </div>
                     </div>
+
                     <div v-if="expandedRecordId === record.id" class="card-details">
                       <div v-if="record.games.scripts?.intro_text" class="detail-quote">"{{ record.games.scripts.intro_text }}"</div>
                       <a v-if="record.games.scripts?.extra_link" :href="record.games.scripts.extra_link" target="_blank" class="detail-link-btn">🔗 查看回憶/連結</a>
@@ -182,107 +239,104 @@ onMounted(() => { fetchData() })
                     </div>
                   </div>
                 </div>
+
               </div>
             </div>
+
             <div v-if="history.length===0" class="empty-state">尚無冒險紀錄</div>
           </div>
 
+          <!-- WALLET ✅（完整修好：展開 + 核銷按鈕一定會出現） -->
           <div v-else-if="currentTab === 'wallet'" key="wallet" class="tab-page">
             <h2 class="page-title">隨身票夾 <small>WALLET</small></h2>
+
             <div class="ticket-list">
-              
-              <div 
-                v-for="c in validCoupons" 
-                :key="c.id" 
-                class="new-ticket active clickable" 
-                @click="openTicket(c)"
+
+              <!-- 可用票券 -->
+              <div
+                v-for="c in validCoupons"
+                :key="c.id"
+                class="new-ticket active"
+                :class="{ 'is-expanded': expandedTicketId === c.id }"
+                @click="toggleTicket(c.id)"
               >
                 <div class="ticket-main-row">
                   <div class="ticket-left">
                     <div class="ticket-title">{{ c.title }}</div>
-                    <div class="ticket-desc-short">{{ c.description }}</div> 
+                    <div class="ticket-desc-short">{{ c.description }}</div>
                     <div class="ticket-date">有效期至 {{ formatDate(c.expiry_date) }}</div>
                   </div>
+
                   <div class="ticket-split"></div>
+
                   <div class="ticket-right">
-                    <span class="click-text">查看<br>VIEW</span>
+                    <span class="expand-icon">{{ expandedTicketId === c.id ? '▲' : '▼' }}</span>
+                    <span class="click-text">{{ expandedTicketId === c.id ? 'CLOSE' : 'OPEN' }}</span>
                   </div>
                 </div>
-                <div class="notch notch-top"></div><div class="notch notch-bottom"></div>
+
+                <div v-if="expandedTicketId === c.id" class="ticket-expanded-area">
+                  <div class="ticket-desc-box">
+                    <p class="desc-title">詳細使用規則</p>
+                    <p class="desc-content">{{ c.description }}</p>
+                    <p class="ticket-id-tag">No. {{ String(c.id).split('-')[0] }}</p>
+                  </div>
+
+                  <button class="confirm-use-btn" @click.stop="useTicket(c)">立即核銷使用</button>
+                </div>
+
+                <div class="notch notch-top"></div>
+                <div class="notch notch-bottom"></div>
               </div>
 
+              <!-- 歷史票券 -->
               <div v-if="historyCoupons.length > 0" class="divider">歷史紀錄</div>
-              
+
               <div v-for="c in historyCoupons" :key="c.id" class="new-ticket used">
-                  <div class="ticket-main-row">
-                    <div class="ticket-left">
+                <div class="ticket-main-row">
+                  <div class="ticket-left">
                     <div class="ticket-title">{{ c.title }}</div>
                     <div class="ticket-desc-short">{{ c.description }}</div>
                   </div>
+
                   <div class="ticket-split"></div>
+
                   <div class="ticket-right">
                     <span class="status-text">{{ c.status === 'used' ? 'USED' : 'EXP' }}</span>
                   </div>
                 </div>
-                <div class="notch notch-top"></div><div class="notch notch-bottom"></div>
+
+                <div class="notch notch-top"></div>
+                <div class="notch notch-bottom"></div>
               </div>
 
             </div>
           </div>
+
         </transition>
-        
-        <div class="version-tag">System V9.0 Final Modal</div>
+
+        <div class="version-tag">System V8.2 by 小四</div>
       </div>
 
+      <!-- Bottom Nav -->
       <div class="bottom-nav-glass">
         <div class="nav-item" :class="{ active: currentTab === 'home' }" @click="currentTab='home'">
           <svg viewBox="0 0 24 24" class="nav-icon"><path fill="currentColor" d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/></svg>
         </div>
+
         <div class="nav-item" :class="{ active: currentTab === 'history' }" @click="currentTab='history'">
           <svg viewBox="0 0 24 24" class="nav-icon"><path fill="currentColor" d="M13 3c-4.97 0-9 4.03-9 9H1l3.89 3.89.07.14L9 12H6c0-3.87 3.13-7 7-7s7 3.13 7 7-7 7-7 7c-1.93 0-3.68-.79-4.94-2.06l-1.42 1.42C8.27 19.99 10.51 21 13 21c4.97 0 9-4.03 9-9s-4.03-9-9-9zm-1 5v5l4.28 2.54.72-1.21-3.5-2.08V8H12z"/></svg>
         </div>
+
         <div class="nav-item" :class="{ active: currentTab === 'wallet' }" @click="currentTab='wallet'">
           <svg viewBox="0 0 24 24" class="nav-icon"><path fill="currentColor" d="M20 4H4c-1.11 0-1.99.89-1.99 2L2 18c0 1.11.89 2 2 2h16c1.11 0 2-.89 2-2V6c0-1.11-.89-2-2-2zm0 14H4v-6h16v6zm0-10H4V6h16v2z"/></svg>
           <span v-if="validCoupons.length" class="badge"></span>
         </div>
+
         <div class="nav-item" :class="{ active: currentTab === 'settings' }" @click="currentTab='settings'">
           <svg viewBox="0 0 24 24" class="nav-icon"><path fill="currentColor" d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58a.49.49 0 0 0 .12-.61l-1.92-3.32a.488.488 0 0 0-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54a.484.484 0 0 0-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58a.49.49 0 0 0-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/></svg>
         </div>
       </div>
-      
-      <transition name="modal-fade">
-        <div v-if="showTicketModal" class="god-modal-overlay" @click.self="closeTicket">
-          <div class="god-modal-card">
-            <button class="god-close-btn" @click="closeTicket">✕</button>
-            
-            <div class="god-header">
-              <span class="god-badge">TICKET DETAILS</span>
-              <h2>{{ selectedTicket?.title }}</h2>
-              <div class="god-divider"></div>
-            </div>
-
-            <div class="god-body">
-               <div class="god-meta-row">
-                 <span class="label">有效期限</span>
-                 <span class="value">{{ formatDate(selectedTicket?.expiry_date) }}</span>
-               </div>
-               <div class="god-meta-row">
-                 <span class="label">票券編號</span>
-                 <span class="value">{{ selectedTicket?.id?.split('-')[0] }}</span>
-               </div>
-               
-               <div class="god-desc-box">
-                 <p class="god-desc-title">使用說明</p>
-                 <p class="god-desc-content">{{ selectedTicket?.description }}</p>
-               </div>
-            </div>
-
-            <div class="god-footer">
-              <button class="god-use-btn" @click="useTicket(selectedTicket)">立即核銷使用</button>
-            </div>
-          </div>
-        </div>
-      </transition>
 
     </div>
   </div>
@@ -298,7 +352,7 @@ onMounted(() => { fetchData() })
   --glass-border: rgba(255, 255, 255, 0.15);
   --text-main: #ffffff;
   --card-width: 600px;
-  
+
   --space-xs: clamp(4px, 1vw, 8px);
   --space-sm: clamp(8px, 2vw, 12px);
   --space-md: clamp(12px, 4vw, 20px);
@@ -308,8 +362,8 @@ onMounted(() => { fetchData() })
 
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 
-body { 
-  margin: 0; background: #000; font-family: 'Helvetica Neue', Arial, sans-serif; 
+body {
+  margin: 0; background: #000; font-family: 'Helvetica Neue', Arial, sans-serif;
   overflow-x: hidden; color: #fff; background-color: var(--bg-dark);
 }
 .bg-layer {
@@ -334,8 +388,8 @@ body {
 .top-logo-container { text-align: center; margin-bottom: var(--space-md); margin-top: -20px; }
 .top-logo { width: clamp(100px, 30vw, 150px); height: auto; filter: drop-shadow(0 0 15px rgba(255, 215, 0, 0.3)); }
 .character-section { display: flex; flex-direction: column; align-items: center; }
-.avatar-wrapper { 
-  width: clamp(100px, 35vw, 160px); height: clamp(100px, 35vw, 160px); border-radius: 50%; 
+.avatar-wrapper {
+  width: clamp(100px, 35vw, 160px); height: clamp(100px, 35vw, 160px); border-radius: 50%;
   border: 3px solid rgba(255, 215, 0, 0.5); padding: 5px; background: rgba(0,0,0,0.3); backdrop-filter: blur(5px);
   margin-bottom: var(--space-md);
 }
@@ -386,77 +440,71 @@ body {
 .detail-link-btn { display: block; width: 100%; padding: 10px; background: rgba(255,255,255,0.1); border: 1px solid #555; border-radius: 8px; color: var(--primary); text-align: center; text-decoration: none; font-size: 0.9rem; }
 .detail-empty { color: #666; font-size: 0.9rem; text-align: center; margin: 0; }
 
-/* =========================================
-   🔥 Wallet & THE GOD MODAL
-   ========================================= */
+/* Wallet */
 .ticket-list { display: flex; flex-direction: column; gap: var(--space-md); }
-.new-ticket { 
-  display: flex; flex-direction: column; 
-  position: relative; 
+.new-ticket {
+  display: flex; flex-direction: column;
+  position: relative;
   background: rgba(30, 30, 35, 0.8); backdrop-filter: blur(10px);
   border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 12px;
-  overflow: hidden; 
+  overflow: hidden;
+  transition: all 0.3s ease;
+  cursor: pointer;
+  height: auto;
   min-height: 100px;
 }
-.new-ticket.active.clickable:active { transform: scale(0.98); background: rgba(255,255,255,0.05); }
+.new-ticket.is-expanded { border-color: var(--primary); background: rgba(25, 25, 25, 0.95); box-shadow: 0 5px 20px rgba(0,0,0,0.5); }
 
 .ticket-main-row { display: flex; width: 100%; min-height: 100px; }
 .ticket-left { flex: 1; padding: var(--space-md); display: flex; flex-direction: column; justify-content: center; min-width: 0; }
-.ticket-title { font-size: clamp(1rem, 4.5vw, 1.3rem); font-weight: bold; color: var(--primary); margin-bottom: 4px; line-height: 1.2; }
-.ticket-desc-short { font-size: clamp(0.8rem, 3.5vw, 0.9rem); color: #ccc; margin-bottom: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; opacity: 0.8; }
+.ticket-title { font-size: clamp(1rem, 4.5vw, 1.3rem); font-weight: bold; color: var(--primary); margin-bottom: 6px; line-height: 1.2; }
+.ticket-desc-short {
+  font-size: clamp(0.8rem, 3.5vw, 0.9rem);
+  color: #ccc;
+  margin-bottom: 6px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  opacity: 0.8;
+}
 .ticket-date { font-size: 0.7rem; color: #666; }
 
 .ticket-split { width: 1px; border-left: 1px dashed rgba(255,255,255,0.2); position: relative; margin: 10px 0; }
 
-.ticket-right { width: clamp(70px, 20vw, 90px); display: flex; flex-direction: column; align-items: center; justify-content: center; background: rgba(255, 215, 0, 0.05); flex-shrink: 0; color: var(--primary); }
-.click-text { font-size: 0.7rem; font-weight: bold; opacity: 0.8; text-align: center;}
+.ticket-right { width: clamp(70px, 20vw, 90px); display: flex; flex-direction: column; align-items: center; justify-content: center; background: rgba(255, 215, 0, 0.05); flex-shrink: 0; color: var(--primary); transition: background 0.3s; }
+.new-ticket.is-expanded .ticket-right { background: rgba(255, 215, 0, 0.1); }
+.expand-icon { font-size: 1.2rem; margin-bottom: 2px; }
+.click-text { font-size: 0.7rem; font-weight: bold; opacity: 0.8; }
 
-/* 🔥 GOD MODAL STYLES (強制覆蓋) 🔥 */
-.god-modal-overlay {
-  position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
-  background: rgba(0, 0, 0, 0.85); backdrop-filter: blur(8px);
-  z-index: 9999; /* 核彈級層級 */
-  display: flex; align-items: center; justify-content: center;
-  padding: 20px;
+.ticket-expanded-area {
+  padding: 0 var(--space-md) var(--space-md) var(--space-md);
+  border-top: 1px solid rgba(255,255,255,0.1);
+  animation: slideDown 0.3s ease;
 }
-.god-modal-card {
-  width: 100%; max-width: 400px;
-  background: #1a1a1f; 
-  border: 1px solid var(--primary);
-  border-radius: 16px;
-  box-shadow: 0 0 50px rgba(255, 215, 0, 0.2);
-  position: relative;
-  overflow: hidden;
-  display: flex; flex-direction: column;
-  animation: modalPop 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
-}
-@keyframes modalPop { from { transform: scale(0.9); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+@keyframes slideDown { from { opacity: 0; transform: translateY(-5px); } to { opacity: 1; transform: translateY(0); } }
 
-.god-close-btn {
-  position: absolute; top: 15px; right: 15px;
-  background: none; border: none; color: #fff; font-size: 1.5rem; cursor: pointer; z-index: 10;
-  width: 30px; height: 30px; display: flex; align-items: center; justify-content: center; background: rgba(255,255,255,0.1); border-radius: 50%;
+.ticket-desc-box { margin: 15px 0; background: rgba(0,0,0,0.3); padding: 15px; border-radius: 8px; }
+.desc-title { color: #888; font-size: 0.8rem; margin: 0 0 5px 0; }
+
+.desc-content {
+  color: #ddd;
+  font-size: 1rem;
+  line-height: 1.6;
+  margin: 0;
+  white-space: pre-wrap;
+  text-align: justify;
 }
 
-.god-header { padding: 25px 25px 10px 25px; text-align: center; }
-.god-badge { font-size: 0.7rem; color: var(--primary); letter-spacing: 2px; border: 1px solid var(--primary); padding: 4px 8px; border-radius: 4px; }
-.god-header h2 { margin: 15px 0 10px; color: #fff; font-size: 1.5rem; line-height: 1.3; }
-.god-divider { width: 50px; height: 3px; background: var(--primary); margin: 0 auto; border-radius: 2px; }
+.ticket-id-tag { font-family: monospace; color: #555; text-align: right; font-size: 0.8rem; margin-top: 10px; }
 
-.god-body { padding: 15px 25px; }
-.god-meta-row { display: flex; justify-content: space-between; border-bottom: 1px solid rgba(255,255,255,0.1); padding: 12px 0; }
-.god-meta-row .label { color: #888; font-size: 0.9rem; }
-.god-meta-row .value { color: #fff; font-weight: bold; font-family: monospace; letter-spacing: 1px; }
+.confirm-use-btn {
+  width: 100%; padding: 15px;
+  background: var(--primary); border: none; border-radius: 8px;
+  color: #000; font-weight: 800; font-size: 1.1rem;
+  cursor: pointer;
+}
+.confirm-use-btn:active { transform: scale(0.98); opacity: 0.9; }
 
-.god-desc-box { background: rgba(255,255,255,0.05); padding: 15px; border-radius: 8px; margin-top: 15px; }
-.god-desc-title { color: #aaa; font-size: 0.8rem; margin: 0 0 8px 0; }
-.god-desc-content { color: #ddd; font-size: 0.95rem; line-height: 1.6; margin: 0; white-space: pre-wrap; text-align: justify; }
-
-.god-footer { padding: 20px 25px 25px; }
-.god-use-btn { width: 100%; padding: 16px; background: var(--primary); border: none; border-radius: 12px; color: #000; font-weight: 800; font-size: 1.1rem; cursor: pointer; transition: 0.2s; }
-.god-use-btn:active { transform: scale(0.95); opacity: 0.9; }
-
-/* 歷史票券 */
 .new-ticket.used { opacity: 0.6; cursor: default; }
 .new-ticket.used .ticket-right { background: rgba(50, 50, 50, 0.3); color: #666; }
 .status-text { font-weight: bold; color: #666; font-size: 1rem; transform: rotate(-15deg); border: 2px solid #666; padding: 3px; border-radius: 5px; opacity: 0.5; }
@@ -465,7 +513,7 @@ body {
 .notch-top { top: -9px; }
 .notch-bottom { bottom: -9px; }
 
-/* Version Tag (透明化) */
+/* Version Tag */
 .version-tag {
   text-align: center; color: rgba(255, 255, 255, 0.25);
   font-size: 0.6rem; margin-top: 40px; margin-bottom: 20px; font-family: monospace;
@@ -483,7 +531,7 @@ body {
 .bottom-nav-glass {
   position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
   width: 90%; max-width: 400px; height: 60px;
-  background: rgba(20, 20, 20, 0.9); backdrop-filter: blur(20px); 
+  background: rgba(20, 20, 20, 0.9); backdrop-filter: blur(20px);
   border: 1px solid rgba(255, 255, 255, 0.15); border-radius: 30px;
   display: flex; justify-content: space-evenly; align-items: center;
   z-index: 100; box-shadow: 0 10px 30px rgba(0,0,0,0.5);
@@ -497,11 +545,11 @@ body {
 .divider { text-align: center; color: #555; font-size: 0.9rem; margin: 35px 0 15px 0; position: relative; }
 .divider::before { content:''; position: absolute; left: 0; top: 50%; width: 40%; height: 1px; background: #333; }
 .divider::after { content:''; position: absolute; right: 0; top: 50%; width: 40%; height: 1px; background: #333; }
+
 .loading-screen { height: 80vh; display: flex; flex-direction: column; align-items: center; justify-content: center; }
 .loader { width: 40px; height: 40px; border: 3px solid rgba(255,255,255,0.1); border-top-color: var(--primary); border-radius: 50%; animation: spin 0.8s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
+
 .fade-enter-active, .fade-leave-active { transition: opacity 0.2s ease; }
 .fade-enter-from, .fade-leave-to { opacity: 0; }
-.modal-fade-enter-active, .modal-fade-leave-active { transition: all 0.3s ease; }
-.modal-fade-enter-from, .modal-fade-leave-to { opacity: 0; transform: scale(0.95); }
 </style>

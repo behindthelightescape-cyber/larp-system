@@ -2,7 +2,6 @@
 import { ref, onMounted, computed } from 'vue'
 import { supabase } from './supabase'
 
-// === 1. 資料定義 ===
 const MOCK_USER_ID = 'U_TEST_JOE_001'
 const DEFAULT_AVATAR = 'https://meee.com.tw/D45hJIi.PNG' 
 
@@ -13,14 +12,12 @@ const loading = ref(true)
 const saving = ref(false) 
 const currentTab = ref('home')
 
-// 彈窗控制
 const showModal = ref(false)
-const modalType = ref('') // 'history' 或 'coupon'
+const modalType = ref('') 
 const selectedItem = ref(null)
 
 const editForm = ref({ display_name: '', phone: '', birthday: '' })
 
-// === 2. 核心邏輯 ===
 const fetchData = async () => {
   let { data: userData } = await supabase.from('users').select('*').eq('id', MOCK_USER_ID).single()
   if (userData) {
@@ -95,7 +92,7 @@ onMounted(() => { fetchData() })
 
     <div v-else class="content-view">
       
-      <div v-if="currentTab === 'home'" class="page-home">
+      <div v-if="currentTab === 'home'" class="page-layout">
         
         <div class="hero-section">
           <div class="avatar-halo">
@@ -111,7 +108,7 @@ onMounted(() => { fetchData() })
           </div>
         </div>
 
-        <div class="dashboard-panel">
+        <div class="dashboard-panel full-width-card">
           <div class="exp-row">
             <div class="exp-labels">
               <span>LV.{{ user.level }}</span>
@@ -136,10 +133,10 @@ onMounted(() => { fetchData() })
         </div>
       </div>
 
-      <div v-if="currentTab === 'history'" class="page-list">
+      <div v-if="currentTab === 'history'" class="page-layout">
         <h2 class="page-title">冒險檔案 <small>HISTORY</small></h2>
         <div class="list-container">
-          <div v-for="item in history" :key="item.id" class="gold-card" @click="openDetail(item, 'history')">
+          <div v-for="item in history" :key="item.id" class="gold-card full-width-card" @click="openDetail(item, 'history')">
             <div class="card-left">
               <div class="card-date">{{ formatDate(item.games.play_time) }}</div>
               <div class="card-title">{{ item.games.scripts?.title }}</div>
@@ -153,10 +150,10 @@ onMounted(() => { fetchData() })
         </div>
       </div>
 
-      <div v-if="currentTab === 'wallet'" class="page-list">
+      <div v-if="currentTab === 'wallet'" class="page-layout">
         <h2 class="page-title">尊榮禮遇 <small>COUPONS</small></h2>
         <div class="list-container">
-          <div v-for="c in validCoupons" :key="c.id" class="ticket-card" @click="openDetail(c, 'coupon')">
+          <div v-for="c in validCoupons" :key="c.id" class="ticket-card full-width-card" @click="openDetail(c, 'coupon')">
             <div class="ticket-decor-l"></div>
             <div class="ticket-content">
               <div class="ticket-icon">🎁</div>
@@ -172,9 +169,9 @@ onMounted(() => { fetchData() })
         </div>
       </div>
 
-      <div v-if="currentTab === 'settings'" class="page-form">
+      <div v-if="currentTab === 'settings'" class="page-layout">
         <h2 class="page-title">檔案設定 <small>SETTINGS</small></h2>
-        <div class="gold-card form-layout">
+        <div class="gold-card full-width-card form-layout">
           <div class="input-group">
             <label>代號 (暱稱)</label>
             <input type="text" v-model="editForm.display_name" />
@@ -259,7 +256,6 @@ onMounted(() => { fetchData() })
   --text-gray: #a0a0a0;
 }
 
-/* 全局重置 */
 body { margin: 0; background: #000; font-family: 'Helvetica Neue', Arial, sans-serif; color: var(--text-white); overflow-x: hidden; }
 * { box-sizing: border-box; }
 
@@ -269,20 +265,30 @@ body { margin: 0; background: #000; font-family: 'Helvetica Neue', Arial, sans-s
   background: radial-gradient(circle at 50% 20%, #2a2a2a 0%, #000000 100%);
 }
 
-.app-container { max-width: 600px; margin: 0 auto; min-height: 100vh; position: relative; }
-.content-view { padding: 20px; padding-bottom: 100px; }
+/* 🔥 滿版容器 🔥 */
+.app-container { 
+  width: 100%; /* 佔滿寬度 */
+  max-width: none; /* 移除最大寬度限制 */
+  min-height: 100vh; position: relative; 
+}
 
-/* === 首頁：頭貼英雄區 (Hero Section) === */
+/* 🔥 內容邊距縮小 (12px) 🔥 */
+.content-view { 
+  padding: 12px; 
+  padding-bottom: 100px; /* 留給底部選單 */
+}
+
+/* === 首頁：頭貼英雄區 === */
 .hero-section {
   display: flex; flex-direction: column; align-items: center; margin-top: 20px; margin-bottom: 30px;
 }
 .avatar-halo {
   position: relative;
-  width: clamp(140px, 35vw, 200px); 
-  height: clamp(140px, 35vw, 200px);
+  width: clamp(130px, 35vw, 180px); /* 稍微縮小一點避免太巨 */
+  height: clamp(130px, 35vw, 180px);
   border-radius: 50%;
   padding: 5px;
-  background: var(--gold-gradient); /* 金色光環 */
+  background: var(--gold-gradient);
   box-shadow: 0 0 30px rgba(255, 215, 0, 0.2);
   animation: glow 3s infinite alternate;
 }
@@ -295,13 +301,19 @@ body { margin: 0; background: #000; font-family: 'Helvetica Neue', Arial, sans-s
 .user-name { 
   font-size: clamp(1.8rem, 6vw, 2.5rem); 
   font-weight: 800; margin: 0; 
-  background: var(--gold-gradient); -webkit-background-clip: text; color: transparent; /* 金色漸層字 */
+  background: var(--gold-gradient); -webkit-background-clip: text; color: transparent;
 }
 .user-id { font-family: monospace; color: var(--text-gray); font-size: 0.9rem; margin: 5px 0; letter-spacing: 1px; }
 .title-badge { 
   display: inline-block; margin-top: 8px; padding: 6px 15px; 
   border: 1px solid var(--gold-primary); color: var(--gold-primary); 
   font-size: 0.85rem; border-radius: 20px; letter-spacing: 1px;
+}
+
+/* 🔥 強制滿版卡片 (Common) 🔥 */
+.full-width-card {
+  width: 100% !important; /* 強制 100% */
+  box-sizing: border-box; /* 確保 padding 算在寬度內 */
 }
 
 /* 儀表板 */
@@ -343,21 +355,22 @@ body { margin: 0; background: #000; font-family: 'Helvetica Neue', Arial, sans-s
 .card-gm { font-size: 0.85rem; color: var(--text-gray); }
 .exp-badge { color: var(--gold-primary); font-weight: bold; font-size: 1rem; }
 
-/* === 票券卡片 (特殊樣式) === */
+/* === 票券卡片 (Full Width) === */
 .ticket-card {
   position: relative; background: linear-gradient(90deg, #222 70%, #1a1a1a 100%);
   border: 1px solid var(--gold-primary); border-radius: 8px;
   display: flex; align-items: center; margin-bottom: 15px; overflow: hidden;
-  height: 90px; cursor: pointer;
+  height: auto; min-height: 90px; /* 高度自適應 */
+  cursor: pointer; padding: 10px 0;
 }
-.ticket-content { flex: 1; display: flex; align-items: center; padding: 0 20px; z-index: 2; }
-.ticket-icon { font-size: 2rem; margin-right: 15px; filter: drop-shadow(0 0 5px var(--gold-primary)); }
-.ticket-details { flex: 1; min-width: 0; }
+.ticket-content { flex: 1; display: flex; align-items: center; padding: 0 15px; z-index: 2; }
+.ticket-icon { font-size: 2rem; margin-right: 15px; filter: drop-shadow(0 0 5px var(--gold-primary)); flex-shrink: 0; }
+.ticket-details { flex: 1; min-width: 0; margin-right: 10px; }
 .ticket-name { font-size: clamp(1rem, 4vw, 1.2rem); font-weight: bold; color: var(--gold-primary); margin-bottom: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ticket-expiry { font-size: 0.75rem; color: #aaa; }
 .ticket-action-btn { 
-  background: var(--gold-gradient); border: none; padding: 6px 12px; 
-  border-radius: 4px; color: #000; font-weight: bold; font-size: 0.8rem;
+  background: var(--gold-gradient); border: none; padding: 8px 12px; 
+  border-radius: 4px; color: #000; font-weight: bold; font-size: 0.8rem; flex-shrink: 0;
 }
 /* 票券裝飾 */
 .ticket-decor-l, .ticket-decor-r {

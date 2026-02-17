@@ -1,10 +1,10 @@
 <script setup>
-import { computed } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useUserStore } from '../stores/user'
 
 const store = useUserStore()
+const isLoaded = ref(false)
 
-// 劇光燈 LOGO
 const BRAND_LOGO = 'https://meee.com.tw/VInVFKh.png' 
 
 const MOCK_STATS = {
@@ -30,277 +30,292 @@ const stats = computed(() => {
 const expPercentage = computed(() => {
   return Math.min((stats.value.points / stats.value.nextLevel) * 100, 100) + '%'
 })
+
+onMounted(() => {
+  setTimeout(() => {
+    isLoaded.value = true
+  }, 100)
+})
 </script>
 
 <template>
-  <div class="page-container background-fx">
+  <div class="page-container">
     
-    <div class="content-layer">
-      <div class="brand-header">
+    <div class="content-layer" :class="{ 'enter-active': isLoaded }">
+      
+      <div class="brand-header fade-in-down">
         <img :src="BRAND_LOGO" class="brand-logo" alt="劇光燈 Spotlight" />
       </div>
 
-      <section class="avatar-stage">
-        <div class="avatar-container">
-          <img :src="store.profile?.picture_url || 'https://meee.com.tw/D45hJIi.PNG'" class="main-avatar" />
-          <div class="spotlight-glow"></div>
-        </div>
+      <div class="hero-card-container fade-in-up delay-1">
+        
+        <div class="card-deco-top"></div>
 
-        <div class="character-info">
-          <h1 class="char-name">{{ store.profile?.display_name || '冒險者 喬' }}</h1>
-          <div class="char-badges">
-            <span class="badge-lv">LV.{{ stats.level }}</span>
-            <span class="badge-title">{{ stats.title }}</span>
+        <div class="avatar-overlap">
+          <div class="avatar-ring floating">
+            <img :src="store.profile?.picture_url || 'https://meee.com.tw/D45hJIi.PNG'" class="avatar-img" />
           </div>
-          <p class="char-id">UID: {{ store.profile?.serial_number || '00002' }}</p>
+          <div class="lv-badge">LV.{{ stats.level }}</div>
         </div>
-      </section>
 
-      <section class="exp-container">
-        <div class="exp-labels">
-          <span class="exp-text">EXP</span>
-          <span class="exp-nums">{{ stats.points }} / {{ stats.nextLevel }}</span>
-        </div>
-        <div class="exp-track">
-          <div class="exp-fill" :style="{ width: expPercentage }">
-            <div class="exp-shine"></div>
+        <div class="card-body">
+          <h1 class="user-name">{{ store.profile?.display_name || '冒險者 喬' }}</h1>
+          
+          <div class="user-title-box">
+            <span class="title-text">{{ stats.title }}</span>
           </div>
-        </div>
-      </section>
+          
+          <p class="user-uid">UID: {{ store.profile?.serial_number || '00002' }}</p>
 
-      <section class="stats-grid">
-        <div class="stat-item">
-          <span class="stat-val">{{ stats.daysJoined }}</span>
-          <span class="stat-key">加入天數</span>
+          <div class="divider-line"></div>
+
+          <div class="stats-matrix">
+            <div class="stat-cell">
+              <span class="stat-label">DAYS</span>
+              <span class="stat-num">{{ stats.daysJoined }}</span>
+            </div>
+            <div class="stat-gap"></div>
+            <div class="stat-cell border-left">
+              <span class="stat-label">GAMES</span>
+              <span class="stat-num highlight">{{ stats.historyCount }}</span>
+            </div>
+          </div>
+
+          <div class="exp-section">
+            <div class="exp-info">
+              <span class="exp-label">EXP PROGRESS</span>
+              <span class="exp-val">{{ stats.points }} / {{ stats.nextLevel }}</span>
+            </div>
+            <div class="exp-bar-bg">
+              <div class="exp-bar-fill" :style="{ width: expPercentage }">
+                <div class="exp-glare"></div>
+              </div>
+            </div>
+          </div>
+
         </div>
-        <div class="stat-divider"></div>
-        <div class="stat-item">
-          <span class="stat-val">{{ stats.historyCount }}</span>
-          <span class="stat-key">遊玩本數</span>
-        </div>
-      </section>
+        
+        <div class="card-deco-bottom"></div>
+      </div>
+
     </div>
-
   </div>
 </template>
 
 <style scoped>
-/* === 全域容器 RWD + 背景特效 === */
+/* === 頁面基礎 === */
 .page-container { 
-  width: 100%;
-  max-width: 800px; 
-  margin: 0 auto;
-  box-sizing: border-box;
-  min-height: 100vh;
-  color: #fff;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  
-  /* ⚠️ 基礎背景色改為深灰黑，而非純黑，增加層次 */
-  background-color: transparent;
-  position: relative;
-  overflow: hidden; /* 防止光暈溢出 */
+  width: 100%; max-width: 800px; margin: 0 auto;
+  box-sizing: border-box; min-height: 100vh;
+  background-color: transparent; 
+  color: #fff; overflow: hidden;
 }
 
-/* === 🌟 背景魔法區 (Magic Background) === */
-
-/* 1. 頂部金色聚光燈效果 */
-
-
-/* 2. 微粒子紋理 (選配，增加細節質感) */
-
-
-/* ⚠️ 內容層：確保內容浮在背景特效之上 */
 .content-layer {
+  display: flex; flex-direction: column; align-items: center;
+  /* 為了配合更大的頭像，這裡往下移更多 */
+  padding-top: 0px;  
+  
+  padding-left: 24px;
+  padding-right: 24px;
+}
+
+/* === 動畫 === */
+.fade-in-down { opacity: 0; transform: translateY(-20px); transition: all 0.8s ease; }
+.fade-in-up { opacity: 0; transform: translateY(30px); transition: all 0.8s cubic-bezier(0.2, 0.8, 0.2, 1); }
+.enter-active .fade-in-down, .enter-active .fade-in-up { opacity: 1; transform: translateY(0); }
+.delay-1 { transition-delay: 0.2s; }
+
+/* === 1. LOGO === */
+.brand-header { margin-bottom: 100px; /* 留更多空間給超級大頭像 */ }
+.brand-logo { height: 85px; object-fit: contain; filter: drop-shadow(0 0 10px rgba(212, 175, 55, 0.6)); }
+
+/* === 2. 英雄 ID 卡片 (核心調整區) === */
+.hero-card-container {
+  width: 100%; 
+  
+  /* 🚀 關鍵 1: 寬度加大到 620px (接近平板寬度) */
+  max-width: 620px; 
+  
   position: relative;
-  z-index: 1;
-  width: 100%;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  padding: 24px;
-  padding-bottom: 100px; 
+  background: rgba(20, 20, 20, 0.65);
+  backdrop-filter: blur(15px);
+  -webkit-backdrop-filter: blur(15px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 28px;
+  box-shadow: 0 25px 60px rgba(0, 0, 0, 0.6);
+  display: flex; flex-direction: column; align-items: center;
+  padding-bottom: 40px;
+  
+  /* RWD: 手機上寬度佔 92% */
+  margin: 0 15px;
 }
 
-/* ... 以下為原本的樣式，未更動 ... */
-
-/* 1. LOGO 區域 */
-.brand-header {
-  margin-bottom: 25px;
-  width: 100%;
-  display: flex;
-  justify-content: center;
+.card-deco-top {
+  position: absolute; top: 0; left: 15%; right: 15%; height: 2px;
+  background: linear-gradient(90deg, transparent, #D4AF37, transparent);
+}
+.card-deco-bottom {
+  position: absolute; bottom: 0; left: 30%; right: 30%; height: 1px;
+  background: linear-gradient(90deg, transparent, #555, transparent);
 }
 
-.brand-logo {
-  height: 90px;
-  object-fit: contain;
-  filter: drop-shadow(0 0 10px rgba(212, 175, 55, 0.4));
+/* === 2.1 頭像 (超級大) === */
+.avatar-overlap {
+  position: absolute; 
+  /* 🚀 關鍵 2: 往上推更多 (-85px)，浮出水面 */
+  top: -85px; 
+  display: flex; flex-direction: column; align-items: center;
+  z-index: 10;
 }
 
-/* 2. 角色舞台區 */
-.avatar-stage {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  margin-bottom: 30px;
-  position: relative;
-  width: 100%;
-}
-
-.avatar-container {
-  width: 160px; 
-  height: 160px;
-  margin-bottom: 18px;
-  position: relative;
-  z-index: 2;
-}
-
-.main-avatar {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
+.avatar-ring {
+  /* 🚀 關鍵 3: 尺寸加大到 170px (原本 140) */
+  width: 170px; height: 170px;
   border-radius: 50%;
-  border: 4px solid #D4AF37;
-  box-shadow: 0 0 25px rgba(0,0,0,0.9);
-  position: relative;
-  z-index: 3;
-  background: #111;
+  padding: 6px;
+  background: linear-gradient(135deg, #D4AF37, #222);
+  box-shadow: 0 15px 30px rgba(0,0,0,0.7);
+}
+.floating { animation: float 4s ease-in-out infinite; }
+@keyframes float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-8px); } }
+
+.avatar-img {
+  width: 100%; height: 100%; object-fit: cover; border-radius: 50%;
+  border: 4px solid #1a1a1a;
+  background: #000;
 }
 
-.spotlight-glow {
-  position: absolute;
-  top: 50%; left: 50%;
-  transform: translate(-50%, -50%);
-  width: 220px; height: 220px;
-  background: radial-gradient(circle, rgba(212,175,55,0.25) 0%, rgba(0,0,0,0) 70%);
-  z-index: 1;
-  border-radius: 50%;
-  animation: pulse 4s infinite ease-in-out;
-}
-
-.character-info { text-align: center; }
-
-.char-name {
-  font-size: 2rem;
-  font-weight: 700;
-  color: #fff;
-  margin: 0 0 10px 0;
-  text-shadow: 0 2px 4px rgba(0,0,0,0.8);
-}
-
-.char-badges {
-  display: flex;
-  justify-content: center;
-  gap: 10px;
-  margin-bottom: 8px;
-}
-
-.badge-lv {
+.lv-badge {
+  margin-top: -18px; z-index: 11;
   background: #D4AF37; color: #000;
-  font-weight: 900; font-size: 0.9rem;
-  padding: 4px 10px; border-radius: 6px;
+  font-weight: 900; 
+  font-size: 1rem; /* 字體加大 */
+  padding: 5px 16px; border-radius: 14px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.5);
   font-family: 'Arial', sans-serif;
+  letter-spacing: 1px;
 }
 
-.badge-title {
-  border: 1px solid #666; color: #ccc;
-  font-size: 0.9rem; padding: 4px 10px; border-radius: 6px;
-  background: rgba(0,0,0,0.5);
+/* === 2.2 角色資訊 (防遮擋關鍵) === */
+.card-body {
+  width: 100%; box-sizing: border-box;
+  
+  /* 🚀 關鍵 4: Padding Top 加大到 140px！ */
+  /* 這就是讓名字往下移、不被遮住的魔法數字 */
+  padding: 140px 30px 10px 30px; 
+  
+  display: flex; flex-direction: column; align-items: center;
 }
 
-.char-id {
-  font-size: 0.85rem; color: #555; margin: 0;
-  font-family: monospace; letter-spacing: 1px;
-}
-
-/* 3. 經驗值條 */
-.exp-container {
-  width: 100%;
-  max-width: 600px; 
-  margin-bottom: 35px;
-  box-sizing: border-box;
-}
-
-.exp-labels {
-  display: flex; justify-content: space-between;
-  font-size: 0.8rem; color: #888;
-  margin-bottom: 8px; font-weight: bold;
-}
-.exp-nums { color: #D4AF37; }
-
-.exp-track {
-  width: 100%; height: 10px;
-  background: #222; border-radius: 5px;
-  overflow: hidden; border: 1px solid #333;
-}
-
-.exp-fill {
-  height: 100%;
-  background: linear-gradient(90deg, #aa8e39, #D4AF37);
-  border-radius: 5px;
-  position: relative;
-  transition: width 0.5s ease;
-}
-
-.exp-shine {
-  position: absolute; top: 0; right: 0; bottom: 0; width: 15px;
-  background: rgba(255,255,255,0.4);
-  filter: blur(3px);
-  transform: skewX(-20deg);
-}
-
-/* 4. 數據儀表板 */
-.stats-grid {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  width: 100%;
-  max-width: 700px;
-  background: #111;
-  border-radius: 16px;
-  padding: 25px 0;
-  border: 1px solid #222;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.4);
-}
-
-.stat-item {
-  flex: 1;
+.user-name {
+  /* 字體加大 */
+  font-size: 2.4rem; 
+  font-weight: 700; color: #fff; 
+  margin: 0 0 12px 0;
+  text-shadow: 0 2px 10px rgba(0,0,0,0.8);
+  line-height: 1.1;
   text-align: center;
-  display: flex; flex-direction: column;
 }
 
-.stat-val {
-  font-size: 2rem;
-  font-weight: 700;
-  color: #fff;
-  line-height: 1;
-  margin-bottom: 6px;
+.user-title-box {
+  border: 1px solid rgba(212, 175, 55, 0.3);
+  background: rgba(212, 175, 55, 0.05);
+  padding: 6px 18px; border-radius: 8px; 
+  margin-bottom: 10px;
+}
+.title-text { font-size: 1rem; color: #D4AF37; letter-spacing: 1.5px; }
+
+.user-uid {
+  /* 1. 字體加大、加粗 */
+  font-size: 1.1rem; 
+  font-weight: bold;
+  
+  /* 2. 改成金色，不再是死氣沉沉的灰色 */
+  color: #D4AF37; 
+  
+  /* 3. 字距拉開，更有科技感 */
+  letter-spacing: 2px;
+  font-family: monospace; /* 等寬字體，像編碼一樣 */
+  
+  /* 4. 加個帥氣的半透明黑底框 */
+  background: rgba(0, 0, 0, 0.4);
+  padding: 6px 18px;
+  border-radius: 20px;
+  border: 1px solid rgba(212, 175, 55, 0.4); /* 淡淡的金框 */
+  
+  /* 5. 增加一點發光效果 */
+  text-shadow: 0 0 5px rgba(212, 175, 55, 0.5);
+  
+  margin-top: 12px; /* 跟上面的稱號拉開一點距離 */
+}
+.divider-line {
+  width: 100%; height: 1px; background: rgba(255,255,255,0.08);
+  margin: 30px 0;
 }
 
-.stat-key {
-  font-size: 0.85rem;
-  color: #666;
-  text-transform: uppercase;
-  letter-spacing: 1.5px;
+/* === 2.3 數據矩陣 (字體加大) === */
+.stats-matrix {
+  display: flex; width: 100%; justify-content: center;
+  margin-bottom: 35px;
 }
 
-.stat-divider {
-  width: 1px; height: 40px;
-  background: #333;
+.stat-cell {
+  flex: 1; display: flex; flex-direction: column; align-items: center;
+  position: relative;
 }
 
-@keyframes pulse {
-  0% { opacity: 0.5; transform: translate(-50%, -50%) scale(0.95); }
-  50% { opacity: 0.8; transform: translate(-50%, -50%) scale(1.05); }
-  100% { opacity: 0.5; transform: translate(-50%, -50%) scale(0.95); }
+.stat-gap { width: 50px; } 
+
+/* 右側分隔線 */
+.stat-cell:first-child::after {
+  content: ''; position: absolute; right: -25px; top: 10%; height: 80%;
+  width: 1px; background: rgba(255,255,255,0.1);
 }
 
+.stat-label { font-size: 0.8rem; color: #888; font-weight: bold; letter-spacing: 2px; margin-bottom: 8px; }
+/* 數字超大 */
+.stat-num { font-size: 2.8rem; font-weight: 700; color: #fff; line-height: 1; }
+.stat-num.highlight { color: #D4AF37; text-shadow: 0 0 15px rgba(212, 175, 55, 0.4); }
+
+/* === 2.4 經驗條 === */
+.exp-section { width: 100%; padding: 0 15px; box-sizing: border-box; }
+.exp-info { display: flex; justify-content: space-between; margin-bottom: 10px; font-size: 0.85rem; font-weight: bold; }
+.exp-label { color: #666; letter-spacing: 1px; }
+.exp-val { color: #ccc; }
+
+.exp-bar-bg {
+  width: 100%; height: 10px; background: #222;
+  border-radius: 5px; overflow: hidden; position: relative;
+  box-shadow: inset 0 1px 3px rgba(0,0,0,0.5);
+}
+.exp-bar-fill {
+  height: 100%; background: linear-gradient(90deg, #aa8e39, #D4AF37);
+  border-radius: 5px; position: relative;
+  transition: width 1s ease;
+}
+.exp-glare {
+  position: absolute; top: 0; left: 0; width: 100%; height: 50%;
+  background: rgba(255,255,255,0.25);
+}
+
+/* === RWD 手機版微調 (針對小螢幕適配) === */
 @media (max-width: 480px) {
-  .content-layer { padding: 16px; }
-  .avatar-container { width: 130px; height: 130px; }
-  .char-name { font-size: 1.6rem; }
-  .stat-val { font-size: 1.6rem; }
+  .brand-header { margin-bottom: 60px; }
+  .hero-card-container { width: 95%; padding-bottom: 30px; }
+  
+  /* 手機上字體稍微收斂，但還是要大 */
+  .user-name { font-size: 2rem; }
+  .stat-num { font-size: 2.2rem; }
+  
+  /* 手機上 padding-top 也要夠，不然會遮住 */
+  .card-body { padding-top: 110px; padding-left: 20px; padding-right: 20px; }
+  
+  /* 手機上頭像稍微縮小，避免佔據太多垂直空間 */
+  .avatar-ring { width: 140px; height: 140px; }
+  .avatar-overlap { top: -70px; }
+  
+  .stat-gap { width: 30px; }
+  .stat-cell:first-child::after { right: -15px; }
 }
 </style>

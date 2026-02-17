@@ -7,6 +7,10 @@ const userStore = useUserStore()
 
 onMounted(async () => {
   console.log('App 啟動，背景紋理載入...')
+
+ await userStore.fetchUserData('U65a94308551ccd456aca5e903d98cefd')
+  
+  console.log('📡 呼叫指令已發出')
 })
 </script>
 
@@ -40,7 +44,7 @@ onMounted(async () => {
 /* === 全域重置 === */
 :root {
   --bg-dark: #0a0a0a00;
-  --gold-accent: #d4af37;
+  --gold-accent: #0f0d05;
 }
 
 body {
@@ -71,7 +75,7 @@ body {
   top: 0; left: 0; width: 100%; height: 100%;
   background: radial-gradient(
     circle at 50% -20%, 
-    #332a00 0%, /* 頂部稍微帶一點暗金 */
+    #ffd20a36 0%, /* 頂部稍微帶一點暗金 */
     #111 40%, 
     #050505 100%
   );
@@ -138,3 +142,9 @@ body {
 .fade-enter-active, .fade-leave-active { transition: opacity 0.3s ease; }
 .fade-enter-from, .fade-leave-to { opacity: 0; }
 </style>
+
+<img 
+  :src="record.cover || 'https://images.unsplash.com/photo-1514467953502-5a7820e3efb4?w=400'" 
+  class="record-img" 
+  alt="劇本封面" 
+/>

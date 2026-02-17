@@ -174,7 +174,7 @@ onMounted(() => {
   width: 170px; height: 170px;
   border-radius: 50%;
   padding: 6px;
-  background: linear-gradient(135deg, #D4AF37, #222);
+  background: linear-gradient(135deg, #fcca30, #222);
   box-shadow: 0 15px 30px rgba(0,0,0,0.7);
 }
 .floating { animation: float 4s ease-in-out infinite; }
@@ -188,7 +188,7 @@ onMounted(() => {
 
 .lv-badge {
   margin-top: -18px; z-index: 11;
-  background: #D4AF37; color: #000;
+  background: #ffcf30; color: #000;
   font-weight: 900; 
   font-size: 1rem; /* 字體加大 */
   padding: 5px 16px; border-radius: 14px;
@@ -219,7 +219,7 @@ onMounted(() => {
 }
 
 .user-title-box {
-  border: 1px solid rgba(212, 175, 55, 0.3);
+  border: 1px solid rgba(212, 175, 55, 0.692);
   background: rgba(212, 175, 55, 0.05);
   padding: 6px 18px; border-radius: 8px; 
   margin-bottom: 10px;
@@ -290,7 +290,7 @@ onMounted(() => {
   box-shadow: inset 0 1px 3px rgba(0,0,0,0.5);
 }
 .exp-bar-fill {
-  height: 100%; background: linear-gradient(90deg, #aa8e39, #D4AF37);
+  height: 100%; background: linear-gradient(90deg, #fac421, #D4AF37);
   border-radius: 5px; position: relative;
   transition: width 1s ease;
 }

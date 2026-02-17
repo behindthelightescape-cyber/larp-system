@@ -1,45 +1,37 @@
 <script setup>
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import { useUserStore } from '../stores/user'
+import { supabase } from '../supabase'
 
 const store = useUserStore()
 
 // === 控制彈窗 ===
 const showDetailModal = ref(false)
 const showConfirmModal = ref(false)
-const selectedCoupon = ref({})
+const selectedCoupon = ref(null) // 🚀 預設設為 null，方便做 v-if 判斷
+const isSubmitting = ref(false)
 
-// === 假資料 ===
-const coupons = ref([
-  {
-    id: 1,
-    title: '劇本折抵券 $100',
-    desc: '1. 本券適用於台北旗艦館所有劇本。\n2. 平假日皆可使用，但在特殊節日（如跨年、春節）需補差額。\n3. 不可與其他優惠併用，亦不可兌換現金。\n4. 請於結帳前出示此畫面，由工作人員核銷。\n5. 若誤觸核銷按鈕，恕不補發，請小心操作。\n6. 本公司保有最終修改與解釋權力。\n7. (測試傳送門) 現在彈窗已經被傳送到 Body 層級，就算下面有導航列，我也能蓋在它上面！霸氣外露！',
-    expiry: '2025-12-31',
-    status: 'active',
-    type: 'discount',
-    code: 'LARP-2025-8888'
-  },
-  {
-    id: 2,
-    title: '免費飲品兌換券',
-    desc: '憑此券可至櫃檯兌換「劇光特調」一杯。限當日使用完畢。',
-    expiry: '2024-06-30',
-    status: 'used',
-    type: 'gift',
-    code: 'DRINK-FREE-001',
-    used_at: '2024-05-20 19:30'
-  },
-  {
-    id: 3,
-    title: 'MVP 專屬紀念徽章',
-    desc: '恭喜獲得 MVP！憑此券領取實體徽章一枚。',
-    expiry: '2025-10-10',
-    status: 'active',
-    type: 'gift',
-    code: 'MVP-BADGE-007'
-  }
-])
+// === 🚀 強化防呆的資料轉換 ===
+const displayCoupons = computed(() => {
+  // 檢查 store.coupons 是否存在且為陣列
+  if (!store.coupons || !Array.isArray(store.coupons)) return []
+
+  return store.coupons.map(c => {
+    // 確保 status 存在
+    const status = c.status || 'available'
+    return {
+      ...c,
+      uiStatus: (status === 'available') ? 'active' : 'used',
+      // 分類
+      uiType: (c.title && c.title.includes('券')) ? 'discount' : 'gift',
+      // 序號
+      uiCode: c.id ? `NO. ${c.id.toString().padStart(8, '0')}` : 'NO. --------',
+      // 日期處理
+      uiExpiry: c.expiry_date ? c.expiry_date.split('T')[0] : '無限期',
+      uiUsedAt: c.used_at ? c.used_at.split('T')[0] : ''
+    }
+  })
+})
 
 const openDetail = (coupon) => {
   selectedCoupon.value = coupon
@@ -51,15 +43,34 @@ const handleRedeemClick = () => {
   showConfirmModal.value = true
 }
 
-const confirmRedeem = () => {
-  console.log(`核銷票券: ${selectedCoupon.value.title}`)
-  const index = coupons.value.findIndex(c => c.id === selectedCoupon.value.id)
-  if (index !== -1) {
-    coupons.value[index].status = 'used'
-    coupons.value[index].used_at = new Date().toLocaleString()
+const confirmRedeem = async () => {
+  if (isSubmitting.value || !selectedCoupon.value) return
+  isSubmitting.value = true
+
+  try {
+    const now = new Date().toISOString()
+    const { error } = await supabase
+      .from('coupons')
+      .update({ status: 'used', used_at: now })
+      .eq('id', selectedCoupon.value.id)
+
+    if (error) throw error
+
+    // 更新本地狀態
+    const target = store.coupons.find(c => c.id === selectedCoupon.value.id)
+    if (target) {
+      target.status = 'used'
+      target.used_at = now
+    }
+
+    showConfirmModal.value = false
+    alert('核銷成功！')
+  } catch (err) {
+    console.error('核銷失敗:', err.message)
+    alert('連線失敗，請稍後再試')
+  } finally {
+    isSubmitting.value = false
   }
-  showConfirmModal.value = false
-  alert('核銷成功！請出示畫面給工作人員。')
 }
 </script>
 
@@ -67,15 +78,19 @@ const confirmRedeem = () => {
   <div class="page-container">
     <div class="header-area">
       <h2 class="page-title">我的票券</h2>
-      <span class="count-badge">{{ coupons.filter(c => c.status === 'active').length }} 張可用</span>
+      <span class="count-badge">
+        {{ displayCoupons.filter(c => c.uiStatus === 'active').length }} 張可用
+      </span>
     </div>
 
     <div class="coupon-list">
+      <div v-if="store.isLoading" class="loading-text">讀取中...</div>
+      
       <div 
-        v-for="coupon in coupons" 
+        v-for="coupon in displayCoupons" 
         :key="coupon.id" 
         class="coupon-ticket"
-        :class="{ 'is-used': coupon.status === 'used' }"
+        :class="{ 'is-used': coupon.uiStatus === 'used' }"
         @click="openDetail(coupon)"
       >
         <div class="ticket-left">
@@ -84,25 +99,27 @@ const confirmRedeem = () => {
         </div>
         <div class="ticket-main">
           <div class="ticket-title">{{ coupon.title }}</div>
-          <div class="ticket-expiry" v-if="coupon.status === 'active'">
-            效期至: {{ coupon.expiry }}
-          </div>
-          <div class="ticket-expiry" v-else>
-            已於 {{ coupon.used_at }} 核銷
+          <div class="ticket-expiry">
+            <template v-if="coupon.uiStatus === 'active'">效期至: {{ coupon.uiExpiry }}</template>
+            <template v-else>已於 {{ coupon.uiUsedAt }} 核銷</template>
           </div>
         </div>
         <div class="ticket-right">
-          <button v-if="coupon.status === 'active'" class="use-btn">使用</button>
+          <button v-if="coupon.uiStatus === 'active'" class="use-btn">使用</button>
           <div v-else class="used-stamp">已核銷</div>
         </div>
       </div>
+
+      <div v-if="!store.isLoading && displayCoupons.length === 0" class="empty-text">
+        目前沒有票券紀錄
+      </div>
+      <div class="spacer"></div>
     </div>
 
     <Teleport to="body">
       <transition name="pop">
-        <div v-if="showDetailModal" class="modal-overlay" @click.self="showDetailModal = false">
+        <div v-if="showDetailModal && selectedCoupon" class="modal-overlay" @click.self="showDetailModal = false">
           <div class="modal-content detail-mode">
-            
             <div class="modal-header">
               <h3>票券詳情</h3>
               <button class="close-btn-icon" @click="showDetailModal = false">✕</button>
@@ -111,35 +128,28 @@ const confirmRedeem = () => {
             <div class="detail-scroll-area">
               <div class="detail-content-wrapper">
                 <div class="detail-icon-large">
-                  {{ selectedCoupon.type === 'discount' ? '🎟️' : '🎁' }}
+                  {{ selectedCoupon.uiType === 'discount' ? '🎟️' : '🎁' }}
                 </div>
                 <h2 class="detail-title">{{ selectedCoupon.title }}</h2>
-                <p class="detail-code">NO. {{ selectedCoupon.code }}</p>
+                <p class="detail-code">{{ selectedCoupon.uiCode }}</p>
                 <div class="detail-divider"></div>
                 <div class="detail-desc">
                   <h4>使用說明</h4>
-                  <p class="desc-text">{{ selectedCoupon.desc }}</p>
+                  <p class="desc-text">{{ selectedCoupon.description || '無說明內容' }}</p>
                 </div>
-                <p class="expiry-text">有效期限：{{ selectedCoupon.expiry }}</p>
+                <p class="expiry-text">有效期限：{{ selectedCoupon.uiExpiry }}</p>
               </div>
 
               <div class="detail-footer-scroll">
                 <button 
-                  v-if="selectedCoupon.status === 'active'" 
+                  v-if="selectedCoupon.uiStatus === 'active'" 
                   class="action-btn"
                   @click="handleRedeemClick"
                 >
                   立即使用
                 </button>
-                <button 
-                  v-else 
-                  class="action-btn disabled" 
-                  disabled
-                >
-                  此票券已失效
-                </button>
+                <button v-else class="action-btn disabled" disabled>此票券已失效</button>
               </div>
-              
               <div class="safe-zone"></div>
             </div>
           </div>
@@ -153,10 +163,12 @@ const confirmRedeem = () => {
           <div class="confirm-box">
             <div class="confirm-icon">⚠️</div>
             <h3>確定要核銷嗎？</h3>
-            <p>請出示給工作人員確認。<br>一旦核銷將無法復原！</p>
+            <p>一旦核銷將無法復原！</p>
             <div class="confirm-actions">
               <button class="btn-cancel" @click="showConfirmModal = false">取消</button>
-              <button class="btn-confirm" @click="confirmRedeem">確認核銷</button>
+              <button class="btn-confirm" :disabled="isSubmitting" @click="confirmRedeem">
+                {{ isSubmitting ? '處理中...' : '確認核銷' }}
+              </button>
             </div>
           </div>
         </div>

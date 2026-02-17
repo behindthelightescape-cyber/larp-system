@@ -1,64 +1,31 @@
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useUserStore } from '../stores/user'
 
 const store = useUserStore()
 const showModal = ref(false)
 const selectedGame = ref({})
 
-// === 假資料 ===
-const MOCK_HISTORY = [
-  { 
-    id: 1, 
-    title: '不靠譜魔法指南：關於我轉生變成史萊姆去學魔法這檔事', 
-    cover: 'https://images.unsplash.com/photo-1634152962476-4b8a00e1915c?w=300', 
-    date: '2023-11-22', 
-    gm: '喬巴、丹尼、阿菊、佑宥、路人A', 
-    exp: 100, 
-    branch: '台北旗艦館',
-    story_memory: '致 親愛的魔法學徒：\n\n雖然你們最後把圖書館炸了，但不得不說，這是歷代以來最精彩的一次爆炸。' 
-  },
-  { 
-    id: 2, 
-    title: '那一束月光', 
-    cover: 'https://images.unsplash.com/photo-1534447677768-be436bb09401?w=300', 
-    date: '2023-11-03', 
-    gm: '沙拉', 
-    exp: 6, 
-    branch: '台北旗艦館',
-    story_memory: '月光灑落之時，我們終將重逢。感謝你演繹出了最深情的那個瞬間。'
-  },
-  { 
-    id: 3, 
-    title: '二十四橋明月夜', 
-    cover: 'https://images.unsplash.com/photo-1528164344705-47542687000d?w=300', 
-    date: '2023-10-28', 
-    gm: '丹尼', 
-    exp: 135, 
-    branch: '台北旗艦館',
-    story_memory: null 
-  },
-  { 
-    id: 4, 
-    title: '光年之外', 
-    cover: 'https://images.unsplash.com/photo-1451187580459-43490279c0fa?w=300', 
-    date: '2023-06-10', 
-    gm: '蓓蓓', 
-    exp: 65, 
-    branch: '台北旗艦館',
-    story_memory: '系統提示：你的邏輯迴路運作正常。'
+// 🚀 確保組件掛載時，如果 Store 是空的，就去抓一次資料
+onMounted(async () => {
+  if (store.history.length === 0) {
+    // 這裡可以傳入你指定的 ID，或讓 store 預設抓測試 ID
+    await store.fetchUserData('U65a94308551ccd456aca5e903d98cefd')
   }
-]
+})
 
-// 優先顯示 Store 的資料
+// 🚀 優先顯示從 Supabase 抓回來的真實資料
 const displayList = computed(() => {
-  return store.history.length > 0 ? store.history : MOCK_HISTORY
+  return store.history
 })
 
 const openDetail = (game) => {
   selectedGame.value = game
   showModal.value = true
 }
+
+// 🚀 圖片備用邏輯：定義一個統一的預設封面
+const DEFAULT_COVER = 'https://images.unsplash.com/photo-1514467953502-5a7820e3efb4?w=600'
 </script>
 
 <template>
@@ -291,4 +258,8 @@ const openDetail = (game) => {
 .safe-zone { height: 100px; width: 100%; }
 .pop-enter-active, .pop-leave-active { transition: transform 0.3s ease; }
 .pop-enter-from, .pop-leave-to { transform: translateY(100%); }
+
+
+
 </style>
+

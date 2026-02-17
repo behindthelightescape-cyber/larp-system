@@ -301,7 +301,7 @@ const openDetail = (game) => {
   font-size: 1.2rem; z-index: 10;
 }
 
-.modal-body { padding: 25px; overflow-y: auto; }
+.modal-body { padding: 25px; overflow-y: auto; padding-bottom: 80px;}
 .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 25px; }
 .info-item.full-width { grid-column: span 2; }
 .info-item { background: #222; padding: 12px; border-radius: 10px; display: flex; flex-direction: column; }

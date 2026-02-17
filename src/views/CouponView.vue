@@ -4,18 +4,17 @@ import { useUserStore } from '../stores/user'
 
 const store = useUserStore()
 
-// === 控制彈窗的變數 ===
+// === 控制彈窗 ===
 const showDetailModal = ref(false)
 const showConfirmModal = ref(false)
 const selectedCoupon = ref({})
 
-// === 假資料 (測試長文) ===
+// === 假資料 ===
 const coupons = ref([
   {
     id: 1,
     title: '劇本折抵券 $100',
-    // 故意加長說明，測試捲動效果
-    desc: '1. 本券適用於台北旗艦館所有劇本。\n2. 平假日皆可使用，但在特殊節日（如跨年、春節）需補差額。\n3. 不可與其他優惠併用，亦不可兌換現金。\n4. 請於結帳前出示此畫面，由工作人員核銷。\n5. 若誤觸核銷按鈕，恕不補發，請小心操作。\n6. 本公司保有最終修改與解釋權力。\n7. (測試長度) 這裡是用來測試如果文字超級無敵長的時候，按鈕會不會跑版...由此可知，按鈕應該要乖乖待在下面。',
+    desc: '1. 本券適用於台北旗艦館所有劇本。\n2. 平假日皆可使用，但在特殊節日（如跨年、春節）需補差額。\n3. 不可與其他優惠併用，亦不可兌換現金。\n4. 請於結帳前出示此畫面，由工作人員核銷。\n5. 若誤觸核銷按鈕，恕不補發，請小心操作。\n6. 本公司保有最終修改與解釋權力。\n7. (測試長度) 請往下滑...請往下滑...按鈕藏在最深處，只有看完故事的人才配擁有寶藏。',
     expiry: '2025-12-31',
     status: 'active',
     type: 'discount',
@@ -83,7 +82,6 @@ const confirmRedeem = () => {
           <div class="punch-hole-top"></div>
           <div class="punch-hole-bottom"></div>
         </div>
-
         <div class="ticket-main">
           <div class="ticket-title">{{ coupon.title }}</div>
           <div class="ticket-expiry" v-if="coupon.status === 'active'">
@@ -93,7 +91,6 @@ const confirmRedeem = () => {
             已於 {{ coupon.used_at }} 核銷
           </div>
         </div>
-
         <div class="ticket-right">
           <button v-if="coupon.status === 'active'" class="use-btn">使用</button>
           <div v-else class="used-stamp">已核銷</div>
@@ -115,38 +112,38 @@ const confirmRedeem = () => {
               <div class="detail-icon-large">
                 {{ selectedCoupon.type === 'discount' ? '🎟️' : '🎁' }}
               </div>
-              
               <h2 class="detail-title">{{ selectedCoupon.title }}</h2>
               <p class="detail-code">NO. {{ selectedCoupon.code }}</p>
-              
               <div class="detail-divider"></div>
               
               <div class="detail-desc">
                 <h4>使用說明</h4>
                 <p class="desc-text">{{ selectedCoupon.desc }}</p>
               </div>
-
+              
               <p class="expiry-text">有效期限：{{ selectedCoupon.expiry }}</p>
             </div>
+
+            <div class="detail-footer-scroll">
+              <button 
+                v-if="selectedCoupon.status === 'active'" 
+                class="action-btn"
+                @click="handleRedeemClick"
+              >
+                立即使用
+              </button>
+              <button 
+                v-else 
+                class="action-btn disabled" 
+                disabled
+              >
+                此票券已失效
+              </button>
+            </div>
+            
+            <div class="safe-zone"></div>
           </div>
             
-          <div class="detail-footer">
-            <button 
-              v-if="selectedCoupon.status === 'active'" 
-              class="action-btn"
-              @click="handleRedeemClick"
-            >
-              立即使用
-            </button>
-            <button 
-              v-else 
-              class="action-btn disabled" 
-              disabled
-            >
-              此票券已失效
-            </button>
-          </div>
-
         </div>
       </div>
     </transition>
@@ -157,7 +154,6 @@ const confirmRedeem = () => {
           <div class="confirm-icon">⚠️</div>
           <h3>確定要核銷嗎？</h3>
           <p>請出示給工作人員確認。<br>一旦核銷將無法復原！</p>
-          
           <div class="confirm-actions">
             <button class="btn-cancel" @click="showConfirmModal = false">取消</button>
             <button class="btn-confirm" @click="confirmRedeem">確認核銷</button>
@@ -165,7 +161,6 @@ const confirmRedeem = () => {
         </div>
       </div>
     </transition>
-
   </div>
 </template>
 
@@ -191,7 +186,7 @@ const confirmRedeem = () => {
 .page-title { font-size: 1.5rem; font-weight: 700; color: #D4AF37; margin: 0; }
 .count-badge { font-size: 0.9rem; color: #888; background: rgba(0,0,0,0.5); padding: 4px 10px; border-radius: 20px; }
 
-/* === 票券卡片 === */
+/* 票券卡片 */
 .coupon-ticket {
   display: flex;
   background: linear-gradient(145deg, #222, #1a1a1a);
@@ -230,7 +225,6 @@ const confirmRedeem = () => {
   background: transparent; color: #D4AF37; border: 1px solid #D4AF37;
   padding: 6px 16px; border-radius: 20px; font-weight: bold; font-size: 0.9rem;
 }
-
 .coupon-ticket.is-used { filter: grayscale(1); opacity: 0.6; }
 .coupon-ticket.is-used .ticket-left { background: #555; }
 .used-stamp {
@@ -238,11 +232,11 @@ const confirmRedeem = () => {
   font-weight: bold; font-size: 0.8rem; transform: rotate(-15deg); opacity: 0.8;
 }
 
-/* === 彈窗系統 (RWD + Sticky Footer) === */
+/* === 彈窗設定 === */
 .modal-overlay {
   position: fixed; top: 0; left: 0; width: 100%; height: 100%;
   background: rgba(0,0,0,0.85); 
-  z-index: 3000; /* 確保在最上層 */
+  z-index: 3000;
   display: flex; justify-content: center; align-items: flex-end;
   backdrop-filter: blur(5px);
 }
@@ -253,54 +247,44 @@ const confirmRedeem = () => {
   border-radius: 20px 20px 0 0;
   border-top: 1px solid #333;
   
-  /* 🚀 關鍵佈局：Flex Column，讓中間可以捲動 */
-  display: flex;
-  flex-direction: column;
-  max-height: 90vh; /* 最大高度限制 */
-  height: auto;
+  /* Flex 佈局，讓 header 固定，身體捲動 */
+  display: flex; flex-direction: column;
+  height: 85vh; /* 高度固定 */
+  box-shadow: 0 -10px 40px rgba(0,0,0,0.8);
 }
 
-/* 1. Header (固定高度) */
 .modal-header {
   display: flex; justify-content: space-between; align-items: center;
   padding: 20px 25px 10px 25px;
   flex-shrink: 0;
+  border-bottom: 1px solid #222;
 }
 .modal-header h3 { margin: 0; color: #fff; }
 .close-btn-icon { background: none; border: none; color: #888; font-size: 1.5rem; cursor: pointer; }
 
-/* 2. Scroll Area (中間可捲動區) */
+/* 🚀 內容捲動區 */
 .detail-scroll-area {
-  flex: 1; /* 佔滿剩餘空間 */
-  overflow-y: auto; /* 內容多時自動捲動 */
+  flex: 1; 
+  overflow-y: auto; 
   padding: 0 25px;
-  padding-bottom: 20px;
+  
+  /* 捲動滑順 */
+  -webkit-overflow-scrolling: touch;
 }
-.detail-content-wrapper { text-align: center; }
+
+.detail-content-wrapper { text-align: center; padding-top: 20px; }
 
 .detail-icon-large { font-size: 3rem; margin-bottom: 10px; }
 .detail-title { color: #D4AF37; margin: 5px 0; font-size: 1.5rem; }
 .detail-code { color: #666; font-family: monospace; letter-spacing: 1px; font-size: 1rem; margin-bottom: 20px; }
 .detail-divider { height: 1px; background: #333; margin: 15px 0; }
-
-.detail-desc { 
-  text-align: left; color: #ccc; font-size: 0.95rem; line-height: 1.6; 
-  background: #222; padding: 15px; border-radius: 8px; 
-}
-.detail-desc h4 { margin: 0 0 5px 0; color: #fff; font-size: 0.9rem; }
-.desc-text { white-space: pre-wrap; margin: 0; } /* 保留換行 */
-
+.detail-desc { text-align: left; color: #ccc; font-size: 0.95rem; line-height: 1.6; background: #222; padding: 15px; border-radius: 8px; }
+.desc-text { white-space: pre-wrap; margin: 0; }
 .expiry-text { color: #666; font-size: 0.8rem; margin-top: 20px; margin-bottom: 10px; }
 
-/* 3. Footer (固定底部) */
-.detail-footer {
-  padding: 15px 25px;
-  background: #1a1a1a; /* 不透明背景，擋住捲動內容 */
-  border-top: 1px solid #222;
-  flex-shrink: 0;
-  
-  /* 🚀 關鍵：適配 iPhone 底部安全區 */
-  padding-bottom: calc(15px + env(safe-area-inset-bottom));
+/* 🚀 按鈕區塊 (現在在捲動區內) */
+.detail-footer-scroll {
+  margin-top: 20px;
 }
 
 .action-btn {
@@ -312,7 +296,13 @@ const confirmRedeem = () => {
 .action-btn:active { transform: scale(0.98); }
 .action-btn.disabled { background: #444; color: #888; box-shadow: none; cursor: not-allowed; }
 
-/* Double Check 彈窗 */
+/* 🚀 安全氣囊：保證滑到底部時，按鈕下面有空間 */
+.safe-zone {
+  height: 80px; 
+  width: 100%;
+}
+
+/* Double Check */
 .modal-overlay.confirm-overlay { align-items: center; z-index: 3100; }
 .confirm-box {
   background: #222; width: 80%; max-width: 320px;

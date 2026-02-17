@@ -92,7 +92,7 @@ onMounted(() => { fetchData() })
 
     <div v-else class="content-view">
       
-      <div v-if="currentTab === 'home'" class="page-layout">
+      <div v-if="currentTab === 'home'" class="page-home">
         
         <div class="hero-section">
           <div class="avatar-halo">
@@ -108,7 +108,7 @@ onMounted(() => { fetchData() })
           </div>
         </div>
 
-        <div class="dashboard-panel full-width-card">
+        <div class="dashboard-panel">
           <div class="exp-row">
             <div class="exp-labels">
               <span>LV.{{ user.level }}</span>
@@ -133,60 +133,61 @@ onMounted(() => { fetchData() })
         </div>
       </div>
 
-      <div v-if="currentTab === 'history'" class="page-layout">
-        <h2 class="page-title">冒險檔案 <small>HISTORY</small></h2>
-        <div class="list-container">
-          <div v-for="item in history" :key="item.id" class="gold-card full-width-card" @click="openDetail(item, 'history')">
-            <div class="card-left">
-              <div class="card-date">{{ formatDate(item.games.play_time) }}</div>
-              <div class="card-title">{{ item.games.scripts?.title }}</div>
-              <div class="card-gm">GM: {{ item.games.gm_name }}</div>
+      <div v-if="currentTab === 'history'" class="page-list">
+        <div class="section-header">冒險檔案</div>
+        <div class="full-list">
+          <div v-for="item in history" :key="item.id" class="list-item" @click="openDetail(item, 'history')">
+            <div class="list-content">
+              <div class="list-top-row">
+                <span class="list-title">{{ item.games.scripts?.title }}</span>
+                <span class="list-date">{{ formatDate(item.games.play_time) }}</span>
+              </div>
+              <div class="list-btm-row">
+                <span class="list-gm">GM: {{ item.games.gm_name }}</span>
+                <span class="list-exp">+{{ item.exp_gained }} EXP</span>
+              </div>
             </div>
-            <div class="card-right">
-              <div class="exp-badge">+{{ item.exp_gained }}</div>
-            </div>
+            <div class="list-arrow">›</div>
           </div>
           <div v-if="history.length === 0" class="empty-text">暫無紀錄</div>
         </div>
       </div>
 
-      <div v-if="currentTab === 'wallet'" class="page-layout">
-        <h2 class="page-title">尊榮禮遇 <small>COUPONS</small></h2>
-        <div class="list-container">
-          <div v-for="c in validCoupons" :key="c.id" class="ticket-card full-width-card" @click="openDetail(c, 'coupon')">
-            <div class="ticket-decor-l"></div>
-            <div class="ticket-content">
-              <div class="ticket-icon">🎁</div>
-              <div class="ticket-details">
-                <div class="ticket-name">{{ c.title }}</div>
-                <div class="ticket-expiry">有效期至 {{ formatDate(c.expiry_date) }}</div>
-              </div>
-              <button class="ticket-action-btn">查看</button>
+      <div v-if="currentTab === 'wallet'" class="page-list">
+        <div class="section-header">尊榮禮遇</div>
+        <div class="full-list">
+          <div v-for="c in validCoupons" :key="c.id" class="ticket-strip" @click="openDetail(c, 'coupon')">
+            <div class="strip-icon">🎁</div>
+            <div class="strip-info">
+              <div class="strip-title">{{ c.title }}</div>
+              <div class="strip-date">有效期至 {{ formatDate(c.expiry_date) }}</div>
             </div>
-            <div class="ticket-decor-r"></div>
+            <div class="strip-action">查看</div>
           </div>
           <div v-if="validCoupons.length === 0" class="empty-text">目前無可用優惠券</div>
         </div>
       </div>
 
-      <div v-if="currentTab === 'settings'" class="page-layout">
-        <h2 class="page-title">檔案設定 <small>SETTINGS</small></h2>
-        <div class="gold-card full-width-card form-layout">
-          <div class="input-group">
+      <div v-if="currentTab === 'settings'" class="page-form">
+        <div class="section-header">檔案設定</div>
+        <div class="full-form">
+          <div class="form-row">
             <label>代號 (暱稱)</label>
             <input type="text" v-model="editForm.display_name" />
           </div>
-          <div class="input-group">
+          <div class="form-row">
             <label>通訊碼 (手機)</label>
             <input type="tel" v-model="editForm.phone" />
           </div>
-          <div class="input-group">
+          <div class="form-row">
             <label>登錄日 (生日)</label>
             <input type="date" v-model="editForm.birthday" />
           </div>
-          <button class="gold-btn full-btn" @click="saveProfile" :disabled="saving">
-            {{ saving ? 'UPDATING...' : '確認變更' }}
-          </button>
+          <div class="form-action-area">
+            <button class="gold-btn full-btn" @click="saveProfile" :disabled="saving">
+              {{ saving ? 'UPDATING...' : '確認變更' }}
+            </button>
+          </div>
         </div>
       </div>
 
@@ -250,56 +251,49 @@ onMounted(() => { fetchData() })
   --gold-primary: #FFD700;
   --gold-dark: #C5A000;
   --gold-gradient: linear-gradient(135deg, #FFD700 0%, #FDB931 50%, #C5A000 100%);
-  --bg-black: #0a0a0a;
-  --bg-card: rgba(28, 28, 28, 0.7);
+  --bg-black: #000000;
   --text-white: #ffffff;
-  --text-gray: #a0a0a0;
+  --text-gray: #888888;
+  --border-color: rgba(255, 215, 0, 0.2); /* 淡淡的金線 */
 }
 
+/* 全局重置 */
 body { margin: 0; background: #000; font-family: 'Helvetica Neue', Arial, sans-serif; color: var(--text-white); overflow-x: hidden; }
 * { box-sizing: border-box; }
 
 /* 背景 */
 .luxury-bg {
   position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: -1;
-  background: radial-gradient(circle at 50% 20%, #2a2a2a 0%, #000000 100%);
+  background: radial-gradient(circle at 50% 20%, #1a1a1a 0%, #000000 100%);
 }
 
-/* 🔥 滿版容器 🔥 */
-.app-container { 
-  width: 100%; /* 佔滿寬度 */
-  max-width: none; /* 移除最大寬度限制 */
-  min-height: 100vh; position: relative; 
-}
-
-/* 🔥 內容邊距縮小 (12px) 🔥 */
+/* 🔥 滿版容器設定 (關鍵！) 🔥 */
+.app-container { width: 100%; min-height: 100vh; position: relative; }
 .content-view { 
-  padding: 12px; 
-  padding-bottom: 100px; /* 留給底部選單 */
+  padding: 0; /* 移除左右留白 */
+  padding-bottom: 90px; /* 留給底部選單 */
 }
 
-/* === 首頁：頭貼英雄區 === */
+/* === 首頁：英雄區 (有留白) === */
+.page-home { padding: 0 20px; /* 只有首頁需要左右留白才好看 */ }
+
 .hero-section {
-  display: flex; flex-direction: column; align-items: center; margin-top: 20px; margin-bottom: 30px;
+  display: flex; flex-direction: column; align-items: center; margin-top: 30px; margin-bottom: 30px;
 }
 .avatar-halo {
   position: relative;
-  width: clamp(130px, 35vw, 180px); /* 稍微縮小一點避免太巨 */
-  height: clamp(130px, 35vw, 180px);
-  border-radius: 50%;
-  padding: 5px;
+  width: clamp(140px, 35vw, 180px); 
+  height: clamp(140px, 35vw, 180px);
+  border-radius: 50%; padding: 4px;
   background: var(--gold-gradient);
-  box-shadow: 0 0 30px rgba(255, 215, 0, 0.2);
-  animation: glow 3s infinite alternate;
+  box-shadow: 0 0 40px rgba(255, 215, 0, 0.3);
 }
-@keyframes glow { from { box-shadow: 0 0 20px rgba(255, 215, 0, 0.2); } to { box-shadow: 0 0 40px rgba(255, 215, 0, 0.5); } }
-
 .avatar-border { width: 100%; height: 100%; background: #000; border-radius: 50%; padding: 4px; overflow: hidden; }
 .main-avatar { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; }
 
 .user-info-center { text-align: center; margin-top: 15px; }
 .user-name { 
-  font-size: clamp(1.8rem, 6vw, 2.5rem); 
+  font-size: clamp(2rem, 6vw, 2.5rem); 
   font-weight: 800; margin: 0; 
   background: var(--gold-gradient); -webkit-background-clip: text; color: transparent;
 }
@@ -310,84 +304,86 @@ body { margin: 0; background: #000; font-family: 'Helvetica Neue', Arial, sans-s
   font-size: 0.85rem; border-radius: 20px; letter-spacing: 1px;
 }
 
-/* 🔥 強制滿版卡片 (Common) 🔥 */
-.full-width-card {
-  width: 100% !important; /* 強制 100% */
-  box-sizing: border-box; /* 確保 padding 算在寬度內 */
-}
-
 /* 儀表板 */
 .dashboard-panel {
-  background: var(--bg-card); backdrop-filter: blur(10px);
-  border-radius: 16px; padding: 20px; border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(20, 20, 20, 0.5);
+  border-radius: 16px; padding: 25px; border: 1px solid var(--border-color);
   margin-top: 20px;
 }
-.exp-row { margin-bottom: 20px; }
+.exp-row { margin-bottom: 25px; }
 .exp-labels { display: flex; justify-content: space-between; color: var(--gold-primary); font-size: 0.9rem; margin-bottom: 8px; font-weight: bold; }
-.exp-track { height: 10px; background: #333; border-radius: 5px; overflow: hidden; }
+.exp-track { height: 8px; background: #333; border-radius: 4px; overflow: hidden; }
 .exp-bar { height: 100%; background: var(--gold-gradient); box-shadow: 0 0 10px var(--gold-primary); }
 
 .stats-row { display: flex; justify-content: space-around; align-items: center; }
 .stat-item { text-align: center; }
-.stat-val { font-size: clamp(1.5rem, 5vw, 2rem); font-weight: bold; color: #fff; }
-.stat-label { font-size: 0.8rem; color: var(--text-gray); margin-top: 5px; }
+.stat-val { font-size: clamp(1.8rem, 5vw, 2.2rem); font-weight: bold; color: #fff; }
+.stat-label { font-size: 0.85rem; color: var(--text-gray); margin-top: 5px; }
 .stat-sep { width: 1px; height: 40px; background: rgba(255,255,255,0.1); }
 
-/* === 列表通用卡片 (Gold Card) === */
-.page-title { 
-  font-size: clamp(1.5rem, 5vw, 1.8rem); 
-  color: var(--gold-primary); margin-bottom: 20px; 
-  display: flex; align-items: baseline; gap: 10px;
+/* === 列表通用標題 (Sticky Header) === */
+.section-header {
+  padding: 15px 20px;
+  background: rgba(0,0,0,0.9); backdrop-filter: blur(10px);
+  position: sticky; top: 0; z-index: 10;
+  font-size: 1.2rem; font-weight: bold; color: var(--gold-primary);
+  border-bottom: 1px solid #222;
 }
-.page-title small { font-size: 0.8rem; color: var(--text-gray); font-weight: normal; letter-spacing: 2px; }
 
-.gold-card {
-  background: var(--bg-card); border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 12px; padding: 15px; margin-bottom: 15px;
-  display: flex; justify-content: space-between; align-items: center;
-  transition: all 0.2s; cursor: pointer;
-}
-.gold-card:active { transform: scale(0.98); border-color: var(--gold-primary); }
+/* === 滿版列表樣式 (List Style) === */
+.full-list { display: flex; flex-direction: column; }
 
-.card-left { flex: 1; min-width: 0; }
-.card-date { font-size: 0.8rem; color: var(--text-gray); margin-bottom: 4px; }
-.card-title { font-size: clamp(1rem, 4vw, 1.1rem); font-weight: bold; color: #fff; margin-bottom: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.card-gm { font-size: 0.85rem; color: var(--text-gray); }
-.exp-badge { color: var(--gold-primary); font-weight: bold; font-size: 1rem; }
+.list-item {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 20px 20px;
+  background: #000;
+  border-bottom: 1px solid #222; /* 只有下邊線 */
+  cursor: pointer; transition: background 0.2s;
+}
+.list-item:active { background: #111; }
 
-/* === 票券卡片 (Full Width) === */
-.ticket-card {
-  position: relative; background: linear-gradient(90deg, #222 70%, #1a1a1a 100%);
-  border: 1px solid var(--gold-primary); border-radius: 8px;
-  display: flex; align-items: center; margin-bottom: 15px; overflow: hidden;
-  height: auto; min-height: 90px; /* 高度自適應 */
-  cursor: pointer; padding: 10px 0;
-}
-.ticket-content { flex: 1; display: flex; align-items: center; padding: 0 15px; z-index: 2; }
-.ticket-icon { font-size: 2rem; margin-right: 15px; filter: drop-shadow(0 0 5px var(--gold-primary)); flex-shrink: 0; }
-.ticket-details { flex: 1; min-width: 0; margin-right: 10px; }
-.ticket-name { font-size: clamp(1rem, 4vw, 1.2rem); font-weight: bold; color: var(--gold-primary); margin-bottom: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.ticket-expiry { font-size: 0.75rem; color: #aaa; }
-.ticket-action-btn { 
-  background: var(--gold-gradient); border: none; padding: 8px 12px; 
-  border-radius: 4px; color: #000; font-weight: bold; font-size: 0.8rem; flex-shrink: 0;
-}
-/* 票券裝飾 */
-.ticket-decor-l, .ticket-decor-r {
-  position: absolute; top: 50%; transform: translateY(-50%); width: 16px; height: 16px; background: #000; border-radius: 50%; border: 1px solid var(--gold-primary);
-}
-.ticket-decor-l { left: -9px; }
-.ticket-decor-r { right: -9px; }
+.list-content { flex: 1; min-width: 0; margin-right: 15px; }
+.list-top-row { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 6px; }
+.list-title { font-size: 1.1rem; color: #fff; font-weight: bold; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 70%; text-align: left; }
+.list-date { font-size: 0.8rem; color: var(--text-gray); }
 
-/* === 表單 === */
-.form-layout { display: block; padding: 25px; }
-.input-group { margin-bottom: 20px; }
-.input-group label { display: block; color: var(--gold-primary); font-size: 0.9rem; margin-bottom: 8px; }
-.input-group input { width: 100%; padding: 12px; background: #111; border: 1px solid #333; color: #fff; border-radius: 6px; font-size: 1rem; }
-.input-group input:focus { border-color: var(--gold-primary); outline: none; }
+.list-btm-row { display: flex; justify-content: space-between; font-size: 0.9rem; }
+.list-gm { color: var(--text-gray); }
+.list-exp { color: var(--gold-primary); font-weight: bold; }
+.list-arrow { color: #444; font-size: 1.5rem; }
+
+/* === 滿版票券條 (Ticket Strip) === */
+.ticket-strip {
+  display: flex; align-items: center; padding: 20px;
+  border-bottom: 1px solid #222;
+  background: #000; cursor: pointer;
+}
+.ticket-strip:active { background: #111; }
+.strip-icon { font-size: 2rem; margin-right: 20px; filter: drop-shadow(0 0 5px var(--gold-primary)); }
+.strip-info { flex: 1; min-width: 0; }
+.strip-title { font-size: 1.1rem; color: var(--gold-primary); font-weight: bold; margin-bottom: 4px; }
+.strip-date { font-size: 0.85rem; color: var(--text-gray); }
+.strip-action { 
+  padding: 6px 12px; border: 1px solid var(--gold-primary); color: var(--gold-primary); 
+  border-radius: 20px; font-size: 0.8rem; 
+}
+
+/* === 滿版設定表單 === */
+.full-form { padding: 0; }
+.form-row { 
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 20px; border-bottom: 1px solid #222; background: #000;
+}
+.form-row label { color: var(--text-gray); font-size: 1rem; width: 100px; }
+.form-row input { 
+  flex: 1; background: transparent; border: none; 
+  color: #fff; text-align: right; font-size: 1rem; padding: 5px;
+}
+.form-row input:focus { outline: none; color: var(--gold-primary); }
+.form-action-area { padding: 30px 20px; }
 
 /* === 按鈕 === */
-.gold-btn { width: 100%; background: var(--gold-gradient); border: none; padding: 14px; border-radius: 8px; color: #000; font-weight: 800; font-size: 1rem; cursor: pointer; margin-top: 10px; }
+.gold-btn { width: 100%; background: var(--gold-gradient); border: none; padding: 15px; border-radius: 8px; color: #000; font-weight: 800; font-size: 1.1rem; cursor: pointer; }
 .gold-btn:disabled { opacity: 0.6; }
 .gold-outline-btn { display: block; text-align: center; border: 1px solid var(--gold-primary); color: var(--gold-primary); padding: 12px; border-radius: 8px; text-decoration: none; margin-top: 15px; }
 
@@ -395,12 +391,13 @@ body { margin: 0; background: #000; font-family: 'Helvetica Neue', Arial, sans-s
 .bottom-nav {
   position: fixed; bottom: 0; left: 0; width: 100%; 
   height: clamp(60px, 15vw, 70px);
-  background: #0f0f0f; border-top: 1px solid #333;
+  background: rgba(10, 10, 10, 0.95); border-top: 1px solid #222;
   display: flex; justify-content: space-around; align-items: center; z-index: 100;
+  backdrop-filter: blur(10px);
 }
 .nav-item {
   flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
-  color: #666; transition: all 0.3s; cursor: pointer;
+  color: #555; transition: all 0.3s; cursor: pointer;
 }
 .nav-icon { width: clamp(24px, 6vw, 28px); height: clamp(24px, 6vw, 28px); margin-bottom: 4px; transition: fill 0.3s; }
 .nav-item span { font-size: 0.7rem; }
@@ -411,7 +408,7 @@ body { margin: 0; background: #000; font-family: 'Helvetica Neue', Arial, sans-s
 /* === 彈窗 (Modal) === */
 .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); z-index: 1000; display: flex; justify-content: center; align-items: center; padding: 20px; }
 .modal-content { 
-  width: 100%; max-width: 380px; background: #1a1a1a; 
+  width: 100%; max-width: 380px; background: #151515; 
   border: 1px solid var(--gold-primary); border-radius: 12px; 
   padding: 25px; position: relative; box-shadow: 0 0 30px rgba(0,0,0,0.8);
 }

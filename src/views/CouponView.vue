@@ -14,7 +14,7 @@ const coupons = ref([
   {
     id: 1,
     title: '劇本折抵券 $100',
-    desc: '1. 本券適用於台北旗艦館所有劇本。\n2. 平假日皆可使用，但在特殊節日（如跨年、春節）需補差額。\n3. 不可與其他優惠併用，亦不可兌換現金。\n4. 請於結帳前出示此畫面，由工作人員核銷。\n5. 若誤觸核銷按鈕，恕不補發，請小心操作。\n6. 本公司保有最終修改與解釋權力。\n7. (測試長度) 請往下滑...請往下滑...按鈕藏在最深處，只有看完故事的人才配擁有寶藏。',
+    desc: '1. 本券適用於台北旗艦館所有劇本。\n2. 平假日皆可使用，但在特殊節日（如跨年、春節）需補差額。\n3. 不可與其他優惠併用，亦不可兌換現金。\n4. 請於結帳前出示此畫面，由工作人員核銷。\n5. 若誤觸核銷按鈕，恕不補發，請小心操作。\n6. 本公司保有最終修改與解釋權力。\n7. (測試) 往下滑到底...現在按鈕不會被蓋住了，因為我們有最強的緩衝區。',
     expiry: '2025-12-31',
     status: 'active',
     type: 'discount',
@@ -166,77 +166,47 @@ const confirmRedeem = () => {
 
 <style scoped>
 .page-container {
-  width: 100%;
-  max-width: 800px;
-  margin: 0 auto;
-  box-sizing: border-box;
-  padding: 16px;
-  padding-bottom: 100px;
-  min-height: 100vh;
-  background-color: transparent;
-  color: #fff;
+  width: 100%; max-width: 800px; margin: 0 auto; box-sizing: border-box;
+  padding: 16px; padding-bottom: 100px; min-height: 100vh;
+  background-color: transparent; color: #fff;
 }
 
 .header-area {
   display: flex; justify-content: space-between; align-items: center;
-  margin-bottom: 20px; padding: 0 4px;
-  border-bottom: 1px solid rgba(255,255,255,0.1);
-  padding-bottom: 12px;
+  margin-bottom: 20px; padding: 0 4px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 12px;
 }
 .page-title { font-size: 1.5rem; font-weight: 700; color: #D4AF37; margin: 0; }
 .count-badge { font-size: 0.9rem; color: #888; background: rgba(0,0,0,0.5); padding: 4px 10px; border-radius: 20px; }
 
 /* 票券卡片 */
 .coupon-ticket {
-  display: flex;
-  background: linear-gradient(145deg, #222, #1a1a1a);
-  height: 90px;
-  margin-bottom: 16px;
-  border-radius: 12px;
-  position: relative;
-  overflow: hidden;
-  box-shadow: 0 4px 8px rgba(0,0,0,0.3);
-  border: 1px solid #333;
-  transition: transform 0.2s;
-  cursor: pointer;
+  display: flex; background: linear-gradient(145deg, #222, #1a1a1a);
+  height: 90px; margin-bottom: 16px; border-radius: 12px;
+  position: relative; overflow: hidden; box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+  border: 1px solid #333; transition: transform 0.2s; cursor: pointer;
 }
 .coupon-ticket:active { transform: scale(0.98); }
-
-.ticket-left {
-  width: 24px; background: #D4AF37; position: relative; flex-shrink: 0;
-  border-right: 2px dashed #333;
-}
-.punch-hole-top, .punch-hole-bottom {
-  position: absolute; width: 16px; height: 16px; background-color: #050505;
-  border-radius: 50%; left: 16px; z-index: 2;
-}
+.ticket-left { width: 24px; background: #D4AF37; position: relative; flex-shrink: 0; border-right: 2px dashed #333; }
+.punch-hole-top, .punch-hole-bottom { position: absolute; width: 16px; height: 16px; background-color: #050505; border-radius: 50%; left: 16px; z-index: 2; }
 .punch-hole-top { top: -8px; }
 .punch-hole-bottom { bottom: -8px; }
-
-.ticket-main {
-  flex: 1; padding: 10px 15px; padding-left: 20px;
-  display: flex; flex-direction: column; justify-content: center;
-}
+.ticket-main { flex: 1; padding: 10px 15px; padding-left: 20px; display: flex; flex-direction: column; justify-content: center; }
 .ticket-title { font-size: 1.1rem; font-weight: bold; color: #fff; margin-bottom: 5px; }
 .ticket-expiry { font-size: 0.8rem; color: #888; }
-
 .ticket-right { width: 90px; display: flex; align-items: center; justify-content: center; }
-.use-btn {
-  background: transparent; color: #D4AF37; border: 1px solid #D4AF37;
-  padding: 6px 16px; border-radius: 20px; font-weight: bold; font-size: 0.9rem;
-}
+.use-btn { background: transparent; color: #D4AF37; border: 1px solid #D4AF37; padding: 6px 16px; border-radius: 20px; font-weight: bold; font-size: 0.9rem; }
 .coupon-ticket.is-used { filter: grayscale(1); opacity: 0.6; }
 .coupon-ticket.is-used .ticket-left { background: #555; }
-.used-stamp {
-  border: 2px solid #fff; color: #fff; padding: 5px; 
-  font-weight: bold; font-size: 0.8rem; transform: rotate(-15deg); opacity: 0.8;
-}
+.used-stamp { border: 2px solid #fff; color: #fff; padding: 5px; font-weight: bold; font-size: 0.8rem; transform: rotate(-15deg); opacity: 0.8; }
 
-/* === 彈窗設定 === */
+/* === 彈窗設定 (Z-Index 2000 覆蓋選單) === */
 .modal-overlay {
   position: fixed; top: 0; left: 0; width: 100%; height: 100%;
   background: rgba(0,0,0,0.85); 
-  z-index: 3000;
+  
+  /* 🚀 關鍵: 蓋住選單 */
+  z-index: 2000;
+  
   display: flex; justify-content: center; align-items: flex-end;
   backdrop-filter: blur(5px);
 }
@@ -247,9 +217,9 @@ const confirmRedeem = () => {
   border-radius: 20px 20px 0 0;
   border-top: 1px solid #333;
   
-  /* Flex 佈局，讓 header 固定，身體捲動 */
+  /* Flex Column 佈局 */
   display: flex; flex-direction: column;
-  height: 85vh; /* 高度固定 */
+  height: 90vh; /* 拉高高度，反正蓋住選單了 */
   box-shadow: 0 -10px 40px rgba(0,0,0,0.8);
 }
 
@@ -262,18 +232,12 @@ const confirmRedeem = () => {
 .modal-header h3 { margin: 0; color: #fff; }
 .close-btn-icon { background: none; border: none; color: #888; font-size: 1.5rem; cursor: pointer; }
 
-/* 🚀 內容捲動區 */
+/* 捲動區 */
 .detail-scroll-area {
-  flex: 1; 
-  overflow-y: auto; 
-  padding: 0 25px;
-  
-  /* 捲動滑順 */
+  flex: 1; overflow-y: auto; padding: 0 25px;
   -webkit-overflow-scrolling: touch;
 }
-
 .detail-content-wrapper { text-align: center; padding-top: 20px; }
-
 .detail-icon-large { font-size: 3rem; margin-bottom: 10px; }
 .detail-title { color: #D4AF37; margin: 5px 0; font-size: 1.5rem; }
 .detail-code { color: #666; font-family: monospace; letter-spacing: 1px; font-size: 1rem; margin-bottom: 20px; }
@@ -282,11 +246,8 @@ const confirmRedeem = () => {
 .desc-text { white-space: pre-wrap; margin: 0; }
 .expiry-text { color: #666; font-size: 0.8rem; margin-top: 20px; margin-bottom: 10px; }
 
-/* 🚀 按鈕區塊 (現在在捲動區內) */
-.detail-footer-scroll {
-  margin-top: 20px;
-}
-
+/* 按鈕區 */
+.detail-footer-scroll { margin-top: 20px; }
 .action-btn {
   width: 100%; padding: 16px; border-radius: 12px; border: none;
   font-size: 1.1rem; font-weight: bold; cursor: pointer;
@@ -296,14 +257,13 @@ const confirmRedeem = () => {
 .action-btn:active { transform: scale(0.98); }
 .action-btn.disabled { background: #444; color: #888; box-shadow: none; cursor: not-allowed; }
 
-/* 🚀 安全氣囊：保證滑到底部時，按鈕下面有空間 */
+/* 🚀 關鍵：底部超大緩衝區 */
 .safe-zone {
-  height: 80px; 
+  height: 80px; /* 留 80px 的空白，保證按鈕不貼底 */
   width: 100%;
 }
 
-/* Double Check */
-.modal-overlay.confirm-overlay { align-items: center; z-index: 3100; }
+.modal-overlay.confirm-overlay { align-items: center; z-index: 2100; }
 .confirm-box {
   background: #222; width: 80%; max-width: 320px;
   padding: 25px; border-radius: 16px; text-align: center;

@@ -85,7 +85,7 @@ body {
 .pattern-layer {
   position: absolute;
   top: 0; left: 0; width: 100%; height: 100%;
-  opacity: 0.35; /* 調整這裡可以改變花紋明顯度 (0.1 ~ 0.3) */
+  opacity: 0.6; /* 調整這裡可以改變花紋明顯度 (0.1 ~ 0.3) */
   
   /* 這是一種用 CSS 漸層交疊畫出的菱格紋 */
   background-image: 
@@ -143,8 +143,3 @@ body {
 .fade-enter-from, .fade-leave-to { opacity: 0; }
 </style>
 
-<img 
-  :src="record.cover || 'https://images.unsplash.com/photo-1514467953502-5a7820e3efb4?w=400'" 
-  class="record-img" 
-  alt="劇本封面" 
-/>

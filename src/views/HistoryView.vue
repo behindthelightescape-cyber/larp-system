@@ -3,7 +3,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { useUserStore } from '../stores/user'
 // 小四提醒：記得引入你的 supabase client，路徑自己對好，找不到別來找我
-import { supabase } from '../utils/supabase' 
+import { supabase } from '../supabase' 
 
 const store = useUserStore()
 const showModal = ref(false)

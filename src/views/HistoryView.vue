@@ -17,7 +17,7 @@ onMounted(async () => {
   // 假設 store 裡面有存目前登入玩家的 ID，如果沒有你就自己寫死測試
   const currentUserId = store.userId || '這裡放測試用的_legacy_id_或_uuid'
 
-  if (store.history.length === 0) {
+  
     try {
       // 小四特製：跨表關聯查詢 (game_participants -> games -> scripts)
       const { data, error } = await supabase
@@ -57,7 +57,7 @@ onMounted(async () => {
     } catch (e) {
       console.error('小四警告：撈取歷史紀錄炸了！', e)
     }
-  }
+  
 })
 
 // 🚀 優先顯示從 Supabase 抓回來的真實資料

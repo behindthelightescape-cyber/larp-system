@@ -1,17 +1,36 @@
 <script setup>
-import { ref } from 'vue'
+import { ref, onMounted } from 'vue'
 import { useUserStore } from '../stores/user'
 
 const store = useUserStore()
+
+// 這裡要用 userData，並加上預設值
 const form = ref({
-  phone: store.profile?.phone || '',
-  birthday: store.profile?.birthday || '',
-  name: store.profile?.display_name || ''
+  name: '',
+  phone: '',
+  birthday: ''
 })
 
-const save = () => {
-  alert('資料儲存模擬成功！(需串接 Supabase Update)')
-  // 之後這裡要呼叫 store.updateProfile(form.value)
+// 當組件掛載或資料更新時，填入現有資料
+onMounted(() => {
+  if (store.userData) {
+    form.value = {
+      name: store.userData.display_name || '',
+      phone: store.userData.phone || '',
+      birthday: store.userData.birthday || ''
+    }
+  }
+})
+
+const save = async () => {
+  const result = await store.updateProfile(form.value)
+  
+  if (result.success) {
+    alert(result.message)
+    // 儲存成功後也可以重新抓取優惠券列表 (如果需要)
+  } else {
+    alert('儲存失敗: ' + result.message)
+  }
 }
 </script>
 
@@ -19,22 +38,26 @@ const save = () => {
   <div class="page-container">
     <h2 class="page-title">個人設定</h2>
     
-    <div class="form-group">
-      <label>顯示名稱</label>
-      <input v-model="form.name" type="text" placeholder="怎麼稱呼你？" />
-    </div>
+    <div v-if="store.isLoading" style="text-align: center; color: #888;">載入中...</div>
+    
+    <div v-else>
+        <div class="form-group">
+          <label>顯示名稱</label>
+          <input v-model="form.name" type="text" placeholder="怎麼稱呼你？" />
+        </div>
 
-    <div class="form-group">
-      <label>手機號碼</label>
-      <input v-model="form.phone" type="tel" placeholder="0912-345-678" />
-    </div>
+        <div class="form-group">
+          <label>手機號碼</label>
+          <input v-model="form.phone" type="tel" placeholder="0912-345-678" />
+        </div>
 
-    <div class="form-group">
-      <label>生日 (僅供壽星優惠使用)</label>
-      <input v-model="form.birthday" type="date" />
-    </div>
+        <div class="form-group">
+          <label>生日 (僅供壽星優惠使用)</label>
+          <input v-model="form.birthday" type="date" />
+        </div>
 
-    <button class="save-btn" @click="save">確認修改</button>
+        <button class="save-btn" @click="save">確認修改</button>
+    </div>
   </div>
 </template>
 

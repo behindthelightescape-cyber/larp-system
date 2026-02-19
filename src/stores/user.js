@@ -178,6 +178,50 @@ export const useUserStore = defineStore('user', () => {
       console.error('加入遊戲失敗:', err.message)
     }
   }
+  // 🌟 核心 Action：更新個人資料 + 發放生日填寫禮
+  const updateProfile = async (formData) => {
+    if (!userData.value) return { success: false, message: '尚未登入' }
+
+    try {
+      // 1. 檢查是否是第一次填寫生日 (原本是 null 且現在有值)
+      const isFirstTimeBirthday = !userData.value.birthday && formData.birthday;
+
+      // 2. 更新 Supabase
+      const { data, error: updateError } = await supabase
+        .from('users')
+        .update({
+          display_name: formData.name,
+          phone: formData.phone,
+          birthday: formData.birthday
+        })
+        .eq('id', userData.value.id)
+        .select()
+        .single()
+
+      if (updateError) throw updateError
+
+      // 更新本地狀態
+      userData.value = data
+
+      // 3. 🚀 驚喜邏輯：如果是第一次填生日，自動發券！
+      if (isFirstTimeBirthday) {
+        await supabase.from('coupons').insert([{
+          user_id: userData.value.id,
+          title: '🎂 生日優惠券 (資料完善禮)',
+          description: '感謝您完善個人資料，祝您生日快樂！',
+          status: 'available',
+          // 設定一年後過期
+          expiry_date: new Date(new Date().setFullYear(new Date().getFullYear() + 1)).toISOString()
+        }])
+        return { success: true, message: '資料已更新，恭喜獲得生日驚喜券！' }
+      }
+
+      return { success: true, message: '資料儲存成功' }
+    } catch (err) {
+      console.error('更新失敗:', err)
+      return { success: false, message: err.message }
+    }
+  }
 
   // === 3. 匯出給 Vue 元件使用 ===
   return {

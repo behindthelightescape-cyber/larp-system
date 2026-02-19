@@ -152,7 +152,7 @@ const save = async () => {
         </div>
 
         <div class="form-group">
-          <label>生日 (僅供壽星優惠使用)</label>
+          <label>生日！ (僅供壽星優惠使用)</label>
           
           <input 
             v-model="form.birthday" 

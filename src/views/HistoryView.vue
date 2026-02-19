@@ -1,7 +1,8 @@
+
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import { useUserStore } from '../stores/user'
-// 小四提醒：記得引入你的 supabase client，路徑自己對好
+// 小四提醒：記得引入你的 supabase client，路徑自己對好，找不到別來找我
 import { supabase } from '../utils/supabase' 
 
 const store = useUserStore()
@@ -13,7 +14,7 @@ const DEFAULT_COVER = 'https://images.unsplash.com/photo-1514467953502-5a7820e3e
 
 // 🚀 確保組件掛載時去抓真實資料，並把巢狀物件攤平
 onMounted(async () => {
-  // 假設 store 裡面有存目前登入玩家的 ID
+  // 假設 store 裡面有存目前登入玩家的 ID，如果沒有你就自己寫死測試
   const currentUserId = store.userId || '這裡放測試用的_legacy_id_或_uuid'
 
   if (store.history.length === 0) {
@@ -49,12 +50,12 @@ onMounted(async () => {
           date: record.games?.play_time ? record.games.play_time.split('T')[0] : '未知時間',
           gm: record.games?.gm_name || '無名氏',
           exp: record.exp_gained || 0,
-          story_memory: record.games?.story_memory || '', // 這裡就是你要的手札！
-          branch: '劇光燈本館' // 之後如果要擴展可以從 DB 抓
+          story_memory: record.games?.story_memory || '', // 手札在這裡啦！
+          branch: '劇光燈本館' // 之後如果 5 間包廂要細分，可以從 DB 抓
         }))
       }
     } catch (e) {
-      console.error('撈取歷史紀錄炸了：', e)
+      console.error('小四警告：撈取歷史紀錄炸了！', e)
     }
   }
 })
@@ -70,6 +71,96 @@ const openDetail = (game) => {
 }
 </script>
 
+<template>
+  <div class="page-container">
+    <div class="header-area">
+      <h2 class="page-title">冒險回憶</h2>
+      <span class="count-badge">{{ displayList.length }} 場</span>
+    </div>
+    
+    <div class="history-list">
+      <div 
+        v-for="item in displayList" 
+        :key="item.id" 
+        class="game-card" 
+        @click="openDetail(item)"
+      >
+        <div class="cover-wrapper">
+          <img :src="item.cover" class="game-cover" />
+        </div>
+
+        <div class="game-info">
+          <h3 class="game-title line-clamp-1">{{ item.title }}</h3>
+          <div class="meta-row">
+            <span class="meta-date">{{ item.date }}</span>
+            <span class="divider">|</span>
+            <span class="meta-gm line-clamp-1">GM: {{ item.gm }}</span>
+          </div>
+        </div>
+
+        <div class="arrow-icon">›</div>
+      </div>
+      
+      <div class="spacer"></div>
+    </div>
+
+    <Teleport to="body">
+      <transition name="pop">
+        <div v-if="showModal" class="modal-overlay" @click.self="showModal = false">
+          <div class="modal-content">
+            
+            <div class="modal-top-bar">
+              <h3>回憶詳情</h3>
+              <button class="close-btn-icon" @click="showModal = false">✕</button>
+            </div>
+            
+            <div class="modal-scroll-area">
+              <div class="modal-header-image">
+                <img :src="selectedGame.cover" class="modal-cover"/>
+                <div class="modal-gradient"></div>
+                <h2 class="modal-title-overlay">{{ selectedGame.title }}</h2>
+              </div>
+              
+              <div class="modal-body">
+                <div class="info-grid">
+                  <div class="info-item full-width">
+                    <span class="label">帶場 GM</span>
+                    <span class="value">{{ selectedGame.gm }}</span>
+                  </div>
+                  <div class="info-item">
+                    <span class="label">遊玩日期</span>
+                    <span class="value">{{ selectedGame.date }}</span>
+                  </div>
+                  <div class="info-item highlight">
+                    <span class="label">獲得經驗</span>
+                    <span class="value">+{{ selectedGame.exp }} PT</span>
+                  </div>
+                  <div class="info-item">
+                    <span class="label">遊玩場館</span>
+                    <span class="value">{{ selectedGame.branch || '劇光燈本館' }}</span>
+                  </div>
+                </div>
+
+                <div v-if="selectedGame.story_memory" class="story-section">
+                  <div class="section-header">
+                    <span class="section-icon">📜</span>
+                    <span class="section-title">劇本手札</span>
+                  </div>
+                  <div class="story-card">
+                    <p class="story-text">{{ selectedGame.story_memory }}</p>
+                  </div>
+                </div>
+
+                <div class="safe-zone"></div>
+              </div>
+            </div>
+            
+          </div>
+        </div>
+      </transition>
+    </Teleport>
+  </div>
+</template>
 
 <style scoped>
 /* === 頁面基礎 === */

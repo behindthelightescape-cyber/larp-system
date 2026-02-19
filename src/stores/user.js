@@ -28,6 +28,8 @@ export const useUserStore = defineStore('user', () => {
   const initLiff = async () => {
     isLoading.value = true
     try {
+
+
         alert('準備執行 liff.init') // 除錯 1
       await liff.init({ liffId: '2009161687-icfQU9r6' })
         alert('liff.init 成功！準備檢查是否登入') // 除錯 2
@@ -68,18 +70,20 @@ export const useUserStore = defineStore('user', () => {
     let { data: existingUser } = await supabase
       .from('users')
       .select('*')
-      .eq('line_id', profile.userId)
+      .eq('id', profile.userId)
       .single()
 
     if (existingUser) {
-      userData.value = existingUser
-      isLoggedIn.value = true
+      console.log('✅ 找到老會員:', existingUser.display_name)
+        userData.value = existingUser
+        isLoggedIn.value = true
     } else {
+    console.log('✨ 查無此人，準備註冊新會員...')
       const randomId = Math.floor(100000 + Math.random() * 900000).toString()
       const { data: newUser, error: insertError } = await supabase
         .from('users')
         .insert([{
-          line_id: profile.userId,
+          id: profile.userId,
           display_name: profile.displayName,
           picture_url: profile.pictureUrl,
           legacy_id: randomId,

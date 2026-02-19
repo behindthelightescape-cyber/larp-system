@@ -10,7 +10,7 @@ const selectedGame = ref({})
 onMounted(async () => {
   if (store.history.length === 0) {
     // 這裡可以傳入你指定的 ID，或讓 store 預設抓測試 ID
-    await store.fetchUserData('U65a94308551ccd456aca5e903d98cefd')
+    
   }
 })
 

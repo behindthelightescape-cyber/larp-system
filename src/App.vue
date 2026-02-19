@@ -11,7 +11,7 @@ onMounted(async () => {
   userStore.initLiff()
   console.log('App 啟動，背景紋理載入...')
 
- await userStore.fetchUserData('U65a94308551ccd456aca5e903d98cefd')
+ 
   
   console.log('📡 呼叫指令已發出')
 })

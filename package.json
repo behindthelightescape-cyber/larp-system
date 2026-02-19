@@ -9,6 +9,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@line/liff": "^2.27.3",
     "@supabase/supabase-js": "^2.96.0",
     "lucide-vue-next": "^0.570.0",
     "pinia": "^3.0.4",

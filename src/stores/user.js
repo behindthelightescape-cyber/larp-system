@@ -225,8 +225,16 @@ export const useUserStore = defineStore('user', () => {
 
   // === 3. 匯出給 Vue 元件使用 ===
   return {
-    lineProfile, userData, isLoggedIn, isLoading, error,
-    history, coupons, daysJoined, userTitle, // 你原本的變數都在這
-    initLiff
+    lineProfile, 
+    userData, 
+    isLoggedIn, 
+    isLoading, 
+    error,
+    history, 
+    coupons, 
+    daysJoined, 
+    userTitle, 
+    initLiff,
+    updateProfile
   }
 })

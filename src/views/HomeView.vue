@@ -59,13 +59,13 @@ onMounted(() => {
         </div>
 
         <div class="card-body">
-          <h1 class="user-name">{{ store.profile?.display_name || '冒險者 喬' }}</h1>
+          <h1 class="user-name">{{ store.profile?.display_name || '顯示失敗' }}</h1>
           
           <div class="user-title-box">
             <span class="title-text">{{ stats.title }}</span>
           </div>
           
-          <p class="user-uid">UID: {{ store.profile?.serial_number || '00002' }}</p>
+          <p class="user-uid">UID: {{ store.profile?.serial_number || '00000' }}</p>
 
           <div class="divider-line"></div>
 

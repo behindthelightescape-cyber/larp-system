@@ -10,9 +10,11 @@ const form = ref({
   birthday: ''
 })
 
-// 🌟 判斷資料庫原本是不是「已經有生日了」
+// 🌟 強化版判斷：嚴格檢查字串是不是空的或 null
 const isBirthdaySet = computed(() => {
-  return !!store.userData?.birthday
+  const bday = store.userData?.birthday
+  // 只要有字串且不是空的，就判定為「已設定」
+  return bday !== null && bday !== undefined && bday !== ''
 })
 
 watch(() => store.userData, (newVal) => {
@@ -26,11 +28,18 @@ watch(() => store.userData, (newVal) => {
 const save = async () => {
   if (store.isLoading) return
 
-  const result = await store.updateProfile(form.value)
+  // 避免空字串存進資料庫報錯，沒填就轉成 null
+  const payload = {
+    name: form.value.name,
+    phone: form.value.phone,
+    birthday: form.value.birthday || null 
+  }
+
+  const result = await store.updateProfile(payload)
   
   if (result.success) {
     alert(result.message)
-    await store.initLiff() 
+    await store.initLiff() // 儲存完重新整理資料
   } else {
     alert('儲存失敗: ' + result.message)
   }
@@ -60,6 +69,7 @@ const save = async () => {
             v-model="form.birthday" 
             type="date" 
             :disabled="isBirthdaySet"
+            :readonly="isBirthdaySet"
             :class="{ 'disabled-input': isBirthdaySet }"
           />
           <p v-if="isBirthdaySet" class="hint-text">🔒 生日已設定，如需修改請聯繫客服。</p>
@@ -83,15 +93,15 @@ const save = async () => {
 }
 .form-group input:focus { border-color: #D4AF37; outline: none; }
 
-/* 🚀 鎖死狀態的樣式 */
+/* 🚀 鎖死狀態樣式強化：阻止一切點擊行為 */
 .disabled-input {
   background: #0a0a0a !important;
   color: #666 !important;
-  cursor: not-allowed;
+  cursor: not-allowed !important;
   border-color: #222 !important;
+  pointer-events: none; /* 直接讓滑鼠/手指點擊無效 */
 }
 
-/* 提示文字樣式 */
 .hint-text {
   font-size: 0.8rem;
   color: #888;

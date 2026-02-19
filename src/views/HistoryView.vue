@@ -1,16 +1,61 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import { useUserStore } from '../stores/user'
+// 小四提醒：記得引入你的 supabase client，路徑自己對好
+import { supabase } from '../utils/supabase' 
 
 const store = useUserStore()
 const showModal = ref(false)
 const selectedGame = ref({})
 
-// 🚀 確保組件掛載時，如果 Store 是空的，就去抓一次資料
+// 🚀 圖片備用邏輯：定義一個統一的預設封面
+const DEFAULT_COVER = 'https://images.unsplash.com/photo-1514467953502-5a7820e3efb4?w=600'
+
+// 🚀 確保組件掛載時去抓真實資料，並把巢狀物件攤平
 onMounted(async () => {
+  // 假設 store 裡面有存目前登入玩家的 ID
+  const currentUserId = store.userId || '這裡放測試用的_legacy_id_或_uuid'
+
   if (store.history.length === 0) {
-    // 這裡可以傳入你指定的 ID，或讓 store 預設抓測試 ID
-    
+    try {
+      // 小四特製：跨表關聯查詢 (game_participants -> games -> scripts)
+      const { data, error } = await supabase
+        .from('game_participants')
+        .select(`
+          id,
+          exp_gained,
+          created_at,
+          games (
+            gm_name,
+            play_time,
+            story_memory,
+            scripts (
+              title,
+              cover_url
+            )
+          )
+        `)
+        .eq('user_id', currentUserId)
+        .order('created_at', { ascending: false })
+
+      if (error) throw error
+
+      // 將 Supabase 囉嗦的巢狀結構，洗成你 Template 要的扁平格式
+      if (data) {
+        store.history = data.map(record => ({
+          id: record.id,
+          title: record.games?.scripts?.title || '未知的神秘劇本',
+          cover: record.games?.scripts?.cover_url || DEFAULT_COVER,
+          date: record.games?.play_time ? record.games.play_time.split('T')[0] : '未知時間',
+          gm: record.games?.gm_name || '無名氏',
+          exp: record.exp_gained || 0,
+          story_memory: record.games?.story_memory || '', // 這裡就是你要的手札！
+          branch: '劇光燈本館' // 之後如果要擴展可以從 DB 抓
+        }))
+      }
+    } catch (e) {
+      console.error('撈取歷史紀錄炸了：', e)
+    }
   }
 })
 
@@ -23,9 +68,6 @@ const openDetail = (game) => {
   selectedGame.value = game
   showModal.value = true
 }
-
-// 🚀 圖片備用邏輯：定義一個統一的預設封面
-const DEFAULT_COVER = 'https://images.unsplash.com/photo-1514467953502-5a7820e3efb4?w=600'
 </script>
 
 <template>

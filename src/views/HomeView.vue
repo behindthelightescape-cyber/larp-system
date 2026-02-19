@@ -7,24 +7,30 @@ const isLoaded = ref(false)
 
 const BRAND_LOGO = 'https://meee.com.tw/VInVFKh.png' 
 
+// 預設的假資料 (當網路很慢或是還沒登入時墊檔用)
 const MOCK_STATS = {
-  historyCount: 4,
-  daysJoined: 188,
-  level: 3,
-  points: 491,
+  historyCount: 0,
+  daysJoined: 0,
+  level: 1,
+  points: 0,
   nextLevel: 1000,
-  title: '主角光環的勇者'
+  title: '載入中...'
 }
 
+// 🚀 關鍵修正：全面改用 store.userData 與真實的資料庫欄位
 const stats = computed(() => {
-  return store.history.length > 0 ? {
-    historyCount: store.history.length,
-    daysJoined: store.daysJoined,
-    level: store.level,
-    points: store.profile?.points || 0,
-    nextLevel: (store.level + 1) * 1000,
-    title: store.profile?.title || '尚未獲得稱號'
-  } : MOCK_STATS
+  // 只要確定有登入資料，就顯示真實數據 (不管有沒有玩過遊戲)
+  if (store.userData) {
+    return {
+      historyCount: store.history?.length || 0,
+      daysJoined: store.daysJoined || 0,
+      level: store.userData.level || 1,
+      points: store.userData.total_exp || 0, // 真實欄位叫 total_exp
+      nextLevel: (store.userData.level || 1) * 1000,
+      title: store.userTitle || '新手冒險者' // 使用 store 算好的稱號
+    }
+  }
+  return MOCK_STATS
 })
 
 const expPercentage = computed(() => {
@@ -53,19 +59,19 @@ onMounted(() => {
 
         <div class="avatar-overlap">
           <div class="avatar-ring floating">
-            <img :src="store.profile?.picture_url || 'https://meee.com.tw/D45hJIi.PNG'" class="avatar-img" />
+            <img :src="store.userData?.picture_url || store.lineProfile?.pictureUrl || 'https://meee.com.tw/D45hJIi.PNG'" class="avatar-img" />
           </div>
           <div class="lv-badge">LV.{{ stats.level }}</div>
         </div>
 
         <div class="card-body">
-          <h1 class="user-name">{{ store.profile?.display_name || '顯示失敗' }}</h1>
+          <h1 class="user-name">{{ store.userData?.display_name || '載入中...' }}</h1>
           
           <div class="user-title-box">
             <span class="title-text">{{ stats.title }}</span>
           </div>
           
-          <p class="user-uid">UID: {{ store.profile?.serial_number || '00000' }}</p>
+          <p class="user-uid">UID: {{ store.userData?.legacy_id || '000000' }}</p>
 
           <div class="divider-line"></div>
 

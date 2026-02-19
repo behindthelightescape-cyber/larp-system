@@ -28,13 +28,15 @@ export const useUserStore = defineStore('user', () => {
   const initLiff = async () => {
     isLoading.value = true
     try {
+        alert('準備執行 liff.init') // 除錯 1
       await liff.init({ liffId: '2009161687-icfQU9r6' })
-
+        alert('liff.init 成功！準備檢查是否登入') // 除錯 2
       if (!liff.isLoggedIn()) {
+        alert('尚未登入，準備跳轉 LINE 登入畫面') // 除錯 3
         liff.login() // 沒登入踢去 LINE
         return
       }
-
+      alert('已經登入！準備抓資料')
       const profile = await liff.getProfile()
       lineProfile.value = profile
       

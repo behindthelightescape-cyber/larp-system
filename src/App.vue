@@ -1,11 +1,14 @@
 <script setup>
 import { onMounted } from 'vue'
+import { RouterView } from 'vue-router'
 import { useUserStore } from './stores/user'
 import BottomNav from './components/BottomNav.vue'
 
 const userStore = useUserStore()
 
 onMounted(async () => {
+  alert('🚀 網頁載入，準備啟動 LINE LIFF！') // 加上這行當作除錯
+  userStore.initLiff()
   console.log('App 啟動，背景紋理載入...')
 
  await userStore.fetchUserData('U65a94308551ccd456aca5e903d98cefd')

@@ -47,7 +47,16 @@ onMounted(async () => {
         id: record.id,
         title: record.games?.scripts?.title || '未知的神秘劇本',
         cover: record.games?.scripts?.cover_url || DEFAULT_COVER,
-        date: record.games?.play_time ? record.games.play_time.split('T')[0] : '未知時間',
+        date: record.games?.play_time 
+  ? new Date(record.games.play_time).toLocaleString('zh-TW', { 
+      year: 'numeric', 
+      month: '2-digit', 
+      day: '2-digit', 
+      hour: '2-digit', 
+      minute: '2-digit', 
+      hour12: false 
+    }).replace(/\//g, '-') // 把斜線換成橫槓，看起來比較有科技感
+  : '未知時間',
         gm: record.games?.gm_name || '無名氏',
         exp: record.exp_gained || 0,
         story_memory: record.games?.story_memory || '', // 手札絕對在這裡！

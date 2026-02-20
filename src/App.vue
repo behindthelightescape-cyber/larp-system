@@ -6,14 +6,10 @@ import BottomNav from './components/BottomNav.vue'
 
 const userStore = useUserStore()
 
-onMounted(async () => {
-  
+onMounted(() => {
+  // 小四特製：發射導彈，此時 userStore.isLoading 會保持 true 直到全劇終
   userStore.initLiff()
-  console.log('App 啟動，背景紋理載入...')
-
- 
-  
-  console.log('📡 呼叫指令已發出')
+  console.log('App 啟動，小四正在強迫 LINE 交出資料...')
 })
 </script>
 
@@ -22,15 +18,17 @@ onMounted(async () => {
     
     <div class="fixed-background">
       <div class="gradient-layer"></div>
-      
       <div class="pattern-layer"></div>
-      
       <div class="noise-layer"></div>
-      
       <div class="dust-layer"></div>
     </div>
 
-    <div class="page-content">
+    <div v-if="userStore.isLoading" class="global-loading-screen">
+      <div class="spinner"></div>
+      <p class="loading-text">連線至劇光燈主機中...</p>
+    </div>
+
+    <div v-else class="page-content">
       <router-view v-slot="{ Component }">
         <transition name="fade" mode="out-in">
           <component :is="Component" />
@@ -38,7 +36,7 @@ onMounted(async () => {
       </router-view>
     </div>
 
-    <BottomNav />
+    <BottomNav v-if="!userStore.isLoading" />
     
   </div>
 </template>
@@ -72,41 +70,33 @@ body {
   background-color: #000;
 }
 
-/* 1. 漸層層：舞台頂光 */
 .gradient-layer {
   position: absolute;
   top: 0; left: 0; width: 100%; height: 100%;
   background: radial-gradient(
     circle at 50% -20%, 
-    #ffd20a36 0%, /* 頂部稍微帶一點暗金 */
+    #ffd20a36 0%, 
     #111 40%, 
     #050505 100%
   );
 }
 
-/* 2. 🌟 花紋層：精品菱格紋 (CSS 繪製，絕對顯示) */
 .pattern-layer {
   position: absolute;
   top: 0; left: 0; width: 100%; height: 100%;
-  opacity: 0.6; /* 調整這裡可以改變花紋明顯度 (0.1 ~ 0.3) */
-  
-  /* 這是一種用 CSS 漸層交疊畫出的菱格紋 */
+  opacity: 0.6; 
   background-image: 
     linear-gradient(135deg, #D4AF37 25%, transparent 25%), 
     linear-gradient(225deg, #D4AF37 25%, transparent 25%), 
     linear-gradient(45deg, #D4AF37 25%, transparent 25%), 
     linear-gradient(315deg, #D4AF37 25%, transparent 25%);
-    
   background-position: 20px 0, 20px 0, 0 0, 0 0;
-  background-size: 40px 40px; /* 控制格子大小 */
+  background-size: 40px 40px; 
   background-repeat: repeat;
-  
-  /* 讓花紋融入背景，不要太突兀 */
   mix-blend-mode: overlay; 
   pointer-events: none;
 }
 
-/* 3. 噪點層 */
 .noise-layer {
   position: absolute;
   top: 0; left: 0; width: 100%; height: 100%;
@@ -115,7 +105,6 @@ body {
   pointer-events: none;
 }
 
-/* 4. 粒子層 */
 .dust-layer {
   position: absolute;
   top: 0; left: 0; width: 100%; height: 100%;
@@ -134,6 +123,40 @@ body {
   to { transform: translateY(-30px); }
 }
 
+/* === 🚀 小四新增的 Loading 畫面樣式 === */
+.global-loading-screen {
+  position: absolute;
+  top: 0; left: 0; width: 100%; height: 100vh;
+  display: flex; flex-direction: column; 
+  justify-content: center; align-items: center;
+  z-index: 9999;
+}
+
+.spinner {
+  width: 50px; height: 50px;
+  border: 4px solid rgba(212, 175, 55, 0.3);
+  border-top-color: #D4AF37;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  margin-bottom: 20px;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.loading-text {
+  color: #D4AF37;
+  font-size: 1.1rem;
+  letter-spacing: 2px;
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 0.6; }
+  50% { opacity: 1; }
+}
+
 /* === 內容層 === */
 .page-content {
   position: relative;
@@ -145,4 +168,3 @@ body {
 .fade-enter-active, .fade-leave-active { transition: opacity 0.3s ease; }
 .fade-enter-from, .fade-leave-to { opacity: 0; }
 </style>
-

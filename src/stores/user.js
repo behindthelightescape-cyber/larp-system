@@ -101,6 +101,7 @@ export const useUserStore = defineStore('user', () => {
   }
 
   // 🌟 C. 抓取歷史與優惠券 (🚀 你原本的心血都在這裡！)
+// 🌟 C. 抓取歷史與優惠券 (🚀 四哥搶救大作戰版)
   const fetchUserExtraData = async (userId) => {
     console.log("🚀 開始整合抓取資料，真實玩家 ID:", userId)
     try {
@@ -110,14 +111,21 @@ export const useUserStore = defineStore('user', () => {
       daysJoined.value = Math.ceil(Math.abs(today - joinDate) / (1000 * 60 * 60 * 24))
 
       // 2. 抓取遊玩紀錄
-      const { data: historyData } = await supabase
+      const { data: historyData, error: historyErr } = await supabase
         .from('game_participants')
         .select(`
           id, exp_gained, comment,
-          games ( play_time, gm_name, scripts ( title, cover_url ) )
-        `)
+          games ( 
+            play_time, 
+            gm_name, 
+            story_memory, 
+            scripts ( title, cover_url ) 
+          )
+        `) // 🚀 修正 1：把 story_memory 加進查詢清單！
         .eq('user_id', userId)
         .order('created_at', { ascending: false })
+
+      if (historyErr) throw historyErr
 
       if (historyData) {
         history.value = historyData.map(item => {
@@ -130,11 +138,18 @@ export const useUserStore = defineStore('user', () => {
             id: item.id,
             title: item.games?.scripts?.title || '未知劇本',
             cover: finalCover,
-            date: item.games?.play_time ? item.games.play_time.split('T')[0] : '未知日期',
+            // 🚀 修正 2：升級成完整時間格式 (年月日時分)
+            date: item.games?.play_time 
+              ? new Date(item.games.play_time).toLocaleString('zh-TW', { 
+                  year: 'numeric', month: '2-digit', day: '2-digit', 
+                  hour: '2-digit', minute: '2-digit', hour12: false 
+                }).replace(/\//g, '-') 
+              : '未知時間',
             gm: item.games?.gm_name || '未知 GM',
             exp: item.exp_gained || 100,
-            branch: '台北旗艦館', 
-            story_memory: item.comment 
+            branch: '劇光燈本館', // 既然都要搬家了，統一叫本館就好
+            // 🚀 修正 3：對準正確的欄位！是 games 裡面的 story_memory！
+            story_memory: item.games?.story_memory || '' 
           }
         })
       }

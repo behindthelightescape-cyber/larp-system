@@ -116,8 +116,13 @@ onMounted(() => {
         <div class="card-body">
           <h1 class="user-name">{{ store.userData?.display_name || '載入中...' }}</h1>
           
-          <div class="user-title-box clickable" @click="openTitleModal">
-            <span class="title-text">{{ stats.title }} <span class="edit-icon">✎</span></span>
+         <div class="title-group clickable" @click="openTitleModal">
+            <div class="user-title-box">
+              <span class="title-text">{{ stats.title }}</span>
+            </div>
+            <div class="edit-circle">
+              ✎
+            </div>
           </div>
           
           <p class="user-uid">UID: {{ store.userData?.legacy_id || '000000' }}</p>
@@ -240,17 +245,63 @@ onMounted(() => {
 .card-body { width: 100%; box-sizing: border-box; padding: 140px 30px 10px 30px; display: flex; flex-direction: column; align-items: center; }
 .user-name { font-size: 2.4rem; font-weight: 700; color: #fff; margin: 0 0 12px 0; text-shadow: 0 2px 10px rgba(0,0,0,0.8); line-height: 1.1; text-align: center; }
 
-/* 🚀 稱號按鈕特效 */
-.user-title-box { border: 1px solid rgba(212, 175, 55, 0.692); background: rgba(212, 175, 55, 0.05); padding: 6px 18px; border-radius: 8px; margin-bottom: 10px; }
-.user-title-box.clickable { cursor: pointer; transition: all 0.2s; position: relative; overflow: hidden; }
-.user-title-box.clickable:hover { background: rgba(212, 175, 55, 0.2); transform: scale(1.05); box-shadow: 0 0 15px rgba(212, 175, 55, 0.3); }
-.user-title-box.clickable:active { transform: scale(0.95); }
-.title-text { font-size: 1rem; color: #D4AF37; letter-spacing: 1.5px; display: flex; align-items: center; gap: 6px; }
-.edit-icon { font-size: 0.8rem; opacity: 0.7; }
+/* 🚀 稱號按鈕群組特效 (外掛鉛筆版) */
+.title-group { 
+  display: flex; 
+  align-items: center; 
+  gap: 12px; /* 稱號框跟鉛筆的距離 */
+  margin-bottom: 10px; 
+}
+.title-group.clickable { 
+  cursor: pointer; 
+  transition: all 0.2s; 
+}
+.title-group.clickable:active { 
+  transform: scale(0.95); 
+}
 
-.user-uid { font-size: 1.1rem; font-weight: bold; color: #D4AF37; letter-spacing: 2px; font-family: monospace; background: rgba(0, 0, 0, 0.4); padding: 6px 18px; border-radius: 20px; border: 1px solid rgba(212, 175, 55, 0.4); text-shadow: 0 0 5px rgba(212, 175, 55, 0.5); margin-top: 12px; }
-.divider-line { width: 100%; height: 1px; background: rgba(255,255,255,0.08); margin: 30px 0; }
+/* 稱號框本體 (純粹的徽章) */
+.user-title-box { 
+  border: 1px solid rgba(212, 175, 55, 0.692); 
+  background: rgba(212, 175, 55, 0.05); 
+  padding: 6px 18px; 
+  border-radius: 8px; 
+  transition: all 0.3s;
+}
+.title-text { 
+  font-size: 1rem; 
+  color: #D4AF37; 
+  letter-spacing: 1.5px; 
+  display: flex; 
+  align-items: center; 
+}
 
+/* 右側獨立的小鉛筆圓扣 */
+.edit-circle {
+  width: 28px; 
+  height: 28px; 
+  border-radius: 50%; 
+  background: rgba(255, 255, 255, 0.1); 
+  border: 1px solid #444;
+  color: #aaa;
+  display: flex; 
+  align-items: center; 
+  justify-content: center;
+  font-size: 0.85rem;
+  transition: all 0.3s;
+}
+
+/* 🚀 游標移過去的連動特效：框框發亮、鉛筆變金底黑字！ */
+.title-group.clickable:hover .user-title-box { 
+  background: rgba(212, 175, 55, 0.2); 
+  box-shadow: 0 0 15px rgba(212, 175, 55, 0.3); 
+}
+.title-group.clickable:hover .edit-circle {
+  background: #D4AF37;
+  color: #000;
+  border-color: #D4AF37;
+  box-shadow: 0 0 10px rgba(212, 175, 55, 0.5);
+}
 /* === 數據矩陣 === */
 .stats-matrix { display: flex; width: 100%; justify-content: center; margin-bottom: 35px; }
 .stat-cell { flex: 1; display: flex; flex-direction: column; align-items: center; position: relative; }

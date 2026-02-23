@@ -358,7 +358,7 @@ const openDetail = (game) => {
 .info-item .label { font-size: 0.75rem; color: #666; margin-bottom: 4px; }
 .info-item .value { font-size: 0.95rem; color: #ddd; }
 
-.memory-text {
+.memory-text { 
   color: #aaa;
   font-size: 0.9rem;
   line-height: 1.6;

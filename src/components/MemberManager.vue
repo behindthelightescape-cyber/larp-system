@@ -49,7 +49,8 @@ const selectMember = async (user) => {
   const [couponsRes, historyRes, achieveRes] = await Promise.all([
     supabase.from('coupons').select('*').eq('user_id', user.id).order('created_at', { ascending: false }),
     supabase.from('game_participants')
-      .select('created_at, character_name, games ( play_time, gm_name, scripts ( title ) )') // 🎯 就是這裡漏掉 character_name！
+      // 🚀 這裡一定要有 character_name 跟 story_memory！不然前端收不到！
+      .select('created_at, character_name, games ( play_time, gm_name, story_memory, scripts ( title ) )')
       .eq('user_id', user.id)
       .order('created_at', { ascending: false }),
     supabase.from('user_achievements')
@@ -191,7 +192,7 @@ const calculateDays = (dateString) => {
             <div v-for="history in memberHistory" :key="history.created_at" class="list-item">
               <div class="list-info">
                 <span style="font-weight:bold; color:#fff;">
-                  {{ history.games?.scripts?.title || history.character_name || '未知劇本' }}
+                 {{ history.games?.scripts?.title || history.character_name || history.games?.story_memory || '未知劇本' }}
                 </span>
                 <span class="list-sub">GM: {{ history.games?.gm_name || '無' }}</span>
               </div>

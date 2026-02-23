@@ -34,6 +34,7 @@ onMounted(async () => {
           scripts (
             title,
             cover_url
+            character_name
           )
         )
       `)

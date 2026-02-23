@@ -46,13 +46,19 @@ const filteredScripts = computed(() => {
 
 // === 2. 表單操作邏輯 ===
 // 點擊列表某個劇本進入編輯模式
+// 點擊列表某個劇本進入編輯模式
 const selectScriptToEdit = (script) => {
   isEditing.value = true
-  // 把資料倒進表單裡
   Object.assign(formData, script)
-  // 確保數字欄位是數字類型
   formData.base_exp = script.base_exp || 100
-  // 滾動到表單位置
+  
+  // 🚀 四哥防彈補丁：如果資料庫的 tags 是 null，強制轉成空字串，保護 includes 函數不當機！
+  formData.tags = script.tags || ''
+  
+  // 🚀 四哥防彈補丁 2：順便保護一下簡介跟手札
+  formData.intro_text = script.intro_text || ''
+  formData.default_story_memory = script.default_story_memory || ''
+
   document.querySelector('.script-form-section')?.scrollIntoView({ behavior: 'smooth' })
 }
 
@@ -100,12 +106,16 @@ const saveScript = async () => {
 }
 
 // === 3. TAG 點選邏輯 ===
+// === 3. TAG 點選邏輯 ===
 const toggleTag = (tagName) => {
-  let currentTags = formData.tags.split(',').map(t => t.trim()).filter(t => t)
+  // 🚀 防彈：確保 split 之前它是個字串
+  const safeTags = formData.tags || ''
+  let currentTags = safeTags.split(',').map(t => t.trim()).filter(t => t)
+  
   if (currentTags.includes(tagName)) {
-    currentTags = currentTags.filter(t => t !== tagName) // 已存在就移除
+    currentTags = currentTags.filter(t => t !== tagName) 
   } else {
-    currentTags.push(tagName) // 不存在就加入
+    currentTags.push(tagName) 
   }
   formData.tags = currentTags.join(', ')
 }
@@ -258,7 +268,7 @@ const compressImage = (file) => {
           
           <transition name="fade">
             <div v-if="formData.cover_url" class="preview-box">
-              <img :src="formData.cover_url" class="cover-preview">
+              <img :src="script.cover_url || 'https://placehold.co/40x60/222222/D4AF37?text=No+Cover'" class="mini-cover">
               <div v-if="isUploading" class="uploading-overlay">壓縮上傳中...</div>
             </div>
           </transition>

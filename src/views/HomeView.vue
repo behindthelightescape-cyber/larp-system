@@ -1,13 +1,14 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
 import { useUserStore } from '../stores/user'
+import { supabase } from '../supabase' // 🚀 記得要引入 supabase！
 
 const store = useUserStore()
 const isLoaded = ref(false)
 
 const BRAND_LOGO = 'https://meee.com.tw/VInVFKh.png' 
 
-// 預設的假資料 (當網路很慢或是還沒登入時墊檔用)
+// 預設的假資料
 const MOCK_STATS = {
   historyCount: 0,
   daysJoined: 0,
@@ -17,17 +18,16 @@ const MOCK_STATS = {
   title: '載入中...'
 }
 
-// 🚀 關鍵修正：全面改用 store.userData 與真實的資料庫欄位
 const stats = computed(() => {
-  // 只要確定有登入資料，就顯示真實數據 (不管有沒有玩過遊戲)
   if (store.userData) {
     return {
       historyCount: store.history?.length || 0,
       daysJoined: store.daysJoined || 0,
       level: store.userData.level || 1,
-      points: store.userData.total_exp || 0, // 真實欄位叫 total_exp
+      points: store.userData.total_exp || 0,
       nextLevel: (store.userData.level || 1) * 1000,
-      title: store.userTitle || '新手冒險者' // 使用 store 算好的稱號
+      // 🚀 優先顯示玩家自己選的稱號 (current_title)，如果沒有就顯示算好的，再沒有就新手
+      title: store.userData.current_title || store.userTitle || '新手冒險者' 
     }
   }
   return MOCK_STATS
@@ -36,6 +36,56 @@ const stats = computed(() => {
 const expPercentage = computed(() => {
   return Math.min((stats.value.points / stats.value.nextLevel) * 100, 100) + '%'
 })
+
+// === 🚀 稱號更換系統 ===
+const showTitleModal = ref(false)
+const availableTitles = ref([])
+const isLoadingTitles = ref(false)
+
+const openTitleModal = async () => {
+  if (!store.userData) return
+  showTitleModal.value = true
+  isLoadingTitles.value = true
+  availableTitles.value = ['新手冒險者'] // 預設給一個保底稱號
+
+  try {
+    // 去資料庫把這個玩家所有的「成就/稱號」挖出來
+    const { data, error } = await supabase
+      .from('user_achievements')
+      .select('achievements ( title )')
+      .eq('user_id', store.userData.id)
+
+    if (error) throw error
+
+    // 把資料整理成乾淨的陣列，並去除重複
+    if (data && data.length > 0) {
+      const titles = data.map(d => d.achievements?.title).filter(t => t)
+      availableTitles.value = [...new Set(['新手冒險者', ...titles])]
+    }
+  } catch (err) {
+    console.error('撈取稱號庫失敗:', err)
+  } finally {
+    isLoadingTitles.value = false
+  }
+}
+
+const changeTitle = async (newTitle) => {
+  try {
+    // 1. 寫回資料庫
+    const { error } = await supabase
+      .from('users')
+      .update({ current_title: newTitle })
+      .eq('id', store.userData.id)
+    
+    if (error) throw error
+
+    // 2. 更新畫面與 Store
+    store.userData.current_title = newTitle
+    showTitleModal.value = false
+  } catch (err) {
+    alert('更換稱號失敗，請稍後再試！')
+  }
+}
 
 onMounted(() => {
   setTimeout(() => {
@@ -54,7 +104,6 @@ onMounted(() => {
       </div>
 
       <div class="hero-card-container fade-in-up delay-1">
-        
         <div class="card-deco-top"></div>
 
         <div class="avatar-overlap">
@@ -67,8 +116,8 @@ onMounted(() => {
         <div class="card-body">
           <h1 class="user-name">{{ store.userData?.display_name || '載入中...' }}</h1>
           
-          <div class="user-title-box">
-            <span class="title-text">{{ stats.title }}</span>
+          <div class="user-title-box clickable" @click="openTitleModal">
+            <span class="title-text">{{ stats.title }} <span class="edit-icon">✎</span></span>
           </div>
           
           <p class="user-uid">UID: {{ store.userData?.legacy_id || '000000' }}</p>
@@ -100,11 +149,43 @@ onMounted(() => {
           </div>
 
         </div>
-        
         <div class="card-deco-bottom"></div>
       </div>
-
     </div>
+
+    <Teleport to="body">
+      <transition name="pop">
+        <div v-if="showTitleModal" class="modal-overlay" @click.self="showTitleModal = false">
+          <div class="modal-content title-modal">
+            
+            <div class="modal-top-bar">
+              <h3>更換個人稱號</h3>
+              <button class="close-btn-icon" @click="showTitleModal = false">✕</button>
+            </div>
+            
+            <div class="modal-body">
+              <div v-if="isLoadingTitles" class="loading-text">
+                <div class="spinner"></div>
+                正在翻找你的榮譽徽章...
+              </div>
+              <div v-else class="title-list">
+                <button 
+                  v-for="title in availableTitles" 
+                  :key="title"
+                  class="title-option-btn"
+                  :class="{ active: stats.title === title }"
+                  @click="changeTitle(title)"
+                >
+                  🎖️ {{ title }}
+                </button>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      </transition>
+    </Teleport>
+
   </div>
 </template>
 
@@ -119,9 +200,7 @@ onMounted(() => {
 
 .content-layer {
   display: flex; flex-direction: column; align-items: center;
-  /* 為了配合更大的頭像，這裡往下移更多 */
   padding-top: 0px;  
-  
   padding-left: 24px;
   padding-right: 24px;
 }
@@ -132,195 +211,89 @@ onMounted(() => {
 .enter-active .fade-in-down, .enter-active .fade-in-up { opacity: 1; transform: translateY(0); }
 .delay-1 { transition-delay: 0.2s; }
 
-/* === 1. LOGO === */
-.brand-header { margin-bottom: 100px; /* 留更多空間給超級大頭像 */ }
+/* === LOGO === */
+.brand-header { margin-bottom: 100px; }
 .brand-logo { height: 85px; object-fit: contain; filter: drop-shadow(0 0 10px rgba(212, 175, 55, 0.6)); }
 
-/* === 2. 英雄 ID 卡片 (核心調整區) === */
+/* === 英雄 ID 卡片 === */
 .hero-card-container {
-  width: 100%; 
-  
-  /* 🚀 關鍵 1: 寬度加大到 620px (接近平板寬度) */
-  max-width: 620px; 
-  
-  position: relative;
+  width: 100%; max-width: 620px; position: relative;
   background: rgba(20, 20, 20, 0.65);
-  backdrop-filter: blur(15px);
-  -webkit-backdrop-filter: blur(15px);
+  backdrop-filter: blur(15px); -webkit-backdrop-filter: blur(15px);
   border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 28px;
-  box-shadow: 0 25px 60px rgba(0, 0, 0, 0.6);
+  border-radius: 28px; box-shadow: 0 25px 60px rgba(0, 0, 0, 0.6);
   display: flex; flex-direction: column; align-items: center;
-  padding-bottom: 40px;
-  
-  /* RWD: 手機上寬度佔 92% */
-  margin: 0 15px;
+  padding-bottom: 40px; margin: 0 15px;
 }
+.card-deco-top { position: absolute; top: 0; left: 15%; right: 15%; height: 2px; background: linear-gradient(90deg, transparent, #D4AF37, transparent); }
+.card-deco-bottom { position: absolute; bottom: 0; left: 30%; right: 30%; height: 1px; background: linear-gradient(90deg, transparent, #555, transparent); }
 
-.card-deco-top {
-  position: absolute; top: 0; left: 15%; right: 15%; height: 2px;
-  background: linear-gradient(90deg, transparent, #D4AF37, transparent);
-}
-.card-deco-bottom {
-  position: absolute; bottom: 0; left: 30%; right: 30%; height: 1px;
-  background: linear-gradient(90deg, transparent, #555, transparent);
-}
-
-/* === 2.1 頭像 (超級大) === */
-.avatar-overlap {
-  position: absolute; 
-  /* 🚀 關鍵 2: 往上推更多 (-85px)，浮出水面 */
-  top: -85px; 
-  display: flex; flex-direction: column; align-items: center;
-  z-index: 10;
-}
-
-.avatar-ring {
-  /* 🚀 關鍵 3: 尺寸加大到 170px (原本 140) */
-  width: 170px; height: 170px;
-  border-radius: 50%;
-  padding: 6px;
-  background: linear-gradient(135deg, #fcca30, #222);
-  box-shadow: 0 15px 30px rgba(0,0,0,0.7);
-}
+/* === 頭像 === */
+.avatar-overlap { position: absolute; top: -85px; display: flex; flex-direction: column; align-items: center; z-index: 10; }
+.avatar-ring { width: 170px; height: 170px; border-radius: 50%; padding: 6px; background: linear-gradient(135deg, #fcca30, #222); box-shadow: 0 15px 30px rgba(0,0,0,0.7); }
 .floating { animation: float 4s ease-in-out infinite; }
 @keyframes float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-8px); } }
+.avatar-img { width: 100%; height: 100%; object-fit: cover; border-radius: 50%; border: 4px solid #1a1a1a; background: #000; }
+.lv-badge { margin-top: -18px; z-index: 11; background: #ffcf30; color: #000; font-weight: 900; font-size: 1rem; padding: 5px 16px; border-radius: 14px; box-shadow: 0 4px 12px rgba(0,0,0,0.5); font-family: 'Arial', sans-serif; letter-spacing: 1px; }
 
-.avatar-img {
-  width: 100%; height: 100%; object-fit: cover; border-radius: 50%;
-  border: 4px solid #1a1a1a;
-  background: #000;
-}
+/* === 角色資訊 === */
+.card-body { width: 100%; box-sizing: border-box; padding: 140px 30px 10px 30px; display: flex; flex-direction: column; align-items: center; }
+.user-name { font-size: 2.4rem; font-weight: 700; color: #fff; margin: 0 0 12px 0; text-shadow: 0 2px 10px rgba(0,0,0,0.8); line-height: 1.1; text-align: center; }
 
-.lv-badge {
-  margin-top: -18px; z-index: 11;
-  background: #ffcf30; color: #000;
-  font-weight: 900; 
-  font-size: 1rem; /* 字體加大 */
-  padding: 5px 16px; border-radius: 14px;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.5);
-  font-family: 'Arial', sans-serif;
-  letter-spacing: 1px;
-}
+/* 🚀 稱號按鈕特效 */
+.user-title-box { border: 1px solid rgba(212, 175, 55, 0.692); background: rgba(212, 175, 55, 0.05); padding: 6px 18px; border-radius: 8px; margin-bottom: 10px; }
+.user-title-box.clickable { cursor: pointer; transition: all 0.2s; position: relative; overflow: hidden; }
+.user-title-box.clickable:hover { background: rgba(212, 175, 55, 0.2); transform: scale(1.05); box-shadow: 0 0 15px rgba(212, 175, 55, 0.3); }
+.user-title-box.clickable:active { transform: scale(0.95); }
+.title-text { font-size: 1rem; color: #D4AF37; letter-spacing: 1.5px; display: flex; align-items: center; gap: 6px; }
+.edit-icon { font-size: 0.8rem; opacity: 0.7; }
 
-/* === 2.2 角色資訊 (防遮擋關鍵) === */
-.card-body {
-  width: 100%; box-sizing: border-box;
-  
-  /* 🚀 關鍵 4: Padding Top 加大到 140px！ */
-  /* 這就是讓名字往下移、不被遮住的魔法數字 */
-  padding: 140px 30px 10px 30px; 
-  
-  display: flex; flex-direction: column; align-items: center;
-}
+.user-uid { font-size: 1.1rem; font-weight: bold; color: #D4AF37; letter-spacing: 2px; font-family: monospace; background: rgba(0, 0, 0, 0.4); padding: 6px 18px; border-radius: 20px; border: 1px solid rgba(212, 175, 55, 0.4); text-shadow: 0 0 5px rgba(212, 175, 55, 0.5); margin-top: 12px; }
+.divider-line { width: 100%; height: 1px; background: rgba(255,255,255,0.08); margin: 30px 0; }
 
-.user-name {
-  /* 字體加大 */
-  font-size: 2.4rem; 
-  font-weight: 700; color: #fff; 
-  margin: 0 0 12px 0;
-  text-shadow: 0 2px 10px rgba(0,0,0,0.8);
-  line-height: 1.1;
-  text-align: center;
-}
-
-.user-title-box {
-  border: 1px solid rgba(212, 175, 55, 0.692);
-  background: rgba(212, 175, 55, 0.05);
-  padding: 6px 18px; border-radius: 8px; 
-  margin-bottom: 10px;
-}
-.title-text { font-size: 1rem; color: #D4AF37; letter-spacing: 1.5px; }
-
-.user-uid {
-  /* 1. 字體加大、加粗 */
-  font-size: 1.1rem; 
-  font-weight: bold;
-  
-  /* 2. 改成金色，不再是死氣沉沉的灰色 */
-  color: #D4AF37; 
-  
-  /* 3. 字距拉開，更有科技感 */
-  letter-spacing: 2px;
-  font-family: monospace; /* 等寬字體，像編碼一樣 */
-  
-  /* 4. 加個帥氣的半透明黑底框 */
-  background: rgba(0, 0, 0, 0.4);
-  padding: 6px 18px;
-  border-radius: 20px;
-  border: 1px solid rgba(212, 175, 55, 0.4); /* 淡淡的金框 */
-  
-  /* 5. 增加一點發光效果 */
-  text-shadow: 0 0 5px rgba(212, 175, 55, 0.5);
-  
-  margin-top: 12px; /* 跟上面的稱號拉開一點距離 */
-}
-.divider-line {
-  width: 100%; height: 1px; background: rgba(255,255,255,0.08);
-  margin: 30px 0;
-}
-
-/* === 2.3 數據矩陣 (字體加大) === */
-.stats-matrix {
-  display: flex; width: 100%; justify-content: center;
-  margin-bottom: 35px;
-}
-
-.stat-cell {
-  flex: 1; display: flex; flex-direction: column; align-items: center;
-  position: relative;
-}
-
+/* === 數據矩陣 === */
+.stats-matrix { display: flex; width: 100%; justify-content: center; margin-bottom: 35px; }
+.stat-cell { flex: 1; display: flex; flex-direction: column; align-items: center; position: relative; }
 .stat-gap { width: 50px; } 
-
-/* 右側分隔線 */
-.stat-cell:first-child::after {
-  content: ''; position: absolute; right: -25px; top: 10%; height: 80%;
-  width: 1px; background: rgba(255,255,255,0.1);
-}
-
+.stat-cell:first-child::after { content: ''; position: absolute; right: -25px; top: 10%; height: 80%; width: 1px; background: rgba(255,255,255,0.1); }
 .stat-label { font-size: 0.8rem; color: #888; font-weight: bold; letter-spacing: 2px; margin-bottom: 8px; }
-/* 數字超大 */
 .stat-num { font-size: 2.8rem; font-weight: 700; color: #fff; line-height: 1; }
 .stat-num.highlight { color: #D4AF37; text-shadow: 0 0 15px rgba(212, 175, 55, 0.4); }
 
-/* === 2.4 經驗條 === */
+/* === 經驗條 === */
 .exp-section { width: 100%; padding: 0 15px; box-sizing: border-box; }
 .exp-info { display: flex; justify-content: space-between; margin-bottom: 10px; font-size: 0.85rem; font-weight: bold; }
 .exp-label { color: #666; letter-spacing: 1px; }
 .exp-val { color: #ccc; }
+.exp-bar-bg { width: 100%; height: 10px; background: #222; border-radius: 5px; overflow: hidden; position: relative; box-shadow: inset 0 1px 3px rgba(0,0,0,0.5); }
+.exp-bar-fill { height: 100%; background: linear-gradient(90deg, #fac421, #D4AF37); border-radius: 5px; position: relative; transition: width 1s ease; }
+.exp-glare { position: absolute; top: 0; left: 0; width: 100%; height: 50%; background: rgba(255,255,255,0.25); }
 
-.exp-bar-bg {
-  width: 100%; height: 10px; background: #222;
-  border-radius: 5px; overflow: hidden; position: relative;
-  box-shadow: inset 0 1px 3px rgba(0,0,0,0.5);
-}
-.exp-bar-fill {
-  height: 100%; background: linear-gradient(90deg, #fac421, #D4AF37);
-  border-radius: 5px; position: relative;
-  transition: width 1s ease;
-}
-.exp-glare {
-  position: absolute; top: 0; left: 0; width: 100%; height: 50%;
-  background: rgba(255,255,255,0.25);
-}
+/* === 🚀 彈窗專屬 CSS === */
+.modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); z-index: 3000; display: flex; justify-content: center; align-items: flex-end; backdrop-filter: blur(5px); }
+.title-modal { height: 60vh; background: #161616; width: 100%; max-width: 600px; border-radius: 24px 24px 0 0; border-top: 1px solid #D4AF37; display: flex; flex-direction: column; }
+.modal-top-bar { display: flex; justify-content: space-between; align-items: center; padding: 20px 25px; border-bottom: 1px solid #222; }
+.modal-top-bar h3 { margin: 0; color: #D4AF37; font-size: 1.2rem; }
+.close-btn-icon { background: rgba(255,255,255,0.1); border: none; color: white; width: 32px; height: 32px; border-radius: 50%; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 1rem; }
+.modal-body { padding: 25px; overflow-y: auto; flex: 1; -webkit-overflow-scrolling: touch; }
+.title-list { display: flex; flex-direction: column; gap: 12px; }
+.title-option-btn { background: #1a1a1a; border: 1px solid #333; color: #ccc; padding: 18px; border-radius: 12px; font-size: 1.05rem; text-align: left; cursor: pointer; transition: 0.2s; display: flex; align-items: center; gap: 10px; }
+.title-option-btn:hover { background: #222; border-color: #555; }
+.title-option-btn.active { background: rgba(212, 175, 55, 0.15); border: 1px solid #D4AF37; color: #D4AF37; font-weight: bold; box-shadow: inset 0 0 10px rgba(212,175,55,0.1); }
+.loading-text { text-align: center; color: #888; padding: 40px; display: flex; flex-direction: column; align-items: center; gap: 15px;}
+.spinner { width: 30px; height: 30px; border: 3px solid rgba(212, 175, 55, 0.2); border-top-color: #D4AF37; border-radius: 50%; animation: spin 1s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.pop-enter-active, .pop-leave-active { transition: transform 0.3s cubic-bezier(0.2, 0.8, 0.2, 1); }
+.pop-enter-from, .pop-leave-to { transform: translateY(100%); }
 
-/* === RWD 手機版微調 (針對小螢幕適配) === */
 @media (max-width: 480px) {
   .brand-header { margin-bottom: 60px; }
   .hero-card-container { width: 95%; padding-bottom: 30px; }
-  
-  /* 手機上字體稍微收斂，但還是要大 */
   .user-name { font-size: 2rem; }
   .stat-num { font-size: 2.2rem; }
-  
-  /* 手機上 padding-top 也要夠，不然會遮住 */
   .card-body { padding-top: 110px; padding-left: 20px; padding-right: 20px; }
-  
-  /* 手機上頭像稍微縮小，避免佔據太多垂直空間 */
   .avatar-ring { width: 140px; height: 140px; }
   .avatar-overlap { top: -70px; }
-  
   .stat-gap { width: 30px; }
   .stat-cell:first-child::after { right: -15px; }
 }

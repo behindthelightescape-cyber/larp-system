@@ -7,6 +7,7 @@ import CouponManager from '../components/CouponManager.vue'
 import GameManager from '../components/GameManager.vue'
 import ScriptManager from '../components/ScriptManager.vue' // 🚀 引入最後一個零件！
 import SessionManager from '../components/SessionManager.vue' // 🚀 引入場次大廳！
+import DataImporter from '../components/DataImporter.vue'
 
 const session = ref(null)
 const isLoading = ref(true)
@@ -157,6 +158,9 @@ const changeTab = (tabName) => {
           <div class="dash-stat-card"><div class="dash-stat-label">流通票券</div><div class="dash-stat-number">{{ stats.coupons }}</div></div>
         </div>
         <button class="btn btn-gold" style="width: 200px;" @click="loadDashboardStats">🔄 手動更新數據</button>
+        <hr style="border-color: #222; margin: 40px 0;">
+       <DataImporter @update-stats="loadDashboardStats" />
+      
       </div>
 
       <div v-show="currentTab === 'member'" class="panel active">

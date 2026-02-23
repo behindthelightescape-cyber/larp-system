@@ -1,7 +1,6 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import { useUserStore } from '../stores/user'
-// 小四確認過：你說你已經解決路徑報錯，所以這行維持你的 '../supabase'
 import { supabase } from '../supabase' 
 
 const store = useUserStore()
@@ -11,10 +10,8 @@ const selectedGame = ref({})
 const DEFAULT_COVER = 'https://images.unsplash.com/photo-1514467953502-5a7820e3efb4?w=600'
 
 onMounted(async () => {
-  // 🚀 關鍵修正：對齊你 HOME 裡面的 store.userData
   const currentUserId = store.userData?.id || store.userId
   
-  // 小四防呆：如果抓不到 ID，直接終止，不要去查資料庫
   if (!currentUserId) {
     console.error('小四警告：抓不到玩家 ID！你確定你登入了嗎？還是 store.userData 裡面沒有 id 欄位？')
     return
@@ -23,10 +20,12 @@ onMounted(async () => {
   try {
     const { data, error } = await supabase
       .from('game_participants')
+      // 🚀 關鍵修正 1：character_name 必須拉到最外層！
       .select(`
         id,
         exp_gained,
         created_at,
+        character_name, 
         games (
           gm_name,
           play_time,
@@ -34,7 +33,6 @@ onMounted(async () => {
           scripts (
             title,
             cover_url
-            character_name
           )
         )
       `)
@@ -46,21 +44,19 @@ onMounted(async () => {
     if (data) {
       store.history = data.map(record => ({
         id: record.id,
-        title: record.games?.scripts?.title || '未知的神秘劇本',
+        // 🚀 關鍵修正 2：啟動三重防護罩！有建檔 > 舊紀錄名 > 備註 > 未知
+        title: record.games?.scripts?.title || record.character_name || record.games?.story_memory || '未知的神秘劇本',
         cover: record.games?.scripts?.cover_url || DEFAULT_COVER,
         date: record.games?.play_time 
-  ? new Date(record.games.play_time).toLocaleString('zh-TW', { 
-      year: 'numeric', 
-      month: '2-digit', 
-      day: '2-digit', 
-      hour: '2-digit', 
-      minute: '2-digit', 
-      hour12: false 
-    }).replace(/\//g, '-') // 把斜線換成橫槓，看起來比較有科技感
-  : '未知時間',
+          ? new Date(record.games.play_time).toLocaleString('zh-TW', { 
+              year: 'numeric', month: '2-digit', day: '2-digit', 
+              hour: '2-digit', minute: '2-digit', hour12: false 
+            }).replace(/\//g, '-') 
+          : '未知時間',
         gm: record.games?.gm_name || '無名氏',
         exp: record.exp_gained || 0,
-        story_memory: record.games?.story_memory || '', // 手札絕對在這裡！
+        // 如果 story_memory 被拿去當標題了(舊紀錄)，手札就顯示空，不然畫面會重複
+        story_memory: (record.games?.scripts?.title || record.character_name) ? (record.games?.story_memory || '') : '', 
         branch: '劇光燈本館' 
       }))
     }

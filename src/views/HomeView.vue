@@ -18,38 +18,32 @@ const MOCK_STATS = {
   title: '載入中...'
 }
 
+// 🚀 1. 在 stats 裡面新增一個隱藏判定
 const stats = computed(() => {
   if (store.userData) {
+    let displayTitle = store.userData.current_title || store.userTitle || '新手冒險者'
     return {
       historyCount: store.history?.length || 0,
       daysJoined: store.daysJoined || 0,
       level: store.userData.level || 1,
       points: store.userData.total_exp || 0,
       nextLevel: (store.userData.level || 1) * 1000,
-      // 🚀 優先顯示玩家自己選的稱號 (current_title)，如果沒有就顯示算好的，再沒有就新手
-      title: store.userData.current_title || store.userTitle || '新手冒險者' 
+      title: displayTitle,
+      isTitleHidden: displayTitle === '無稱號' // 🎯 判斷是不是選了無稱號
     }
   }
   return MOCK_STATS
 })
 
-const expPercentage = computed(() => {
-  return Math.min((stats.value.points / stats.value.nextLevel) * 100, 100) + '%'
-})
-
-// === 🚀 稱號更換系統 ===
-const showTitleModal = ref(false)
-const availableTitles = ref([])
-const isLoadingTitles = ref(false)
-
+// 🚀 2. 在 openTitleModal 裡面把「無稱號」加進清單
 const openTitleModal = async () => {
   if (!store.userData) return
   showTitleModal.value = true
   isLoadingTitles.value = true
-  availableTitles.value = ['新手冒險者'] // 預設給一個保底稱號
+  // 預設給一個「無稱號」跟「新手」保底
+  availableTitles.value = ['無稱號', '新手冒險者'] 
 
   try {
-    // 去資料庫把這個玩家所有的「成就/稱號」挖出來
     const { data, error } = await supabase
       .from('user_achievements')
       .select('achievements ( title )')
@@ -57,10 +51,10 @@ const openTitleModal = async () => {
 
     if (error) throw error
 
-    // 把資料整理成乾淨的陣列，並去除重複
     if (data && data.length > 0) {
       const titles = data.map(d => d.achievements?.title).filter(t => t)
-      availableTitles.value = [...new Set(['新手冒險者', ...titles])]
+      // 🎯 利用 Set 確保不重複，並且把無稱號固定在第一個！
+      availableTitles.value = [...new Set(['無稱號', '新手冒險者', ...titles])]
     }
   } catch (err) {
     console.error('撈取稱號庫失敗:', err)
@@ -117,7 +111,11 @@ onMounted(() => {
           <h1 class="user-name">{{ store.userData?.display_name || '載入中...' }}</h1>
           
          <div class="title-group clickable" @click="openTitleModal">
-            <div class="user-title-box">
+            <div 
+            class="user-title-box clickable" 
+            :class="{ 'is-hidden': stats.isTitleHidden }" 
+            @click="openTitleModal"
+          >
               <span class="title-text">{{ stats.title }}</span>
             </div>
             <div class="edit-circle">
@@ -260,47 +258,48 @@ onMounted(() => {
   transform: scale(0.95); 
 }
 
-/* 稱號框本體 (純粹的徽章) */
+/* === 🚀 稱號框本體 (純淨置中版) === */
 .user-title-box { 
   border: 1px solid rgba(212, 175, 55, 0.692); 
   background: rgba(212, 175, 55, 0.05); 
-  padding: 6px 18px; 
+  padding: 6px 24px; /* 兩側留白加大，更有呼吸感 */
   border-radius: 8px; 
-  transition: all 0.3s;
+  margin-bottom: 10px; 
+  transition: all 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
+  display: inline-flex; 
+  justify-content: center; 
+  align-items: center;
+  min-width: 120px; /* 確保框框不會太小 */
 }
+.user-title-box.clickable { cursor: pointer; }
+.user-title-box.clickable:hover { 
+  background: rgba(212, 175, 55, 0.2); 
+  box-shadow: 0 0 15px rgba(212, 175, 55, 0.3); 
+  transform: scale(1.05); /* 移過去會稍微放大發亮 */
+}
+.user-title-box.clickable:active { transform: scale(0.95); }
+
 .title-text { 
   font-size: 1rem; 
   color: #D4AF37; 
   letter-spacing: 1.5px; 
-  display: flex; 
-  align-items: center; 
+  text-align: center;
+  margin: 0;
 }
 
-/* 右側獨立的小鉛筆圓扣 */
-.edit-circle {
-  width: 28px; 
-  height: 28px; 
-  border-radius: 50%; 
-  background: rgba(255, 255, 255, 0.1); 
-  border: 1px solid #444;
-  color: #aaa;
-  display: flex; 
-  align-items: center; 
-  justify-content: center;
-  font-size: 0.85rem;
-  transition: all 0.3s;
+/* 🚀 選擇「無稱號」時的低調狀態 (Gray State) */
+.user-title-box.is-hidden {
+  border-color: rgba(255, 255, 255, 0.2);
+  background: rgba(0, 0, 0, 0.3);
 }
-
-/* 🚀 游標移過去的連動特效：框框發亮、鉛筆變金底黑字！ */
-.title-group.clickable:hover .user-title-box { 
-  background: rgba(212, 175, 55, 0.2); 
-  box-shadow: 0 0 15px rgba(212, 175, 55, 0.3); 
+.user-title-box.is-hidden .title-text {
+  color: #888; /* 字體變成低調的灰色 */
+  font-size: 0.9rem; /* 字體稍微縮小一點 */
 }
-.title-group.clickable:hover .edit-circle {
-  background: #D4AF37;
-  color: #000;
-  border-color: #D4AF37;
-  box-shadow: 0 0 10px rgba(212, 175, 55, 0.5);
+.user-title-box.is-hidden.clickable:hover {
+  background: rgba(255, 255, 255, 0.1);
+  box-shadow: 0 0 10px rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.4);
 }
 /* === 數據矩陣 === */
 .stats-matrix { display: flex; width: 100%; justify-content: center; margin-bottom: 35px; }

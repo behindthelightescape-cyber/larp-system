@@ -1,0 +1,338 @@
+<script setup>
+import { ref, onMounted } from 'vue'
+import { supabase } from '../supabase'
+import QRCode from 'qrcode' 
+import JSZip from 'jszip'    
+
+const emit = defineEmits(['update-stats'])
+
+const allScripts = ref([])
+const searchQuery = ref('')
+const searchResults = ref([])
+const selectedScript = ref(null)
+
+// 🚀 新增：控制下拉選單顯示與否的開關
+const showDropdown = ref(false)
+
+const gmName = ref('')
+const gameTime = ref('')
+const gameMemory = ref('')
+
+const batchQueue = ref([])
+const isGenerating = ref(false)
+const generatedImages = ref([])
+
+onMounted(async () => {
+  const now = new Date()
+  now.setMinutes(now.getMinutes() - now.getTimezoneOffset())
+  gameTime.value = now.toISOString().slice(0, 16)
+  
+  await loadScripts()
+})
+
+const loadScripts = async () => {
+  const { data } = await supabase.from('scripts').select('*').order('id', { ascending: false })
+  allScripts.value = data || []
+}
+
+// === 🚀 升級版：點擊展開全部，打字動態過濾 ===
+const filterScripts = () => {
+  showDropdown.value = true // 打開選單
+  const val = searchQuery.value.trim().toLowerCase()
+  
+  if (!val) {
+    // 如果沒打字，就把「所有劇本」通通塞進選單給他挑
+    searchResults.value = allScripts.value 
+    return
+  }
+  // 如果有打字，就過濾出相符的
+  searchResults.value = allScripts.value.filter(s => s.title.toLowerCase().includes(val))
+}
+
+const selectScript = (script) => {
+  selectedScript.value = script
+  searchQuery.value = script.title
+  gameMemory.value = script.default_story_memory || ''
+  showDropdown.value = false // 選完就收起選單
+}
+
+// 🚀 點擊旁邊空白處時，把選單收起來 (延遲 200ms 是為了讓點擊選單的事件先觸發)
+const closeDropdown = () => {
+  setTimeout(() => {
+    showDropdown.value = false
+  }, 200)
+}
+
+const addToQueue = () => {
+  if (!selectedScript.value || !gmName.value || !gameTime.value) {
+    return alert('劇本、GM 名稱或時間沒填完整！')
+  }
+
+  const d = new Date(gameTime.value)
+  // 🚀 四哥保證：這裡印出來的字絕對是 24 小時制 (例如 14:30)
+  const dt = `${d.getMonth()+1}/${d.getDate()} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`
+  const ft = `${d.getMonth()+1}${d.getDate()}_${d.getHours()}${d.getMinutes()}`
+
+  batchQueue.value.push({
+    sid: selectedScript.value.id,
+    sn: selectedScript.value.title,
+    gm: gmName.value,
+    t: gameTime.value,
+    dt,
+    ft,
+    mem: gameMemory.value
+  })
+
+  gmName.value = ''
+}
+
+const removeFromQueue = (index) => {
+  batchQueue.value.splice(index, 1)
+}
+
+const processBatch = async () => {
+  if (batchQueue.value.length === 0) return
+
+  isGenerating.value = true
+  generatedImages.value = [] 
+
+  try {
+    const LIFF_BASE_URL = 'https://liff.line.me/2009161687-icfQU9r6'
+
+    for (const item of batchQueue.value) {
+      const { data, error } = await supabase
+        .from('games')
+        .insert([{
+          script_id: item.sid, 
+          gm_name: item.gm, 
+          play_time: new Date(item.t), 
+          status: 'open', 
+          story_memory: item.mem
+        }])
+        .select()
+      
+      if (error) throw error
+
+      const url = `${LIFF_BASE_URL}?action=join&game_id=${data[0].id}`
+      const imgDataUrl = await generateLabelQR(url, item.sn, item.gm, item.dt)
+      
+      const safeName = item.sn.replace(/[\\/:*?"<>|]/g, "_")
+      generatedImages.value.push({
+        name: `${item.ft}_${safeName}_${item.gm}.png`,
+        data: imgDataUrl
+      })
+    }
+
+    batchQueue.value = []
+    emit('update-stats')
+    alert('✅ 所有場次建檔與 QR Code 繪製完成！')
+
+  } catch (error) {
+    console.error("生成失敗：", error)
+    alert("伺服器炸了，這 bug 找四哥：" + error.message)
+  } finally {
+    isGenerating.value = false
+  }
+}
+
+const generateLabelQR = async (text, scriptName, gmName, timeStr) => {
+  const qrDataUrl = await QRCode.toDataURL(text, { width: 250, margin: 1, color: { dark: '#000000', light: '#ffffff' } })
+  
+  return new Promise((resolve) => {
+    const img = new Image()
+    img.src = qrDataUrl
+    img.onload = () => {
+      const canvas = document.createElement('canvas')
+      const ctx = canvas.getContext('2d')
+      canvas.width = 300
+      canvas.height = 430
+
+      ctx.fillStyle = '#ffffff'
+      ctx.fillRect(0, 0, 300, 430)
+
+      ctx.drawImage(img, 25, 20)
+
+      ctx.textAlign = 'center'
+      ctx.fillStyle = '#000000'
+      ctx.font = scriptName.length > 10 ? 'bold 18px "Microsoft JhengHei", sans-serif' : 'bold 22px "Microsoft JhengHei", sans-serif'
+      ctx.fillText(scriptName, 150, 295)
+
+      ctx.fillStyle = '#555555'
+      ctx.font = '18px "Microsoft JhengHei", sans-serif'
+      ctx.fillText(`GM: ${gmName}`, 150, 325)
+
+      ctx.fillStyle = '#D4AF37'
+      ctx.font = 'bold 24px sans-serif'
+      ctx.fillText(timeStr, 150, 365)
+
+      ctx.fillStyle = '#cccccc'
+      ctx.font = '12px sans-serif'
+      ctx.fillText('劇光燈 LARP', 150, 400)
+
+      resolve(canvas.toDataURL("image/png"))
+    }
+  })
+}
+
+const downloadAllZip = async () => {
+  const zip = new JSZip()
+  const folder = zip.folder("QR_Codes")
+  
+  generatedImages.value.forEach(img => {
+    const base64Data = img.data.split(',')[1] 
+    folder.file(img.name, base64Data, { base64: true })
+  })
+
+  const blob = await zip.generateAsync({ type: "blob" })
+  const link = document.createElement('a')
+  link.href = URL.createObjectURL(blob)
+  link.download = `LARP_QR_${Date.now()}.zip`
+  link.click()
+}
+</script>
+
+<template>
+  <div class="game-manager-container">
+    
+    <div class="form-section">
+      <div class="form-grid">
+        <div class="form-group full">
+          <label>🔍 選擇劇本</label>
+          <div class="search-wrapper">
+            <input 
+              v-model="searchQuery" 
+              @input="filterScripts"
+              @focus="filterScripts"
+              @blur="closeDropdown"
+              type="text" 
+              class="admin-input select-input" 
+              placeholder="點擊展開所有劇本，或直接輸入關鍵字搜尋..." 
+              autocomplete="off"
+            >
+            <span class="dropdown-arrow">▼</span>
+
+            <div v-show="showDropdown && searchResults.length > 0" class="search-results">
+              <div 
+                v-for="s in searchResults" 
+                :key="s.id" 
+                class="search-item"
+                @click="selectScript(s)"
+              >
+                <span class="script-title-item">{{ s.title }}</span>
+                <span class="script-limit">{{ s.player_limit || '' }}</span>
+              </div>
+            </div>
+            <div v-show="showDropdown && searchResults.length === 0" class="search-results empty">
+              找不到這本劇本喔！
+            </div>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>帶場 GM</label>
+          <input v-model="gmName" type="text" class="admin-input" placeholder="例如: 小四">
+        </div>
+        <div class="form-group">
+          <label>開場時間 (掃碼圖片將強制轉為24小時制)</label>
+          <input v-model="gameTime" type="datetime-local" class="admin-input">
+        </div>
+        
+        <div class="form-group full">
+          <label>📜 預設手札 (載入劇本後可手動修改)</label>
+          <textarea v-model="gameMemory" class="admin-input" rows="3" placeholder="這裡會自動載入劇本預設手札..."></textarea>
+        </div>
+      </div>
+      
+      <button class="btn btn-gold" @click="addToQueue">➕ 加入清單</button>
+    </div>
+
+    <div v-if="batchQueue.length > 0" class="queue-section mt-4">
+      <h4 style="color: #D4AF37; margin-bottom: 10px;">待生成清單 ({{ batchQueue.length }})</h4>
+      <div class="batch-list">
+        <div v-for="(item, index) in batchQueue" :key="index" class="batch-item">
+          <div class="item-info">
+            <strong>{{ item.sn }}</strong>
+            <span class="item-sub">GM: {{ item.gm }} | <span style="color:#D4AF37;">{{ item.dt }}</span></span>
+          </div>
+          <button class="btn-mini-red" @click="removeFromQueue(index)">✕</button>
+        </div>
+      </div>
+
+      <button class="btn btn-green full-width mt-3" @click="processBatch" :disabled="isGenerating">
+        {{ isGenerating ? '⚡ 魔法繪製中...' : '⚡ 確認生成 QR Code' }}
+      </button>
+    </div>
+
+    <div v-if="generatedImages.length > 0" class="result-section mt-4">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+        <h4 style="color: #2ecc71; margin: 0;">✅ 生成完畢</h4>
+        <button class="btn btn-blue btn-small" @click="downloadAllZip">📦 下載 ZIP 包</button>
+      </div>
+      
+      <div class="preview-grid">
+        <div v-for="(img, idx) in generatedImages" :key="idx" class="preview-card">
+          <img :src="img.data" class="qr-preview-img">
+          <div class="preview-name">{{ img.name }}</div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</template>
+
+<style scoped>
+.game-manager-container { display: flex; flex-direction: column; }
+
+.form-section { background: #111; padding: 25px; border-radius: 12px; border: 1px solid #222; }
+.form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px; }
+.form-group { display: flex; flex-direction: column; position: relative; }
+.form-group.full { grid-column: span 2; }
+.form-group label { margin-bottom: 8px; color: #aaa; font-size: 0.9rem; font-weight: bold; }
+.admin-input { width: 100%; padding: 12px; background: #222; border: 1px solid #444; color: white; border-radius: 8px; font-size: 1rem; font-family: inherit;}
+.admin-input:focus { border-color: #D4AF37; outline: none; }
+textarea.admin-input { resize: vertical; }
+
+/* 🚀 下拉選單樣式升級 */
+.search-wrapper { position: relative; }
+.select-input { padding-right: 30px; cursor: pointer; }
+.dropdown-arrow { position: absolute; right: 12px; top: 14px; color: #888; font-size: 0.8rem; pointer-events: none; }
+.search-results { position: absolute; top: 100%; left: 0; right: 0; margin-top: 5px; background: #2a2a2a; border: 1px solid #444; border-radius: 8px; max-height: 250px; overflow-y: auto; z-index: 100; box-shadow: 0 10px 30px rgba(0,0,0,0.8); }
+.search-item { padding: 12px 15px; cursor: pointer; border-bottom: 1px solid #333; display: flex; justify-content: space-between; align-items: center; }
+.search-item:hover { background: #D4AF37; color: black; }
+.script-title-item { font-weight: bold; }
+.script-limit { font-size: 0.8rem; color: #aaa; }
+.search-item:hover .script-limit { color: #333; }
+.search-results.empty { padding: 15px; text-align: center; color: #888; }
+
+.btn { padding: 12px 20px; border: none; font-weight: bold; border-radius: 8px; cursor: pointer; transition: 0.2s; }
+.btn-gold { background: #D4AF37; color: black; width: 100%; }
+.btn-gold:hover { background: #e5c358; }
+.btn-green { background: #2ecc71; color: black; font-size: 1.1rem; padding: 15px;}
+.btn-green:hover { background: #27ae60; }
+.btn-blue { background: #3498db; color: white; }
+.btn-blue:hover { background: #2980b9; }
+.btn-small { padding: 8px 15px; font-size: 0.9rem; }
+.btn-mini-red { background: #331111; color: #ff5555; border: 1px solid #552222; padding: 4px 10px; border-radius: 6px; cursor: pointer; font-weight: bold; }
+.btn-mini-red:hover { background: #ff5555; color: white; }
+
+.full-width { width: 100%; }
+.mt-3 { margin-top: 15px; }
+.mt-4 { margin-top: 25px; }
+
+.queue-section { background: #1a1a1a; padding: 20px; border-radius: 12px; border: 1px solid #333; }
+.batch-item { background: #222; padding: 12px 15px; margin-bottom: 10px; border-radius: 8px; border-left: 4px solid #D4AF37; display: flex; justify-content: space-between; align-items: center; }
+.item-info { display: flex; flex-direction: column; gap: 4px; }
+.item-sub { font-size: 0.85rem; color: #888; }
+
+.result-section { background: #111; padding: 20px; border-radius: 12px; border: 1px dashed #2ecc71; }
+.preview-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 15px; }
+.preview-card { background: #fff; padding: 10px; border-radius: 8px; text-align: center; }
+.qr-preview-img { width: 100%; height: auto; border-radius: 4px; border: 1px solid #eee; }
+.preview-name { font-size: 0.7rem; color: #666; margin-top: 8px; word-break: break-all; }
+
+@media (max-width: 768px) {
+  .form-grid { grid-template-columns: 1fr; gap: 15px; }
+  .form-group.full { grid-column: span 1; }
+  .preview-grid { grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); }
+}
+</style>

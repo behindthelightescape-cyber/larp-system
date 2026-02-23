@@ -1,15 +1,23 @@
 <script setup>
+import { useRoute } from 'vue-router'
 // 無需邏輯，純視覺輸出
+const route = useRoute()
 </script>
 
 <template>
-  <nav class="bottom-nav">
+    
+
+
+<nav v-if="route.path !== '/admin'" class="bottom-nav">
+    
     <router-link to="/" class="nav-item">
       <svg class="icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
         <path d="M3 9.75L12 3L21 9.75V21H15V15H9V21H3V9.75Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
       </svg>
       <span class="label">首頁</span>
     </router-link>
+
+    
 
     <router-link to="/history" class="nav-item">
       <svg class="icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">

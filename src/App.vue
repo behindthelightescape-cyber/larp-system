@@ -7,7 +7,13 @@ import BottomNav from './components/BottomNav.vue'
 const userStore = useUserStore()
 
 onMounted(() => {
-  // 小四特製：發射導彈，此時 userStore.isLoading 會保持 true 直到全劇終
+if (window.location.hash.includes('#/admin')) {
+    console.log('🕵️‍♂️ 偵測到老闆走後台通道，跳過 LINE 看門狗！')
+    userStore.isLoading = false // 直接把 Loading 畫面關掉放行
+    return // 🚀 關鍵：看到 return，後面的程式碼就不會執行，LIFF 就不會被叫起床！
+  }
+
+  // 如果是一般玩家的網址，才放狗咬人 (執行 LINE 登入)
   userStore.initLiff()
   console.log('App 啟動，小四正在強迫 LINE 交出資料...')
 })

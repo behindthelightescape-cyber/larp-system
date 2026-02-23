@@ -1,7 +1,7 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
 import { useUserStore } from '../stores/user'
-import { supabase } from '../supabase' // 🚀 記得要引入 supabase！
+import { supabase } from '../supabase'
 
 const store = useUserStore()
 const isLoaded = ref(false)
@@ -40,6 +40,7 @@ const openTitleModal = async () => {
   if (!store.userData) return
   showTitleModal.value = true
   isLoadingTitles.value = true
+  
   // 預設給一個「無稱號」跟「新手」保底
   availableTitles.value = ['無稱號', '新手冒險者'] 
 
@@ -81,6 +82,14 @@ const changeTitle = async (newTitle) => {
   }
 }
 
+const showTitleModal = ref(false)
+const availableTitles = ref([])
+const isLoadingTitles = ref(false)
+
+const expPercentage = computed(() => {
+  return Math.min((stats.value.points / stats.value.nextLevel) * 100, 100) + '%'
+})
+
 onMounted(() => {
   setTimeout(() => {
     isLoaded.value = true
@@ -110,17 +119,12 @@ onMounted(() => {
         <div class="card-body">
           <h1 class="user-name">{{ store.userData?.display_name || '載入中...' }}</h1>
           
-         <div class="title-group clickable" @click="openTitleModal">
-            <div 
+          <div 
             class="user-title-box clickable" 
             :class="{ 'is-hidden': stats.isTitleHidden }" 
             @click="openTitleModal"
           >
-              <span class="title-text">{{ stats.title }}</span>
-            </div>
-            <div class="edit-circle">
-              ✎
-            </div>
+            <span class="title-text">{{ stats.title }}</span>
           </div>
           
           <p class="user-uid">UID: {{ store.userData?.legacy_id || '000000' }}</p>
@@ -179,7 +183,7 @@ onMounted(() => {
                   :class="{ active: stats.title === title }"
                   @click="changeTitle(title)"
                 >
-                  🎖️ {{ title }}
+                  <span v-if="title !== '無稱號'">🎖️ </span>{{ title }}
                 </button>
               </div>
             </div>
@@ -243,39 +247,24 @@ onMounted(() => {
 .card-body { width: 100%; box-sizing: border-box; padding: 140px 30px 10px 30px; display: flex; flex-direction: column; align-items: center; }
 .user-name { font-size: 2.4rem; font-weight: 700; color: #fff; margin: 0 0 12px 0; text-shadow: 0 2px 10px rgba(0,0,0,0.8); line-height: 1.1; text-align: center; }
 
-/* 🚀 稱號按鈕群組特效 (外掛鉛筆版) */
-.title-group { 
-  display: flex; 
-  align-items: center; 
-  gap: 12px; /* 稱號框跟鉛筆的距離 */
-  margin-bottom: 10px; 
-}
-.title-group.clickable { 
-  cursor: pointer; 
-  transition: all 0.2s; 
-}
-.title-group.clickable:active { 
-  transform: scale(0.95); 
-}
-
 /* === 🚀 稱號框本體 (純淨置中版) === */
 .user-title-box { 
   border: 1px solid rgba(212, 175, 55, 0.692); 
   background: rgba(212, 175, 55, 0.05); 
-  padding: 6px 24px; /* 兩側留白加大，更有呼吸感 */
+  padding: 6px 24px; 
   border-radius: 8px; 
   margin-bottom: 10px; 
   transition: all 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
   display: inline-flex; 
   justify-content: center; 
   align-items: center;
-  min-width: 120px; /* 確保框框不會太小 */
+  min-width: 120px;
 }
 .user-title-box.clickable { cursor: pointer; }
 .user-title-box.clickable:hover { 
   background: rgba(212, 175, 55, 0.2); 
   box-shadow: 0 0 15px rgba(212, 175, 55, 0.3); 
-  transform: scale(1.05); /* 移過去會稍微放大發亮 */
+  transform: scale(1.05); 
 }
 .user-title-box.clickable:active { transform: scale(0.95); }
 
@@ -285,22 +274,27 @@ onMounted(() => {
   letter-spacing: 1.5px; 
   text-align: center;
   margin: 0;
+  transition: all 0.3s;
 }
 
-/* 🚀 選擇「無稱號」時的低調狀態 (Gray State) */
+/* 🚀 選擇「無稱號」時的低調狀態 */
 .user-title-box.is-hidden {
-  border-color: rgba(255, 255, 255, 0.2);
-  background: rgba(0, 0, 0, 0.3);
+  border-color: rgba(255, 255, 255, 0.15);
+  background: rgba(0, 0, 0, 0.4);
 }
 .user-title-box.is-hidden .title-text {
-  color: #888; /* 字體變成低調的灰色 */
-  font-size: 0.9rem; /* 字體稍微縮小一點 */
+  color: #777; 
+  font-size: 0.9rem; 
 }
 .user-title-box.is-hidden.clickable:hover {
   background: rgba(255, 255, 255, 0.1);
-  box-shadow: 0 0 10px rgba(255, 255, 255, 0.1);
-  border-color: rgba(255, 255, 255, 0.4);
+  box-shadow: 0 0 10px rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.3);
 }
+
+.user-uid { font-size: 1.1rem; font-weight: bold; color: #D4AF37; letter-spacing: 2px; font-family: monospace; background: rgba(0, 0, 0, 0.4); padding: 6px 18px; border-radius: 20px; border: 1px solid rgba(212, 175, 55, 0.4); text-shadow: 0 0 5px rgba(212, 175, 55, 0.5); margin-top: 12px; }
+.divider-line { width: 100%; height: 1px; background: rgba(255,255,255,0.08); margin: 30px 0; }
+
 /* === 數據矩陣 === */
 .stats-matrix { display: flex; width: 100%; justify-content: center; margin-bottom: 35px; }
 .stat-cell { flex: 1; display: flex; flex-direction: column; align-items: center; position: relative; }
@@ -319,7 +313,7 @@ onMounted(() => {
 .exp-bar-fill { height: 100%; background: linear-gradient(90deg, #fac421, #D4AF37); border-radius: 5px; position: relative; transition: width 1s ease; }
 .exp-glare { position: absolute; top: 0; left: 0; width: 100%; height: 50%; background: rgba(255,255,255,0.25); }
 
-/* === 🚀 彈窗專屬 CSS === */
+/* === 彈窗專屬 CSS === */
 .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); z-index: 3000; display: flex; justify-content: center; align-items: flex-end; backdrop-filter: blur(5px); }
 .title-modal { height: 60vh; background: #161616; width: 100%; max-width: 600px; border-radius: 24px 24px 0 0; border-top: 1px solid #D4AF37; display: flex; flex-direction: column; }
 .modal-top-bar { display: flex; justify-content: space-between; align-items: center; padding: 20px 25px; border-bottom: 1px solid #222; }

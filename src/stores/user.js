@@ -66,6 +66,7 @@ export const useUserStore = defineStore('user', () => {
   }
 
   // 🌟 B. 登入與註冊邏輯
+ // 🌟 B. 登入與註冊邏輯
   const checkAndRegisterUser = async (profile) => {
     let { data: existingUser } = await supabase
       .from('users')
@@ -75,18 +76,39 @@ export const useUserStore = defineStore('user', () => {
 
     if (existingUser) {
       console.log('✅ 找到老會員:', existingUser.display_name)
-        userData.value = existingUser
-        isLoggedIn.value = true
+      userData.value = existingUser
+      isLoggedIn.value = true
     } else {
-    console.log('✨ 查無此人，準備註冊新會員...')
-      const randomId = Math.floor(100000 + Math.random() * 900000).toString()
+      console.log('✨ 查無此人，準備註冊新會員...')
+      
+      // 🚀 1. 抓取目前資料庫裡「最大」的會員編號
+      let nextIdNumber = 1
+      const { data: maxUsers, error: maxErr } = await supabase
+        .from('users')
+        .select('legacy_id')
+        .order('legacy_id', { ascending: false }) // 由大排到小
+        .limit(1) // 只抓最大的一個
+
+      if (!maxErr && maxUsers && maxUsers.length > 0 && maxUsers[0].legacy_id) {
+        // 將字串 (例如 "00001000") 轉成純數字 (1000)
+        const currentMax = parseInt(maxUsers[0].legacy_id, 10)
+        if (!isNaN(currentMax)) {
+          nextIdNumber = currentMax + 1 // 號碼牌往後排一號
+        }
+      }
+      
+      // 🚀 2. 把數字轉回 8 碼的字串 (例如 1001 會變成 "00001001")
+      // (如果你喜歡 6 碼就改成 padStart(6, '0'))
+      const newLegacyId = String(nextIdNumber).padStart(8, '0')
+
+      // 🚀 3. 執行正式註冊
       const { data: newUser, error: insertError } = await supabase
         .from('users')
         .insert([{
           id: profile.userId,
           display_name: profile.displayName,
           picture_url: profile.pictureUrl,
-          legacy_id: randomId,
+          legacy_id: newLegacyId, // 塞入最新的流水號！
           level: 1,
           total_exp: 0
         }])
@@ -94,9 +116,10 @@ export const useUserStore = defineStore('user', () => {
         .single()
 
       if (insertError) throw insertError
+      
       userData.value = newUser
       isLoggedIn.value = true
-      alert(`歡迎！您的會員編號是 ${randomId}`)
+      alert(`🎉 註冊成功！歡迎加入，您的專屬會員編號是：${newLegacyId}`)
     }
   }
 
@@ -146,8 +169,8 @@ export const useUserStore = defineStore('user', () => {
                 }).replace(/\//g, '-') 
               : '未知時間',
             gm: item.games?.gm_name || '未知 GM',
-            exp: item.exp_gained || 100,
-            branch: '劇光燈本館', // 既然都要搬家了，統一叫本館就好
+            exp: item.exp_gained || 50,
+            branch: '劇光燈西門館', // 既然都要搬家了，統一叫本館就好
             // 🚀 修正 3：對準正確的欄位！是 games 裡面的 story_memory！
             story_memory: item.games?.story_memory || '' 
           }

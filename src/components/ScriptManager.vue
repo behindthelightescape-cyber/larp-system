@@ -48,6 +48,7 @@ const fetchScripts = async () => {
 }
 
 // 圖片上傳系統
+// 🚀 全新上傳系統：直接對準你們原本就有的 covers 倉庫！
 const handleFileUpload = async (event) => {
   const file = event.target.files[0]
   if (!file) return
@@ -58,13 +59,15 @@ const handleFileUpload = async (event) => {
     const fileName = `${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`
     const filePath = `${fileName}` 
 
+    // 1. 上傳到你們原本的 covers 倉庫
     const { error: uploadError } = await supabase.storage
-      .from('script_covers') 
+      .from('covers') // 👈 已經幫你改成 covers 了！
       .upload(filePath, file)
 
     if (uploadError) throw uploadError
 
-    const { data } = supabase.storage.from('script_covers').getPublicUrl(filePath)
+    // 2. 取得公開網址並塞進表單
+    const { data } = supabase.storage.from('covers').getPublicUrl(filePath) // 👈 這裡也改了！
     form.value.cover_url = data.publicUrl
 
   } catch (error) {

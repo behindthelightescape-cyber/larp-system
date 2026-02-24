@@ -13,7 +13,7 @@ const props = defineProps({
 })
 
 const emit = defineEmits(['update-stats'])
-
+const gameExp = ref(100)
 const allScripts = ref([])
 const searchQuery = ref('')
 const searchResults = ref([])
@@ -60,6 +60,10 @@ const selectScript = (script) => {
   selectedScript.value = script
   searchQuery.value = script.title
   gameMemory.value = script.default_story_memory || ''
+  
+  // 🚀 關鍵：選擇劇本時，自動把該劇本的 base_exp 帶入！(如果沒設就預設 100)
+  gameExp.value = script.base_exp || 50 
+  
   showDropdown.value = false 
 }
 
@@ -86,7 +90,8 @@ const addToQueue = () => {
     dt,
     ft,
     mem: gameMemory.value,
-    branchName: selectedBranch.value // 🚀 3. 把場館資訊一起塞進待辦清單
+    branchName: selectedBranch.value, // 🚀 3. 把場館資訊一起塞進待辦清單
+    exp: gameExp.value
   })
 
   gmName.value = ''
@@ -115,7 +120,8 @@ const processBatch = async () => {
           play_time: new Date(item.t), 
           status: 'open', 
           story_memory: item.mem,
-          branch_name: item.branchName 
+          branch_name: item.branchName,
+          base_exp: item.exp
         }])
         .select()
       
@@ -258,6 +264,11 @@ const downloadAllZip = async () => {
           <input v-model="gameTime" type="datetime-local" class="admin-input">
         </div>
         
+        <div class="form-group">
+          <label>✨ 本場發放 EXP (活動可加碼)</label>
+          <input v-model="gameExp" type="number" class="admin-input" style="color: #D4AF37; font-weight: bold; font-size: 1.1rem;">
+        </div>
+
         <div class="form-group full">
           <label>📜 預設手札 (載入劇本後可手動修改)</label>
           <textarea v-model="gameMemory" class="admin-input" rows="3" placeholder="這裡會自動載入劇本預設手札..."></textarea>

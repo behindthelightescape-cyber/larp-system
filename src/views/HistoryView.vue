@@ -17,7 +17,7 @@ onMounted(async () => {
     return
   }
 
-  try {
+try {
     const { data, error } = await supabase
       .from('game_participants')
       .select(`
@@ -31,6 +31,7 @@ onMounted(async () => {
           play_time,
           story_memory,
           branch_name, 
+          base_exp, /* 🚀 關鍵 1：把包廂的懸賞金也查出來當保險！ */
           scripts (
             title,
             cover_url
@@ -82,7 +83,7 @@ onMounted(async () => {
               }).replace(/\//g, '-') 
             : '未知時間',
           gm: record.games?.gm_name || '無名氏',
-          exp: record.exp_gained || 0,
+          exp: record.exp_gained || record.games?.base_exp || 0,
           story_memory: finalMemory, // 👈 換上算好的乾淨手札
           branch: finalBranch
         }

@@ -4,13 +4,14 @@ import { supabase } from '../supabase'
 
 const isLoaded = ref(false)
 const totalUsers = ref(0) 
+const churnScripts = ref([])
 
 const levelStats = ref({ lv1: 0, lv2: 0, lv3Plus: 0 })
 const analyticsStats = ref({
   played_0: 0, played_1: 0, played_2_3: 0, played_4_5: 0, played_6_plus: 0
 })
 
-// 🚀 新增：活躍度與劇本排行榜狀態
+// 🚀 活躍度與劇本排行榜狀態
 const recencyStats = ref({ active_6m: 0, inactive_6m_1y: 0, churned_1y_plus: 0 })
 const allScriptsPop = ref([])
 const scriptSearch = ref('')
@@ -51,7 +52,7 @@ const loadAnalytics = async () => {
     const { data: playData } = await supabase.from('player_analytics').select('*').single()
     if (playData) analyticsStats.value = playData
 
-    // 4. 🚀 算活躍度 (最後遊玩時間)
+    // 4. 算活躍度 (最後遊玩時間)
     const { data: recencyData } = await supabase.from('player_recency_analytics').select('*').single()
     if (recencyData) {
       recencyStats.value = {
@@ -61,9 +62,13 @@ const loadAnalytics = async () => {
       }
     }
 
-    // 5. 🚀 抓取劇本搖錢樹排行榜
+    // 5. 抓取劇本搖錢樹排行榜
     const { data: scriptData } = await supabase.from('script_popularity_analytics').select('*')
     if (scriptData) allScriptsPop.value = scriptData
+
+    // 6. 抓取「退坑劇本」排行榜 (只抓前 10 名最嚴重的)
+    const { data: churnData } = await supabase.from('churn_script_analytics').select('*').limit(10)
+    if (churnData) churnScripts.value = churnData
 
   } catch (error) {
     console.error("深度分析讀取失敗", error)
@@ -125,6 +130,39 @@ const loadAnalytics = async () => {
         </div>
       </div>
 
+  <div class="level-stats-section mt-4" style="border-color: #552222; background: #1a0f0f;">
+        <h4 class="section-title" style="border-left-color: #e74c3c; color: #e74c3c; margin-bottom: 5px;">
+          💔 潛在退坑劇本警報 (流失率排行榜)
+        </h4>
+        <p style="color: #aaa; font-size: 0.85rem; margin-bottom: 15px;">
+          *以「流失率」排名。流失率高代表多數玩家玩完這本後，超過半年未回流。 (僅統計總遊玩人次 > 20 人之劇本)
+        </p>
+        
+        <div class="script-list" style="border-color: #442222; max-height: 300px;">
+          <div class="script-row header" style="background: #2a1111; color: #e74c3c; border-bottom-color: #442222;">
+            <span class="rank-col">警報</span>
+            <span class="name-col">最後遊玩劇本</span>
+            <span class="count-col" style="width: 130px; text-align: right;">流失率 (人數)</span>
+          </div>
+          <div v-for="(script, idx) in churnScripts" :key="idx" class="script-row" style="border-bottom-color: #331111;">
+            <span class="rank-col">
+              <span v-if="idx === 0" style="font-size: 1.2rem;">🚨</span>
+              <span v-else class="rank-num" style="color:#e74c3c;">{{ idx + 1 }}</span>
+            </span>
+            <span class="name-col" style="color: #ddd;">{{ script.final_script }}</span>
+            
+            <span class="count-col highlight-num" style="color: #e74c3c; width: 130px; text-align: right; display: flex; flex-direction: column; align-items: flex-end; line-height: 1.2;">
+              {{ script.churn_rate }}%
+              <span style="font-size:0.75rem; color:#888; font-weight: normal; margin-top: 2px;">
+                {{ script.drop_off_count }} / {{ script.total_plays }} 人
+              </span>
+            </span>
+
+          </div>
+          <div v-if="churnScripts.length === 0" class="empty-text">目前沒有明顯的退坑劇本，太棒了！</div>
+        </div>
+      </div>
+
       <div class="level-stats-section mt-4">
         <div class="rank-header" @click="isScriptListOpen = !isScriptListOpen">
           <h4 class="section-title" style="border-left-color: #9b59b6; color: #9b59b6; margin: 0;">📜 劇本搖錢樹排行榜 (排除私團)</h4>
@@ -179,7 +217,6 @@ const loadAnalytics = async () => {
 .lv-count .unit { font-size: 0.9rem; color: #666; font-weight: normal; margin-top: 5px; }
 .percent-text { font-size: 1.1rem; font-weight: bold; margin-top: 5px; color: #aaa; background: rgba(0,0,0,0.3); padding: 2px 10px; border-radius: 12px;}
 
-/* 🚀 兩欄式排版與清單設計 */
 .two-col-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
 .compact-list { display: flex; flex-direction: column; gap: 10px; }
 .list-row { display: flex; justify-content: space-between; align-items: center; padding: 12px 15px; background: #1a1a1a; border-radius: 8px; border: 1px solid #222; }
@@ -187,7 +224,6 @@ const loadAnalytics = async () => {
 .r-val { color: #fff; font-weight: bold; font-size: 1.1rem; display: flex; align-items: center; gap: 10px;}
 .r-pct { font-size: 0.85rem; background: #333; padding: 2px 8px; border-radius: 10px; color: #aaa; }
 
-/* 🚀 排行榜專屬設計 */
 .rank-header { display: flex; justify-content: space-between; align-items: center; cursor: pointer; padding-bottom: 5px;}
 .toggle-icon { color: #888; font-size: 0.9rem; }
 .rank-content { margin-top: 20px; }

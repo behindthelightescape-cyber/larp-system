@@ -195,21 +195,36 @@ export const useUserStore = defineStore('user', () => {
   }
 
   // 🌟 D. 加入遊戲 (掃碼觸發)
+// 🌟 D. 加入遊戲 (掃碼觸發)
   const joinGame = async (gameId) => {
     if (!userData.value) return
     try {
+      // 1. 抓出這場遊戲的資料，包含我們剛剛辛苦加上的 base_exp (懸賞金)
       const { data: game } = await supabase.from('games').select('*').eq('id', gameId).single()
       if (!game || game.status !== 'open') return alert('這場遊戲已經結束或不存在囉！')
 
+      // 檢查是否重複掃碼
       const { data: existing } = await supabase.from('game_participants').select('*').eq('game_id', gameId).eq('user_id', userData.value.id).single()
       if (existing) return alert('你已經登記過這場遊戲囉！')
 
-      await supabase.from('game_participants').insert([{ game_id: gameId, user_id: userData.value.id }])
+      // 🚀 2. 動態抓取這場遊戲的真實經驗值！(如果真的沒設，防呆給 0)
+      const earnedExp = game.base_exp || 0
+
+      // 🚀 3. 寫入車票 (game_participants) 時，把錢正式放進玩家口袋！
+      // (這樣 HistoryView 的 exp_gained 才會讀得到正確數字)
+      await supabase.from('game_participants').insert([{ 
+        game_id: gameId, 
+        user_id: userData.value.id,
+        exp_gained: earnedExp // 👈 關鍵修復：錢確實入袋！
+      }])
       
-      // 更新經驗值
-      await supabase.from('users').update({ total_exp: (userData.value.total_exp || 0) + 100 }).eq('id', userData.value.id)
+      // 🚀 4. 更新玩家的總經驗值 (total_exp)
+      await supabase.from('users').update({ 
+        total_exp: (userData.value.total_exp || 0) + earnedExp 
+      }).eq('id', userData.value.id)
       
-      alert(`✅ 成功加入遊戲！\n經驗值 +100`)
+      // 🚀 5. 畫面跳出的提示也變成真實數字
+      alert(`✅ 成功加入遊戲！\n獲得經驗值 +${earnedExp} PT`)
       
       // 重新抓取資料更新畫面
       await fetchUserExtraData(userData.value.id)

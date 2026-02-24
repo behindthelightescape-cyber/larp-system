@@ -21,15 +21,17 @@ onMounted(async () => {
     const { data, error } = await supabase
       .from('game_participants')
       // 🚀 關鍵修正 1：character_name 必須拉到最外層！
-      .select(`
+     .select(`
         id,
         exp_gained,
         created_at,
-        character_name, 
+        character_name,
+        comment,  /* 🚀 必須加上這個 (為了舊紀錄) */
         games (
           gm_name,
           play_time,
           story_memory,
+          branch_name, /* 🚀 必須加上這個 (為了新紀錄) */
           scripts (
             title,
             cover_url
@@ -41,24 +43,41 @@ onMounted(async () => {
 
     if (error) throw error
 
+    i// 🚀 ... 上面的 onMounted 跟 supabase.from... 都不用動 ...
+
     if (data) {
-      store.history = data.map(record => ({
-        id: record.id,
-        // 🚀 關鍵修正 2：啟動三重防護罩！有建檔 > 舊紀錄名 > 備註 > 未知
-        title: record.games?.scripts?.title || record.character_name || record.games?.story_memory || '未知的神秘劇本',
-        cover: record.games?.scripts?.cover_url || DEFAULT_COVER,
-        date: record.games?.play_time 
-          ? new Date(record.games.play_time).toLocaleString('zh-TW', { 
-              year: 'numeric', month: '2-digit', day: '2-digit', 
-              hour: '2-digit', minute: '2-digit', hour12: false 
-            }).replace(/\//g, '-') 
-          : '未知時間',
-        gm: record.games?.gm_name || '無名氏',
-        exp: record.exp_gained || 0,
-        // 如果 story_memory 被拿去當標題了(舊紀錄)，手札就顯示空，不然畫面會重複
-        story_memory: (record.games?.scripts?.title || record.character_name) ? (record.games?.story_memory || '') : '', 
-        branch: '劇光燈本館' 
-      }))
+      store.history = data.map(record => {
+        
+        // 🚀 四哥的智能場館判斷邏輯
+        let finalBranch = '劇光燈' // 預設值
+        
+        // 情況 A：如果新系統有正式的 branch_name 欄位，就優先用它！
+        if (record.games?.branch_name) {
+          finalBranch = record.games.branch_name
+        } 
+        // 情況 B：如果是舊系統匯入的資料，去備註 (comment) 裡面挖寶
+        else if (record.comment && record.comment.includes('地點:')) {
+          finalBranch = record.comment.split('地點:')[1].split('|')[0].trim()
+        }
+
+        return {
+          id: record.id,
+          title: record.games?.scripts?.title || record.character_name || record.games?.story_memory || '未知的神秘劇本',
+          cover: record.games?.scripts?.cover_url || DEFAULT_COVER,
+          date: record.games?.play_time 
+            ? new Date(record.games.play_time).toLocaleString('zh-TW', { 
+                year: 'numeric', month: '2-digit', day: '2-digit', 
+                hour: '2-digit', minute: '2-digit', hour12: false 
+              }).replace(/\//g, '-') 
+            : '未知時間',
+          gm: record.games?.gm_name || '無名氏',
+          exp: record.exp_gained || 0,
+          story_memory: (record.games?.scripts?.title || record.character_name) ? (record.games?.story_memory || '') : '', 
+          
+          // 🚀 關鍵修正 3：把寫死的本館，換成我們剛剛算出來的真實場館！
+          branch: finalBranch
+        }
+      })
     }
   } catch (e) {
     console.error('小四警告：撈取歷史紀錄炸了！', e)

@@ -196,35 +196,62 @@ export const useUserStore = defineStore('user', () => {
 
   // 🌟 D. 加入遊戲 (掃碼觸發)
 // 🌟 D. 加入遊戲 (掃碼觸發)
+ // 🌟 D. 加入遊戲 (掃碼觸發) - 🚀 Phase 2 升級與送券完全體！
   const joinGame = async (gameId) => {
     if (!userData.value) return
     try {
-      // 1. 抓出這場遊戲的資料，包含我們剛剛辛苦加上的 base_exp (懸賞金)
+      // 1. 抓出這場遊戲的資料與懸賞金 (base_exp)
       const { data: game } = await supabase.from('games').select('*').eq('id', gameId).single()
       if (!game || game.status !== 'open') return alert('這場遊戲已經結束或不存在囉！')
 
-      // 檢查是否重複掃碼
       const { data: existing } = await supabase.from('game_participants').select('*').eq('game_id', gameId).eq('user_id', userData.value.id).single()
       if (existing) return alert('你已經登記過這場遊戲囉！')
 
-      // 🚀 2. 動態抓取這場遊戲的真實經驗值！(如果真的沒設，防呆給 0)
+      // 🚀 2. 動態抓取真正的經驗值！(如果是 135，這裡就會是 135)
       const earnedExp = game.base_exp || 0
+      const currentExp = userData.value.total_exp || 0
+      const currentLevel = userData.value.level || 1
+      
+      // 🚀 3. 算好加入這場遊戲後，總經驗值會變多少 (精準加上 135！)
+      const newTotalExp = currentExp + earnedExp
+      
+      // 🚀 4. 升級判定雷達啟動！(每 1000 分升一級)
+      const nextLevelThreshold = currentLevel * 1000
+      let newLevel = currentLevel
+      let isLeveledUp = false
 
-      // 🚀 3. 寫入車票 (game_participants) 時，把錢正式放進玩家口袋！
-      // (這樣 HistoryView 的 exp_gained 才會讀得到正確數字)
+      if (newTotalExp >= nextLevelThreshold) {
+        newLevel = currentLevel + 1
+        isLeveledUp = true
+      }
+
+      // 5. 寫入車票 (單場紀錄：確實寫入 135)
       await supabase.from('game_participants').insert([{ 
         game_id: gameId, 
         user_id: userData.value.id,
-        exp_gained: earnedExp // 👈 關鍵修復：錢確實入袋！
+        exp_gained: earnedExp 
       }])
       
-      // 🚀 4. 更新玩家的總經驗值 (total_exp)
+      // 6. 更新玩家的「總經驗值」與「新等級」
       await supabase.from('users').update({ 
-        total_exp: (userData.value.total_exp || 0) + earnedExp 
+        total_exp: newTotalExp, // 👈 兇手伏法！這裡現在是動態的總和了！
+        level: newLevel 
       }).eq('id', userData.value.id)
-      
-      // 🚀 5. 畫面跳出的提示也變成真實數字
-      alert(`✅ 成功加入遊戲！\n獲得經驗值 +${earnedExp} PT`)
+
+      // 🚀 7. 驚喜派券系統：如果有升級，偷偷塞一張優惠券到他的背包！
+      if (isLeveledUp) {
+         await supabase.from('coupons').insert([{
+           user_id: userData.value.id,
+           title: `🎉 LV.${newLevel} 尊榮升級禮`,
+           description: `恭喜您升級到 LV.${newLevel}！這是一張專屬的升級折價券，感謝您對劇光燈的支持。`,
+           status: 'available',
+           expiry_date: new Date(new Date().setFullYear(new Date().getFullYear() + 1)).toISOString()
+         }])
+         
+         alert(`✅ 成功加入遊戲！獲得 +${earnedExp} PT\n\n🎊 狂賀！您已升級至 LV.${newLevel}！\n🎟️ 系統已自動發送「尊榮升級禮」至您的票券匣，請前往查看！`)
+      } else {
+         alert(`✅ 成功加入遊戲！\n獲得經驗值 +${earnedExp} PT`)
+      }
       
       // 重新抓取資料更新畫面
       await fetchUserExtraData(userData.value.id)

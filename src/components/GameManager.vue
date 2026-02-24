@@ -4,6 +4,14 @@ import { supabase } from '../supabase'
 import QRCode from 'qrcode' 
 import JSZip from 'jszip'    
 
+// 🚀 1. 接收從 AdminView 傳來的權限與場館資訊
+const props = defineProps({
+  branch: {
+    type: String,
+    default: '西門館1.0'
+  }
+})
+
 const emit = defineEmits(['update-stats'])
 
 const allScripts = ref([])
@@ -11,12 +19,14 @@ const searchQuery = ref('')
 const searchResults = ref([])
 const selectedScript = ref(null)
 
-// 🚀 新增：控制下拉選單顯示與否的開關
 const showDropdown = ref(false)
 
 const gmName = ref('')
 const gameTime = ref('')
 const gameMemory = ref('')
+
+// 🚀 2. 初始化目前選擇的場館 (老闆預設選 1.0，店長就鎖死他自己的店)
+const selectedBranch = ref(props.branch === 'ALL' ? '西門館1.0' : props.branch)
 
 const batchQueue = ref([])
 const isGenerating = ref(false)
@@ -35,17 +45,14 @@ const loadScripts = async () => {
   allScripts.value = data || []
 }
 
-// === 🚀 升級版：點擊展開全部，打字動態過濾 ===
 const filterScripts = () => {
-  showDropdown.value = true // 打開選單
+  showDropdown.value = true 
   const val = searchQuery.value.trim().toLowerCase()
   
   if (!val) {
-    // 如果沒打字，就把「所有劇本」通通塞進選單給他挑
     searchResults.value = allScripts.value 
     return
   }
-  // 如果有打字，就過濾出相符的
   searchResults.value = allScripts.value.filter(s => s.title.toLowerCase().includes(val))
 }
 
@@ -53,10 +60,9 @@ const selectScript = (script) => {
   selectedScript.value = script
   searchQuery.value = script.title
   gameMemory.value = script.default_story_memory || ''
-  showDropdown.value = false // 選完就收起選單
+  showDropdown.value = false 
 }
 
-// 🚀 點擊旁邊空白處時，把選單收起來 (延遲 200ms 是為了讓點擊選單的事件先觸發)
 const closeDropdown = () => {
   setTimeout(() => {
     showDropdown.value = false
@@ -69,7 +75,6 @@ const addToQueue = () => {
   }
 
   const d = new Date(gameTime.value)
-  // 🚀 四哥保證：這裡印出來的字絕對是 24 小時制 (例如 14:30)
   const dt = `${d.getMonth()+1}/${d.getDate()} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`
   const ft = `${d.getMonth()+1}${d.getDate()}_${d.getHours()}${d.getMinutes()}`
 
@@ -80,7 +85,8 @@ const addToQueue = () => {
     t: gameTime.value,
     dt,
     ft,
-    mem: gameMemory.value
+    mem: gameMemory.value,
+    branchName: selectedBranch.value // 🚀 3. 把場館資訊一起塞進待辦清單
   })
 
   gmName.value = ''
@@ -100,6 +106,7 @@ const processBatch = async () => {
     const LIFF_BASE_URL = 'https://liff.line.me/2009161687-icfQU9r6'
 
     for (const item of batchQueue.value) {
+      // 🚀 4. 正式寫入資料庫的 branch_name 欄位
       const { data, error } = await supabase
         .from('games')
         .insert([{
@@ -107,18 +114,20 @@ const processBatch = async () => {
           gm_name: item.gm, 
           play_time: new Date(item.t), 
           status: 'open', 
-          story_memory: item.mem
+          story_memory: item.mem,
+          branch_name: item.branchName 
         }])
         .select()
       
       if (error) throw error
 
       const url = `${LIFF_BASE_URL}?action=join&game_id=${data[0].id}`
-      const imgDataUrl = await generateLabelQR(url, item.sn, item.gm, item.dt)
+      // 🚀 把場館名稱傳給繪圖函數
+      const imgDataUrl = await generateLabelQR(url, item.sn, item.gm, item.dt, item.branchName)
       
       const safeName = item.sn.replace(/[\\/:*?"<>|]/g, "_")
       generatedImages.value.push({
-        name: `${item.ft}_${safeName}_${item.gm}.png`,
+        name: `${item.ft}_${item.branchName}_${safeName}_${item.gm}.png`,
         data: imgDataUrl
       })
     }
@@ -135,7 +144,8 @@ const processBatch = async () => {
   }
 }
 
-const generateLabelQR = async (text, scriptName, gmName, timeStr) => {
+// 🚀 5. QR Code 上面直接印出場館名稱
+const generateLabelQR = async (text, scriptName, gmName, timeStr, branchName) => {
   const qrDataUrl = await QRCode.toDataURL(text, { width: 250, margin: 1, color: { dark: '#000000', light: '#ffffff' } })
   
   return new Promise((resolve) => {
@@ -167,7 +177,8 @@ const generateLabelQR = async (text, scriptName, gmName, timeStr) => {
 
       ctx.fillStyle = '#cccccc'
       ctx.font = '12px sans-serif'
-      ctx.fillText('劇光燈 LARP', 150, 400)
+      // 🚀 繪製場館專屬 Logo 字樣
+      ctx.fillText(`📍 ${branchName} - 劇光燈 LARP`, 150, 400)
 
       resolve(canvas.toDataURL("image/png"))
     }
@@ -229,10 +240,20 @@ const downloadAllZip = async () => {
         </div>
 
         <div class="form-group">
+          <label>📍 開場館別</label>
+          <select v-if="props.branch === 'ALL'" v-model="selectedBranch" class="admin-input">
+            <option value="西門館1.0">西門館 1.0</option>
+            <option value="西門館2.0">西門館 2.0</option>
+          </select>
+          <input v-else type="text" class="admin-input" :value="props.branch" disabled style="color: #888; background: #1a1a1a;">
+        </div>
+
+        <div class="form-group">
           <label>帶場 GM</label>
           <input v-model="gmName" type="text" class="admin-input" placeholder="例如: 小四">
         </div>
-        <div class="form-group">
+
+        <div class="form-group full">
           <label>開場時間 (掃碼圖片將強制轉為24小時制)</label>
           <input v-model="gameTime" type="datetime-local" class="admin-input">
         </div>
@@ -252,7 +273,7 @@ const downloadAllZip = async () => {
         <div v-for="(item, index) in batchQueue" :key="index" class="batch-item">
           <div class="item-info">
             <strong>{{ item.sn }}</strong>
-            <span class="item-sub">GM: {{ item.gm }} | <span style="color:#D4AF37;">{{ item.dt }}</span></span>
+            <span class="item-sub">📍 {{ item.branchName }} | GM: {{ item.gm }} | <span style="color:#D4AF37;">{{ item.dt }}</span></span>
           </div>
           <button class="btn-mini-red" @click="removeFromQueue(index)">✕</button>
         </div>
@@ -292,7 +313,7 @@ const downloadAllZip = async () => {
 .admin-input:focus { border-color: #D4AF37; outline: none; }
 textarea.admin-input { resize: vertical; }
 
-/* 🚀 下拉選單樣式升級 */
+/* 下拉選單樣式升級 */
 .search-wrapper { position: relative; }
 .select-input { padding-right: 30px; cursor: pointer; }
 .dropdown-arrow { position: absolute; right: 12px; top: 14px; color: #888; font-size: 0.8rem; pointer-events: none; }
@@ -303,6 +324,8 @@ textarea.admin-input { resize: vertical; }
 .script-limit { font-size: 0.8rem; color: #aaa; }
 .search-item:hover .script-limit { color: #333; }
 .search-results.empty { padding: 15px; text-align: center; color: #888; }
+
+select.admin-input { appearance: none; cursor: pointer; background-image: url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22292.4%22%20height%3D%22292.4%22%3E%3Cpath%20fill%3D%22%23D4AF37%22%20d%3D%22M287%2069.4a17.6%2017.6%200%200%200-13-5.4H18.4c-5%200-9.3%201.8-12.9%205.4A17.6%2017.6%200%200%200%200%2082.2c0%205%201.8%209.3%205.4%2012.9l128%20127.9c3.6%203.6%207.8%205.4%2012.8%205.4s9.2-1.8%2012.8-5.4L287%2095c3.5-3.5%205.4-7.8%205.4-12.8%200-5-1.9-9.2-5.5-12.8z%22%2F%3E%3C%2Fsvg%3E'); background-repeat: no-repeat; background-position: right 15px top 50%; background-size: 12px auto; padding-right: 40px; }
 
 .btn { padding: 12px 20px; border: none; font-weight: bold; border-radius: 8px; cursor: pointer; transition: 0.2s; }
 .btn-gold { background: #D4AF37; color: black; width: 100%; }

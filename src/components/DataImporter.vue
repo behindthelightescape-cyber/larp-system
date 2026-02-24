@@ -132,7 +132,8 @@ const startMigration = async (data) => {
           play_time: new Date(rec.playTime.replace(/-/g, '/')).toISOString(),
           status: 'finished',
           is_finished: true,
-          story_memory: rec.name // 🚀 直接存原本的劇本名字
+          story_memory: rec.name ,// 🚀 直接存原本的劇本名字
+          branch_name: '西門館1.0'
         })
 
         participantsToInsert.push({

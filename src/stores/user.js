@@ -142,6 +142,7 @@ export const useUserStore = defineStore('user', () => {
             play_time, 
             gm_name, 
             story_memory, 
+            branch_name,
             scripts ( title, cover_url ) 
           )
         `) // 🚀 修正 1：把 story_memory 加進查詢清單！
@@ -170,7 +171,8 @@ export const useUserStore = defineStore('user', () => {
               : '未知時間',
             gm: item.games?.gm_name || '未知 GM',
             exp: item.exp_gained || 50,
-            branch: '劇光燈西門館', // 既然都要搬家了，統一叫本館就好
+            // 🚀 直接抓取資料庫的正式場館欄位，如果沒有就預設西門館1.0
+            branch: item.games?.branch_name || '西門館1.0', // 既然都要搬家了，統一叫本館就好
             // 🚀 修正 3：對準正確的欄位！是 games 裡面的 story_memory！
             story_memory: item.games?.story_memory || '' 
           }

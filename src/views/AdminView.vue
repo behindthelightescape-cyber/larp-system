@@ -7,17 +7,16 @@ import GameManager from '../components/GameManager.vue'
 import ScriptManager from '../components/ScriptManager.vue' 
 import SessionManager from '../components/SessionManager.vue' 
 import DataImporter from '../components/DataImporter.vue'
+import AnalyticsManager from '../components/AnalyticsManager.vue' // 🚀 引入全新的分析子元件
 
 const session = ref(null)
 const isLoading = ref(true)
 const currentTab = ref('dashboard')
 const isSidebarOpen = ref(window.innerWidth > 768) 
-
 const stats = ref({ members: 0, scripts: 0, games: 0, coupons: 0 })
 const email = ref('')
 const password = ref('')
 
-// 🚀 核心新增：用來裝管理員的權限與管轄場館
 const adminProfile = ref({
   role: 'player',
   managed_branch: '載入中...'
@@ -30,7 +29,7 @@ onMounted(async () => {
   supabase.auth.onAuthStateChange((_event, _session) => {
     session.value = _session
     if (_session) {
-      fetchAdminProfile(_session.user.id) // 登入成功，去查他的權限
+      fetchAdminProfile(_session.user.id)
     } else {
       adminProfile.value = { role: 'player', managed_branch: '無權限' }
     }
@@ -43,7 +42,6 @@ onMounted(async () => {
   }
 })
 
-// 🚀 核心新增：去 users 表查這個管理員歸哪家店管
 const fetchAdminProfile = async (userId) => {
   try {
     const { data, error } = await supabase
@@ -55,8 +53,8 @@ const fetchAdminProfile = async (userId) => {
     if (data) {
       adminProfile.value = {
         name: data.display_name || 'Admin',
-        role: data.role || 'manager', // 預設給個店長
-        managed_branch: data.managed_branch || '西門館1.0' // 預設西門館
+        role: data.role || 'manager', 
+        managed_branch: data.managed_branch || '西門館1.0'
       }
     }
   } catch (err) {
@@ -69,7 +67,7 @@ const fetchAdminProfile = async (userId) => {
 
 const loginWithEmail = async () => {
   if (!email.value || !password.value) return alert('帳號密碼都沒填，你是想通靈登入嗎？')
-  isLoading.value = true // 登入時轉圈圈
+  isLoading.value = true 
   const { error } = await supabase.auth.signInWithPassword({ email: email.value, password: password.value })
   if (error) {
     alert('登入失敗：' + error.message)
@@ -84,8 +82,6 @@ const logout = async () => {
 
 const loadDashboardStats = async () => {
   try {
-    // 🚀 未來這裡可以根據 adminProfile.value.managed_branch 來過濾數據
-    // 如果是 ALL 就全抓，如果是 西門館2.0 就只抓 2.0 的數據
     const { count: usersCount } = await supabase.from('users').select('*', { count: 'exact', head: true })
     stats.value.members = usersCount || 0
     const { count: scriptsCount } = await supabase.from('scripts').select('*', { count: 'exact', head: true })
@@ -138,6 +134,9 @@ const changeTab = (tabName) => {
         <button class="nav-btn" :class="{ active: currentTab === 'dashboard' }" @click="changeTab('dashboard')">
           <span class="icon">📊</span> 戰情大盤
         </button>
+        <button class="nav-btn" :class="{ active: currentTab === 'analytics' }" @click="changeTab('analytics')">
+          <span class="icon">📈</span> 深度分析
+        </button>
         <button class="nav-btn" :class="{ active: currentTab === 'game' }" @click="changeTab('game')">
           <span class="icon">⚡</span> 批次開場
         </button>
@@ -180,7 +179,8 @@ const changeTab = (tabName) => {
           </button>
           <h2 class="page-title">
             {{ 
-              currentTab === 'dashboard' ? '戰情大盤' : 
+              currentTab === 'dashboard' ? '營運戰情大盤' : 
+              currentTab === 'analytics' ? '玩家深度分析' : 
               currentTab === 'session' ? '場次大廳 (掃碼監控)' :  
               currentTab === 'member' ? '玩家總部 (資料查詢)' : 
               currentTab === 'coupon' ? '發送票券 (導彈系統)' : 
@@ -200,6 +200,10 @@ const changeTab = (tabName) => {
         <button class="btn btn-gold" style="width: 200px;" @click="loadDashboardStats">🔄 手動更新數據</button>
         <hr style="border-color: #222; margin: 40px 0;">
         <DataImporter @update-stats="loadDashboardStats" />
+      </div>
+
+      <div v-if="currentTab === 'analytics'" class="panel active">
+        <AnalyticsManager />
       </div>
 
       <div v-show="currentTab === 'member'" class="panel active">

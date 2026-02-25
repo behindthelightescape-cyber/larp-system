@@ -91,7 +91,27 @@ const sendQuickGift = async () => {
     isSendingQuickGift.value = false
   }
 }
+// 🚀 新增：找回失蹤的核銷票券功能！
+const redeemCoupon = async (coupon) => {
+  if (!confirm(`⚠️ 確定要核銷這張「${coupon.title}」嗎？核銷後無法復原喔！`)) return 
+  
+  try {
+    const { error } = await supabase
+      .from('coupons')
+      .update({ status: 'used' }) // 把狀態改成已核銷
+      .eq('id', coupon.id)
 
+    if (error) throw error
+
+    // 🚀 更新畫面上的狀態，不用重新整理就能看到變成「已核銷」
+    coupon.status = 'used'
+    alert('✅ 核銷成功！')
+    
+    emit('update-stats') // 呼叫老大哥更新數據
+  } catch (error) {
+    alert('核銷失敗：' + error.message)
+  }
+}
 const deleteCoupon = async (couponId, couponTitle) => {
   if (!confirm(`⚠️ 確定要強制刪除「${couponTitle}」嗎？`)) return 
   try {
@@ -102,6 +122,8 @@ const deleteCoupon = async (couponId, couponTitle) => {
     alert('刪除失敗：' + error.message)
   }
 }
+
+
 
 const calculateDays = (dateString) => {
   if (!dateString) return 0
@@ -175,12 +197,29 @@ const calculateDays = (dateString) => {
                 <span style="color:#D4AF37; font-weight: bold;">{{ coupon.title }}</span>
                 <span class="list-sub">效期: {{ coupon.expiry_date ? coupon.expiry_date.split('T')[0] : '無限期' }}</span>
               </div>
-              <div class="coupon-actions">
-                <span class="status-tag" :class="'status-' + coupon.status">
-                  {{ coupon.status === 'available' ? '可使用' : (coupon.status === 'used' ? '已核銷' : '已過期') }}
+
+            <div class="coupon-actions">
+                
+                <button 
+                  v-if="coupon.status === 'available'" 
+                  class="btn-mini-green" 
+                  @click="redeemCoupon(coupon)"
+                >
+                  ✔ 核銷
+                </button>
+
+                <span 
+                  v-else
+                  class="status-tag" 
+                  :class="'status-' + coupon.status"
+                >
+                  {{ coupon.status === 'used' ? '已核銷' : '已過期' }}
                 </span>
+
                 <button class="btn-mini-red" @click="deleteCoupon(coupon.id, coupon.title)">✕</button>
               </div>
+
+             
             </div>
           </div>
         </div>
@@ -261,6 +300,20 @@ const calculateDays = (dateString) => {
 .status-used { background: #222; color: #666; text-decoration: line-through; border: 1px solid #444; }
 .status-expired { background: rgba(231, 76, 60, 0.2); color: #e74c3c; border: 1px solid #e74c3c; }
 .btn-mini-red { background: #331111; color: #ff5555; border: 1px solid #552222; padding: 4px 8px; border-radius: 4px; font-size: 0.75rem; cursor: pointer; }
+
+/* 🚀 這是給核銷按鈕穿的綠色帥氣衣服 */
+.btn-mini-green { 
+  background: #113311; 
+  color: #2ecc71; 
+  border: 1px solid #225522; 
+  padding: 4px 10px; 
+  border-radius: 4px; 
+  font-size: 0.8rem; 
+  font-weight: bold;
+  cursor: pointer; 
+  transition: 0.2s;
+}
+.btn-mini-green:hover { background: #225522; color: #55ff55; }
 .empty-state { text-align: center; padding: 60px 20px; background: #111; border-radius: 12px; border: 1px dashed #333; }
 @media (max-width: 768px) { .details-grid { grid-template-columns: 1fr; } .mini-form-row { flex-direction: column; } }
 </style>

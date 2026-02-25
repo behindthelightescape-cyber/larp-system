@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue' // 👈 補上 computed
 import { supabase } from '../supabase'
 
 const emit = defineEmits(['update-stats'])
@@ -9,6 +9,31 @@ const isLoading = ref(true)
 const showModal = ref(false)
 const isEditing = ref(false)
 const isUploading = ref(false) 
+
+const searchQuery = ref('')
+const filterPlayStyle = ref('') // 👈 新增：綁定玩法下拉選單
+const filterSetting = ref('')   // 👈 新增：綁定背景下拉選單
+
+// 🚀 神級過濾器：同時處理「關鍵字搜尋」＋「玩法篩選」＋「背景篩選」
+const filteredScripts = computed(() => {
+  return scripts.value.filter(script => {
+    // 1. 關鍵字比對 (如果沒輸入，這關自動過)
+    const keyword = searchQuery.value.toLowerCase().trim()
+    const matchSearch = !keyword || 
+      (script.title && script.title.toLowerCase().includes(keyword)) ||
+      (script.category && script.category.includes(keyword)) ||
+      (script.tags && script.tags.includes(keyword))
+
+    // 2. 玩法比對 (下拉選單有選才比對)
+    const matchPlay = !filterPlayStyle.value || (script.category && script.category.includes(filterPlayStyle.value))
+
+    // 3. 背景比對 (下拉選單有選才比對)
+    const matchSetting = !filterSetting.value || (script.tags && script.tags.includes(filterSetting.value))
+
+    // 必須三個條件都符合，這本劇本才能顯示！
+    return matchSearch && matchPlay && matchSetting
+  })
+})
 
 // 黃金標準分類陣列
 const PLAY_STYLES = ['歡樂有趣', '情感沉浸', '機制陣營', '驚悚恐怖', '推理還原']
@@ -193,13 +218,35 @@ const toggleArrayItem = (type, item) => {
       <button class="btn btn-gold btn-small" @click="openAddModal">➕ 新增劇本</button>
     </div>
 
+    <div v-if="!isLoading" class="filter-dashboard">
+      <div class="search-box">
+        <span class="search-icon">🔍</span>
+        <input 
+          v-model="searchQuery" 
+          type="text" 
+          class="admin-input search-input" 
+          placeholder="搜尋劇本名稱或特色 (如: 換裝、微恐)..."
+        />
+      </div>
+      
+      <select v-model="filterPlayStyle" class="admin-input filter-select">
+        <option value="">🎭 所有玩法</option>
+        <option v-for="style in PLAY_STYLES" :key="style" :value="style">{{ style }}</option>
+      </select>
+
+      <select v-model="filterSetting" class="admin-input filter-select">
+        <option value="">⛩️ 所有背景</option>
+        <option v-for="bg in SETTINGS" :key="bg" :value="bg">{{ bg }}</option>
+      </select>
+    </div>
+
     <div v-if="isLoading" class="loading-state">
       <div class="spinner"></div>
       <p>資料庫讀取中...</p>
     </div>
 
     <div v-else class="script-grid">
-      <div v-for="script in scripts" :key="script.id" class="script-card">
+      <div v-for="script in filteredScripts" :key="script.id" class="script-card">
         <div class="script-cover-wrapper">
           <img :src="script.cover_url || 'https://images.unsplash.com/photo-1514467953502-5a7820e3efb4?w=600'" class="script-cover" />
           <div class="script-cat-badge">{{ script.category ? script.category.split(',')[0] : '未分類' }}</div>
@@ -345,6 +392,51 @@ const toggleArrayItem = (type, item) => {
 .loading-state { text-align: center; padding: 50px; color: #888; }
 .spinner { width: 40px; height: 40px; border: 4px solid rgba(212, 175, 55, 0.2); border-top-color: #D4AF37; border-radius: 50%; animation: spin 1s linear infinite; margin: 0 auto 15px auto;}
 @keyframes spin { to { transform: rotate(360deg); } }
+
+/* 🚀 搜尋篩選儀表板樣式 (終極排版版) */
+.filter-dashboard {
+  display: flex;
+  gap: 15px;
+  margin-bottom: 25px;
+  flex-wrap: wrap;
+}
+.search-box {
+  flex: 2;
+  min-width: 250px; /* 稍微加寬一點 */
+  position: relative;
+  margin-right: 50px; /* 保底安全距離，避免黏在一起 */
+}
+.search-icon {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #888;
+}
+
+/* 🚀 加上 !important 避免被後面的 .admin-input 蓋掉 padding！ */
+.search-input {
+  width: 100%;
+  padding-left: 38px !important; 
+}
+
+.filter-select {
+  flex: 1;
+  min-width: 140px;
+  margin-right: 5px; /* 保底安全距離 */
+  appearance: none; 
+  background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23D4AF37' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  background-size: 1em;
+  padding-right: 35px;
+  cursor: pointer;
+}
+.filter-select option {
+  background: #222;
+  color: #fff;
+}
+
 
 .script-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 20px; }
 .script-card { background: #111; border: 1px solid #222; border-radius: 12px; overflow: hidden; display: flex; flex-direction: column; transition: transform 0.2s; }

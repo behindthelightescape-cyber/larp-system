@@ -54,23 +54,11 @@ try {
           finalBranch = record.comment.split('地點:')[1].split('|')[0].trim()
         }
 
-        // 🚀 四哥的「智慧標題替換」邏輯！
-        let rawTitle = record.games?.scripts?.title || record.character_name
-        let finalTitle = rawTitle
+// 🚀 1. 最暴力的直球對決：有劇本名就顯示，沒有就顯示「未知劇本」！
+        let finalTitle = record.games?.scripts?.title || '未知劇本'
+        
+        // 🚀 2. 手札一樣維持原樣
         let finalMemory = record.games?.story_memory || ''
-
-        // 1. 如果標題是空的，或是帶有「未知」，就拿手札來擋！
-        if (!finalTitle || finalTitle.includes('未知')) {
-          finalTitle = finalMemory || '神秘未知劇本'
-        }
-
-        // 2. 如果手札內容已經被拿去當標題了，心得區就清空，避免畫面上重複顯示兩次
-        if (finalMemory === finalTitle) {
-          finalMemory = ''
-        } else if (rawTitle) {
-          // 如果標題本身就是正式的 (例如長歌行)，手札就乖乖顯示手札
-          finalMemory = record.games?.story_memory || ''
-        }
 
         return {
           id: record.id,

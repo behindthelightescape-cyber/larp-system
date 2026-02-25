@@ -31,7 +31,7 @@ try {
           play_time,
           story_memory,
           branch_name, 
-          base_exp, /* 🚀 關鍵 1：把包廂的懸賞金也查出來當保險！ */
+          base_exp,
           scripts (
             title,
             cover_url

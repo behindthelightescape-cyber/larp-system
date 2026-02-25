@@ -54,13 +54,16 @@ try {
           finalBranch = record.comment.split('地點:')[1].split('|')[0].trim()
         }
 
-// 🚀 1. 最暴力的直球對決：有劇本名就顯示，沒有就顯示「未知劇本」！
- // 🚀 1. 先把手札抓出來備用
+// 🚀 1. 把資料庫的標題跟手札都先抓出來
+        let dbTitle = record.games?.scripts?.title || ''
         let finalMemory = record.games?.story_memory || ''
 
-        // 🚀 2. 標題大風吹：有劇本名就用劇本名 -> 沒有就用手札 -> 連手札都沒有才叫「未知劇本」！
-        let finalTitle = record.games?.scripts?.title || finalMemory || '未知劇本'
-
+        // 🚀 2. 終極攔截器：如果標題是空的，或者標題裡面有「未知」兩個字，強制換成手札！
+        let finalTitle = dbTitle
+        if (!dbTitle || dbTitle.includes('未知')) {
+          // 如果手札有東西就用手札，如果連手札都是空的，才認命顯示「未知劇本」
+          finalTitle = finalMemory ? finalMemory : '未知劇本'
+        }
         return {
           id: record.id,
           title: finalTitle, // 👈 換上算好的聰明標題

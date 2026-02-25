@@ -289,8 +289,8 @@ export const useUserStore = defineStore('user', () => {
       if (isFirstTimeBirthday) {
         await supabase.from('coupons').insert([{
           user_id: userData.value.id,
-          title: '🎂 生日優惠券 (資料完善禮)',
-          description: '感謝您完善個人資料，祝您生日快樂！',
+          title: '🎂 資料完善禮',
+          description: '感謝您完善個人資料，本券可折抵劇本費用50元。',
           status: 'available',
           // 設定一年後過期
           expiry_date: new Date(new Date().setFullYear(new Date().getFullYear() + 1)).toISOString()

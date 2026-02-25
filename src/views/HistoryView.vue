@@ -53,16 +53,22 @@ try {
         } else if (record.comment && record.comment.includes('地點:')) {
           finalBranch = record.comment.split('地點:')[1].split('|')[0].trim()
         }
-
 // 🚀 1. 把資料庫的標題跟手札都先抓出來
         let dbTitle = record.games?.scripts?.title || ''
         let finalMemory = record.games?.story_memory || ''
 
-        // 🚀 2. 終極攔截器：如果標題是空的，或者標題裡面有「未知」兩個字，強制換成手札！
+        // 🪞 照妖鏡：把每一筆資料的真實狀況印在 F12 控制台裡！
+        console.log('🔍 系統讀取中 ->', { dbTitle, finalMemory, gamesData: record.games })
+
         let finalTitle = dbTitle
+        
+        // 🚀 2. 終極攔截器
         if (!dbTitle || dbTitle.includes('未知')) {
-          // 如果手札有東西就用手札，如果連手札都是空的，才認命顯示「未知劇本」
-          finalTitle = finalMemory ? finalMemory : '未知劇本'
+          if (finalMemory !== '') {
+            finalTitle = finalMemory // 如果手札有東西，絕對用手札！
+          } else {
+            finalTitle = '⚠️ 完全沒資料' // 如果連手札都沒東西，畫面會顯示這個！
+          }
         }
         return {
           id: record.id,

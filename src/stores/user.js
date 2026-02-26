@@ -326,6 +326,7 @@ export const useUserStore = defineStore('user', () => {
     daysJoined, 
     userTitle, 
     initLiff,
-    updateProfile
+    updateProfile,
+    getLevelInfo
   }
 })

@@ -314,6 +314,7 @@ export const useUserStore = defineStore('user', () => {
     }
   }
 
+  
   // === 3. 匯出給 Vue 元件使用 ===
   return {
     lineProfile, 

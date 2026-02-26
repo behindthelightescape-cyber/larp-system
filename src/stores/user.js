@@ -13,7 +13,10 @@ export const useUserStore = defineStore('user', () => {
 
   const history = ref([])
   const coupons = ref([])
-  const daysJoined = ref(0)
+ const daysJoined = ref(0)
+  const levelUpData = ref(null) // 🚀 新增：用來觸發英雄聯盟升級動畫的資料包！
+
+  
 
   // 🚀 四哥特製：精準等級與稱號計算機 (放在最上面，確保大家都認識它！)
   const getLevelInfo = (exp) => {
@@ -48,7 +51,30 @@ export const useUserStore = defineStore('user', () => {
       lineProfile.value = profile
       
       // 1. 檢查並註冊會員
+      // 1. 檢查並註冊會員
       await checkAndRegisterUser(profile)
+
+      // 🚀 1.5 四哥的自癒系統：強制校正資料庫等級！(絕對不架空資料庫)
+      if (userData.value) {
+        // 拿他口袋裡的真實經驗值，去算他「應該」要是幾等
+        const correctLevelInfo = getLevelInfo(userData.value.total_exp || 0)
+        
+        // 如果資料庫寫的等級，跟算出來的等級不一樣 (例如你剛剛手動改了 EXP)
+        if (userData.value.level !== correctLevelInfo.level) {
+          console.log(`🔧 發現資料庫等級不同步！正在自動校正為 LV.${correctLevelInfo.level}...`)
+          
+          // 1. 強制更新資料庫，確保後台看到的資料絕對正確！
+          await supabase.from('users').update({ level: correctLevelInfo.level }).eq('id', userData.value.id)
+          
+          // 2. 把本地的資料也同步成正確的
+          userData.value.level = correctLevelInfo.level
+        }
+      }
+
+      // 2. 會員確認後，執行你原本的抓取邏輯！拿真正的 ID 去查！
+      if (userData.value && userData.value.id) {
+        await fetchUserExtraData(userData.value.id)
+      }
 
       // 2. 會員確認後，抓取歷史與優惠券
       if (userData.value && userData.value.id) {
@@ -207,7 +233,7 @@ export const useUserStore = defineStore('user', () => {
            status: 'available',
            expiry_date: new Date(new Date().setFullYear(new Date().getFullYear() + 1)).toISOString()
          }])
-         alert(`✅ 成功加入遊戲！獲得 +${earnedExp} PT\n\n🎊 狂賀！您已升級至 LV.${newLevel}！\n🎟️ 系統已自動發送「尊榮升級禮」至您的票券匣，請前往查看！`)
+        
       } else {
          alert(`✅ 成功加入遊戲！\n獲得經驗值 +${earnedExp} PT`)
       }

@@ -19,21 +19,29 @@ const MOCK_STATS = {
 }
 
 // 🚀 1. 在 stats 裡面新增一個隱藏判定
+// 🚀 1. 在 stats 裡面動態計算下一級的門檻
 const stats = computed(() => {
   if (store.userData) {
-    let displayTitle = store.userData.current_title || store.userTitle || '新手冒險者'
+    const currentExp = store.userData.total_exp || 0
+    // 呼叫我們剛剛在 store 寫好的計算機！
+    const levelInfo = store.getLevelInfo ? store.getLevelInfo(currentExp) : { level: 1, title: '剛加入的冒險者', nextExp: 100 }
+    
+    // 如果玩家沒有手動換稱號，就顯示他目前等級對應的稱號！
+    let displayTitle = store.userData.current_title || levelInfo.title
+
     return {
       historyCount: store.history?.length || 0,
       daysJoined: store.daysJoined || 0,
-      level: store.userData.level || 1,
-      points: store.userData.total_exp || 0,
-      nextLevel: (store.userData.level || 1) * 1000,
+      level: levelInfo.level, // 👈 精準等級
+      points: currentExp,
+      nextLevel: levelInfo.nextExp, // 👈 精準的下一級門檻 (100, 250, 500...)
       title: displayTitle,
-      isTitleHidden: displayTitle === '無稱號' // 🎯 判斷是不是選了無稱號
+      isTitleHidden: displayTitle === '無稱號'
     }
   }
   return MOCK_STATS
 })
+  
 
 // 🚀 2. 在 openTitleModal 裡面把「無稱號」加進清單
 const openTitleModal = async () => {

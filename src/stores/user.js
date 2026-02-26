@@ -42,6 +42,16 @@ export const useUserStore = defineStore('user', () => {
       const profile = await liff.getProfile()
       lineProfile.value = profile
       
+// 🚀 四哥特製：精準等級與稱號計算機
+  const getLevelInfo = (exp) => {
+    if (exp >= 2500) return { level: 6, title: '陽光開朗小萌新', nextExp: 2500 }
+    if (exp >= 1000) return { level: 5, title: '穿越時空成癮者', nextExp: 2500 }
+    if (exp >= 500)  return { level: 4, title: '平行宇宙開拓家', nextExp: 1000 }
+    if (exp >= 250)  return { level: 3, title: '主角光環的勇者', nextExp: 500 }
+    if (exp >= 100)  return { level: 2, title: '不怕死的探險家', nextExp: 250 }
+    return { level: 1, title: '剛加入的冒險者', nextExp: 100 }
+  }
+
       // 1. 檢查並註冊會員
       await checkAndRegisterUser(profile)
 
@@ -216,14 +226,13 @@ export const useUserStore = defineStore('user', () => {
       const newTotalExp = currentExp + earnedExp
       
       // 🚀 4. 升級判定雷達啟動！(每 1000 分升一級)
-      const nextLevelThreshold = currentLevel * 1000
-      let newLevel = currentLevel
-      let isLeveledUp = false
-
-      if (newTotalExp >= nextLevelThreshold) {
-        newLevel = currentLevel + 1
-        isLeveledUp = true
-      }
+      // 🚀 4. 升級判定雷達啟動！(套用最新 LV1 ~ LV6 階梯)
+      const currentLevelInfo = getLevelInfo(currentExp)
+      const newLevelInfo = getLevelInfo(newTotalExp)
+      
+      let newLevel = newLevelInfo.level
+      // 如果算出來的新等級，大於原本的等級，就是升級啦！
+      let isLeveledUp = newLevel > currentLevelInfo.level
 
       // 5. 寫入車票 (單場紀錄：確實寫入 135)
       await supabase.from('game_participants').insert([{ 

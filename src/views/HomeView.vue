@@ -315,7 +315,20 @@ onMounted(() => {
 
 /* 1. 背景層：更強烈的旋轉光束 */
 .epic-overlay { position: fixed; inset: 0; background: radial-gradient(circle at center, rgba(20,20,20,0.95) 0%, #000 100%); z-index: 99999; display: flex; justify-content: center; align-items: center; overflow: hidden; perspective: 1000px; }
-.light-beams { position: absolute; top: 50%; left: 50%; width: 250vmax; height: 250vmax; background: conic-gradient(from 0deg, transparent 0deg, rgba(212, 175, 55, 0.3) 15deg, transparent 30deg, rgba(212, 175, 55, 0.3) 45deg, transparent 60deg, rgba(212, 175, 55, 0.3) 75deg, transparent 90deg); transform: translate(-50%, -50%); animation: spin-slow 25s linear infinite; opacity: 0.6; mix-blend-mode: screen; }
+.light-beams { 
+  position: absolute; top: 50%; left: 50%; width: 250vmax; height: 250vmax; 
+  /* 🚀 關鍵修正：換成 repeating，360度自動補滿 12 條漸層聖光！ */
+  background: repeating-conic-gradient(
+    transparent 0deg 10deg, 
+    rgba(212, 175, 55, 0.25) 15deg, 
+    transparent 20deg 30deg
+  ); 
+  transform: translate(-50%, -50%); 
+  animation: spin-slow 25s linear infinite; 
+  opacity: 0.7; 
+  mix-blend-mode: screen; 
+}
+
 @keyframes spin-slow { 100% { transform: translate(-50%, -50%) rotate(360deg); } }
 
 /* 2. 內容容器：確保在最上層 */
@@ -329,8 +342,30 @@ onMounted(() => {
 .epic-emblem-box { position: relative; width: 160px; height: 160px; margin: 40px auto; display: flex; justify-content: center; align-items: center; background: url('data:image/svg+xml;charset=UTF-8,%3csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"%3e%3cpolygon points="50,5 95,25 95,75 50,95 5,75 5,25" fill="%23181818" stroke="%23D4AF37" stroke-width="2" vector-effect="non-scaling-stroke"/%3e%3c/svg%3e') no-repeat center center; background-size: contain; opacity: 0; /* 核心進場動畫 */ animation: emblem-arrival 1s cubic-bezier(0.175, 0.885, 0.32, 1.275) 0.6s forwards, float-epic 3s ease-in-out 1.6s infinite; }
 .epic-emblem-box::after { /* 💥 衝擊波特效層 */ content: ''; position: absolute; inset: -50px; border: 2px solid #D4AF37; border-radius: 50%; opacity: 0; scale: 0.5; animation: shockwave 0.8s ease-out 0.7s forwards; }
 .emblem-glow { position: absolute; inset: -30px; background: radial-gradient(circle, rgba(212,175,55,0.8) 0%, rgba(212,175,55,0) 70%); z-index: -1; animation: pulse-glow 2s infinite alternate 0.8s; opacity: 0; }
-.emblem-text { font-size: 2.8rem; font-weight: 900; color: #D4AF37; text-shadow: 0 2px 5px #000; background: linear-gradient(to bottom, #fff, #D4AF37); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+/* 🚀 強化版數字：白金鑲金立體質感 */
+.emblem-text { 
+  font-size: 3rem; /* 稍微加大一點點 */
+  font-weight: 1000; /* 用最粗的字重 */
+  margin-top: 5px; /* 微調位置讓視覺置中 */
+  
+  /* 🌟 1. 更亮的金屬漸層：從亮白金過渡到深黃金 */
+  background: linear-gradient(135deg, #ffffff 0%, #fceabb 25%, #D4AF37 50%, #9e761c 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
 
+  /* 🌟 2. 多重濾鏡堆疊：製造立體邊緣與輝光 */
+  filter: 
+    /* 第一層：緊貼的深色陰影，製造硬邊立體感 */
+    drop-shadow(0 2px 1px rgba(0,0,0,0.9)) 
+    /* 第二層：中間的金色輝光，讓它與背景分離 */
+    drop-shadow(0 0 10px rgba(212, 175, 55, 0.8))
+    /* 第三層：外圍的亮白光暈，製造爆發感 */
+    drop-shadow(0 0 20px rgba(255, 255, 255, 0.4));
+
+  /* 確保它在最上層 */
+  position: relative;
+  z-index: 20;
+}
 /* 5. 底部資訊依序浮現 */
 .epic-new-title, .epic-coupon-text, .epic-btn { opacity: 0; animation: fade-slide-up 0.8s ease-out 1.2s forwards; }
 .epic-new-title { font-size: 1.1rem; color: #ccc; margin-top: 30px; line-height: 1.6; }

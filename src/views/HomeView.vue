@@ -309,31 +309,49 @@ onMounted(() => {
   .stat-cell:first-child::after { right: -15px; }
 }
 
-/* 💥 英雄聯盟級晉級動畫專屬 CSS */
-.epic-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.9); z-index: 99999; display: flex; justify-content: center; align-items: center; overflow: hidden; perspective: 1000px; }
-.light-beams { position: absolute; top: 50%; left: 50%; width: 200vw; height: 200vw; background: conic-gradient(from 0deg, transparent 0deg, rgba(212,175,55,0.15) 20deg, transparent 40deg, rgba(212,175,55,0.15) 60deg, transparent 80deg, rgba(212,175,55,0.15) 100deg, transparent 120deg); transform: translate(-50%, -50%); animation: spin-slow 20s linear infinite; }
+/* =========================================
+   💥 SS 級炸裂晉級動畫專屬 CSS (四哥強化版)
+========================================= */
+
+/* 1. 背景層：更強烈的旋轉光束 */
+.epic-overlay { position: fixed; inset: 0; background: radial-gradient(circle at center, rgba(20,20,20,0.95) 0%, #000 100%); z-index: 99999; display: flex; justify-content: center; align-items: center; overflow: hidden; perspective: 1000px; }
+.light-beams { position: absolute; top: 50%; left: 50%; width: 250vmax; height: 250vmax; background: conic-gradient(from 0deg, transparent 0deg, rgba(212, 175, 55, 0.3) 15deg, transparent 30deg, rgba(212, 175, 55, 0.3) 45deg, transparent 60deg, rgba(212, 175, 55, 0.3) 75deg, transparent 90deg); transform: translate(-50%, -50%); animation: spin-slow 25s linear infinite; opacity: 0.6; mix-blend-mode: screen; }
 @keyframes spin-slow { 100% { transform: translate(-50%, -50%) rotate(360deg); } }
 
-.epic-content { position: relative; z-index: 10; text-align: center; animation: epic-drop 0.8s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards; }
-@keyframes epic-drop { 0% { transform: scale(0.1) translateZ(-500px); opacity: 0; } 100% { transform: scale(1) translateZ(0); opacity: 1; } }
+/* 2. 內容容器：確保在最上層 */
+.epic-content { position: relative; z-index: 10; text-align: center; }
 
-.epic-subtitle { color: #888; font-family: 'Arial Black', sans-serif; letter-spacing: 10px; margin: 0 0 5px 0; font-size: 1.2rem; text-shadow: 0 0 10px rgba(255,255,255,0.3); }
-.epic-title { font-size: 4rem; margin: 0; color: #fff; text-shadow: 0 0 20px #D4AF37, 0 0 40px #D4AF37; letter-spacing: 5px; font-weight: 900; line-height: 1.2; }
+/* 3. 文字依序進場：磅！磅！磅！ */
+.epic-subtitle { color: #888; font-family: 'Arial Black', sans-serif; letter-spacing: 8px; margin: 0 0 10px 0; font-size: 1.1rem; text-transform: uppercase; opacity: 0; animation: fade-slide-down 0.6s ease-out 0.2s forwards; }
+.epic-title { font-size: 4.5rem; margin: 0; color: #fff; font-weight: 900; line-height: 1.1; text-transform: uppercase; letter-spacing: 2px; opacity: 0; transform: scale(1.5); filter: blur(10px); animation: title-crash 0.6s cubic-bezier(0.215, 0.610, 0.355, 1.000) 0.4s forwards; /* text-shadow 用多層堆疊做出厚重感 */ text-shadow: 0 0 10px rgba(212, 175, 55, 0.8), 0 0 30px rgba(212, 175, 55, 0.4), 0 5px 15px #000; }
 
-.epic-emblem-box { position: relative; width: 150px; height: 150px; margin: 30px auto; display: flex; justify-content: center; align-items: center; background: url('data:image/svg+xml;charset=UTF-8,%3csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"%3e%3cpolygon points="50,5 95,25 95,75 50,95 5,75 5,25" fill="%23111" stroke="%23D4AF37" stroke-width="3"/%3e%3c/svg%3e') no-repeat center center; background-size: contain; animation: float-epic 3s ease-in-out infinite; }
-.emblem-glow { position: absolute; inset: -20px; background: radial-gradient(circle, rgba(212,175,55,0.6) 0%, transparent 70%); z-index: -1; animation: pulse-glow 2s infinite alternate; }
-.emblem-text { font-size: 2.5rem; font-weight: bold; color: #D4AF37; text-shadow: 0 2px 4px #000; }
+/* 4. 徽章核心：增加衝擊波與核心光芒 */
+.epic-emblem-box { position: relative; width: 160px; height: 160px; margin: 40px auto; display: flex; justify-content: center; align-items: center; background: url('data:image/svg+xml;charset=UTF-8,%3csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"%3e%3cpolygon points="50,5 95,25 95,75 50,95 5,75 5,25" fill="%23181818" stroke="%23D4AF37" stroke-width="2" vector-effect="non-scaling-stroke"/%3e%3c/svg%3e') no-repeat center center; background-size: contain; opacity: 0; /* 核心進場動畫 */ animation: emblem-arrival 1s cubic-bezier(0.175, 0.885, 0.32, 1.275) 0.6s forwards, float-epic 3s ease-in-out 1.6s infinite; }
+.epic-emblem-box::after { /* 💥 衝擊波特效層 */ content: ''; position: absolute; inset: -50px; border: 2px solid #D4AF37; border-radius: 50%; opacity: 0; scale: 0.5; animation: shockwave 0.8s ease-out 0.7s forwards; }
+.emblem-glow { position: absolute; inset: -30px; background: radial-gradient(circle, rgba(212,175,55,0.8) 0%, rgba(212,175,55,0) 70%); z-index: -1; animation: pulse-glow 2s infinite alternate 0.8s; opacity: 0; }
+.emblem-text { font-size: 2.8rem; font-weight: 900; color: #D4AF37; text-shadow: 0 2px 5px #000; background: linear-gradient(to bottom, #fff, #D4AF37); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
 
+/* 5. 底部資訊依序浮現 */
+.epic-new-title, .epic-coupon-text, .epic-btn { opacity: 0; animation: fade-slide-up 0.8s ease-out 1.2s forwards; }
+.epic-new-title { font-size: 1.1rem; color: #ccc; margin-top: 30px; line-height: 1.6; }
+
+/* 6. 金色稱號：加上金屬流光質感 */
+.gold-text { font-size: 2rem; font-weight: 900; display: block; margin-top: 10px; padding: 5px; color: #D4AF37; /* 🌟 金屬流光特效 */ background: linear-gradient(to right, #bf953f, #fcf6ba, #b38728, #fbf5b7, #aa771c); background-size: 200% auto; -webkit-background-clip: text; -webkit-text-fill-color: transparent; animation: shine-move 3s linear infinite; text-shadow: 0 0 20px rgba(212, 175, 55, 0.3); }
+
+.epic-coupon-text { font-size: 0.9rem; color: #2ecc71; margin-top: 15px; margin-bottom: 40px; font-weight: bold; background: rgba(46, 204, 113, 0.15); padding: 10px 20px; border-radius: 30px; display: inline-block; border: 1px solid rgba(46, 204, 113, 0.3); animation-delay: 1.4s; }
+
+.epic-btn { background: linear-gradient(135deg, #D4AF37, #f1c40f, #D4AF37); background-size: 200% auto; color: #000; font-size: 1.2rem; font-weight: bold; padding: 16px 50px; border: none; border-radius: 50px; cursor: pointer; box-shadow: 0 10px 30px rgba(212, 175, 55, 0.3), inset 0 2px 2px rgba(255,255,255,0.5); transition: 0.3s; width: auto; min-width: 200px; margin-bottom: 20px; animation-delay: 1.6s; }
+.epic-btn:hover { transform: scale(1.05) translateY(-3px); box-shadow: 0 20px 40px rgba(212, 175, 55, 0.5); background-position: right center; }
+
+/* ================= 動畫關鍵影格定義 ================= */
+@keyframes title-crash { 0% { opacity: 0; transform: scale(3); filter: blur(20px); } 80% { transform: scale(0.9); } 100% { opacity: 1; transform: scale(1); filter: blur(0); } }
+@keyframes emblem-arrival { 0% { opacity: 0; transform: translateY(-200px) scale(0.5) rotate(-180deg); } 70% { transform: translateY(20px) scale(1.1) rotate(10deg); } 100% { opacity: 1; transform: translateY(0) scale(1) rotate(0deg); } }
+@keyframes shockwave { 0% { opacity: 1; scale: 0.5; border-width: 10px; } 100% { opacity: 0; scale: 2.5; border-width: 0px; } }
+@keyframes fade-slide-down { from { opacity: 0; transform: translateY(-20px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes fade-slide-up { from { opacity: 0; transform: translateY(30px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes shine-move { to { background-position: 200% center; } }
 @keyframes float-epic { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-15px); } }
-@keyframes pulse-glow { 0% { opacity: 0.5; transform: scale(0.9); } 100% { opacity: 1; transform: scale(1.2); } }
-
-.epic-new-title { font-size: 1.2rem; color: #ccc; margin-top: 20px; line-height: 1.6; }
-.gold-text { font-size: 1.8rem; color: #D4AF37; font-weight: bold; display: block; margin-top: 5px; text-shadow: 0 0 10px rgba(212,175,55,0.5); }
-.epic-coupon-text { font-size: 0.9rem; color: #2ecc71; margin-top: 15px; margin-bottom: 30px; font-weight: bold; background: rgba(46, 204, 113, 0.1); padding: 8px 15px; border-radius: 20px; display: inline-block; border: 1px solid #2ecc71; }
-
-.epic-btn { background: linear-gradient(135deg, #D4AF37, #f1c40f); color: #000; font-size: 1.2rem; font-weight: bold; padding: 15px 40px; border: none; border-radius: 30px; cursor: pointer; box-shadow: 0 10px 20px rgba(212,175,55,0.4); transition: 0.3s; width: 100%; max-width: 250px; margin-bottom: 20px; }
-.epic-btn:hover { transform: scale(1.05) translateY(-3px); box-shadow: 0 15px 30px rgba(212,175,55,0.6); }
-
-.epic-pop-enter-active, .epic-pop-leave-active { transition: opacity 0.5s ease; }
+@keyframes pulse-glow { 0% { opacity: 0.4; transform: scale(0.95); } 100% { opacity: 1; transform: scale(1.1); } }
+.epic-pop-enter-active, .epic-pop-leave-active { transition: opacity 0.3s ease; }
 .epic-pop-enter-from, .epic-pop-leave-to { opacity: 0; }
 </style>

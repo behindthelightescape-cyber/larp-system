@@ -8,7 +8,6 @@ const isLoaded = ref(false)
 
 const BRAND_LOGO = 'https://meee.com.tw/VInVFKh.png' 
 
-// 預設的假資料
 const MOCK_STATS = {
   historyCount: 0,
   daysJoined: 0,
@@ -18,41 +17,50 @@ const MOCK_STATS = {
   title: '載入中...'
 }
 
-// 🚀 1. 在 stats 裡面新增一個隱藏判定
-// 🚀 1. 在 stats 裡面動態計算下一級的門檻
 const stats = computed(() => {
   if (store.userData) {
     const currentExp = store.userData.total_exp || 0
-    // 呼叫我們剛剛在 store 寫好的計算機！
     const levelInfo = store.getLevelInfo ? store.getLevelInfo(currentExp) : { level: 1, title: '剛加入的冒險者', nextExp: 100 }
     
-    // 如果玩家沒有手動換稱號，就顯示他目前等級對應的稱號！
     let displayTitle = store.userData.current_title || levelInfo.title
 
     return {
       historyCount: store.history?.length || 0,
       daysJoined: store.daysJoined || 0,
-      level: levelInfo.level, // 👈 精準等級
+      level: levelInfo.level,
       points: currentExp,
-      nextLevel: levelInfo.nextExp, // 👈 精準的下一級門檻 (100, 250, 500...)
+      nextLevel: levelInfo.nextExp,
       title: displayTitle,
       isTitleHidden: displayTitle === '無稱號'
     }
   }
   return MOCK_STATS
 })
-  
 
-// 🚀 2. 在 openTitleModal 裡面把「無稱號」加進清單
+// 🚀 關閉超燃晉級動畫
+const closeLevelUpAnimation = () => {
+  store.levelUpData = null
+}
+
+// 🚀 升級版：把「等級解鎖稱號」與「成就稱號」完美合體！
 const openTitleModal = async () => {
   if (!store.userData) return
   showTitleModal.value = true
   isLoadingTitles.value = true
   
-  // 預設給一個「無稱號」跟「新手」保底
-  availableTitles.value = ['無稱號', '新手冒險者'] 
+  // 1. 依照目前的真實等級，發放對應的階級稱號！
+  const currentLevel = store.userData?.level || 1
+  const allLevelTitles = [
+    '剛加入的冒險者', '不怕死的探險家', '主角光環的勇者', 
+    '平行宇宙開拓家', '穿越時空成癮者', '陽光開朗小萌新'
+  ]
+  const unlockedLevelTitles = allLevelTitles.slice(0, currentLevel)
+
+  // 2. 預設清單放入：無稱號 + 已解鎖的等級稱號
+  let baseTitles = ['無稱號', ...unlockedLevelTitles] 
 
   try {
+    // 3. 去資料庫撈取額外的「特殊成就稱號」
     const { data, error } = await supabase
       .from('user_achievements')
       .select('achievements ( title )')
@@ -61,20 +69,20 @@ const openTitleModal = async () => {
     if (error) throw error
 
     if (data && data.length > 0) {
-      const titles = data.map(d => d.achievements?.title).filter(t => t)
-      // 🎯 利用 Set 確保不重複，並且把無稱號固定在第一個！
-      availableTitles.value = [...new Set(['無稱號', '新手冒險者', ...titles])]
+      const achTitles = data.map(d => d.achievements?.title).filter(t => t)
+      baseTitles = [...baseTitles, ...achTitles]
     }
   } catch (err) {
     console.error('撈取稱號庫失敗:', err)
   } finally {
+    // 4. 利用 Set 去除重複，完美呈現給玩家
+    availableTitles.value = [...new Set(baseTitles)]
     isLoadingTitles.value = false
   }
 }
 
 const changeTitle = async (newTitle) => {
   try {
-    // 1. 寫回資料庫
     const { error } = await supabase
       .from('users')
       .update({ current_title: newTitle })
@@ -82,7 +90,6 @@ const changeTitle = async (newTitle) => {
     
     if (error) throw error
 
-    // 2. 更新畫面與 Store
     store.userData.current_title = newTitle
     showTitleModal.value = false
   } catch (err) {
@@ -199,111 +206,63 @@ onMounted(() => {
           </div>
         </div>
       </transition>
+
+      <transition name="epic-pop">
+        <div v-if="store.levelUpData" class="epic-overlay">
+          <div class="light-beams"></div>
+          
+          <div class="epic-content">
+            <h4 class="epic-subtitle">RANK UP</h4>
+            <h1 class="epic-title">晉級成功</h1>
+            
+            <div class="epic-emblem-box">
+              <div class="emblem-glow"></div>
+              <div class="emblem-text">LV.{{ store.levelUpData.level }}</div>
+            </div>
+            
+            <p class="epic-new-title">解鎖全新榮耀稱號：<br><span class="gold-text">{{ store.levelUpData.title }}</span></p>
+            <p class="epic-coupon-text">🎟️ 系統已將「尊榮升級專屬禮」派發至您的票券匣</p>
+            
+            <button class="epic-btn" @click="closeLevelUpAnimation">華麗收下</button>
+          </div>
+        </div>
+      </transition>
     </Teleport>
 
   </div>
 </template>
 
 <style scoped>
-/* === 頁面基礎 === */
-.page-container { 
-  width: 100%; max-width: 800px; margin: 0 auto;
-  box-sizing: border-box; min-height: 100vh;
-  background-color: transparent; 
-  color: #fff; overflow: hidden;
-}
-
-.content-layer {
-  display: flex; flex-direction: column; align-items: center;
-  padding-top: 0px;  
-  padding-left: 24px;
-  padding-right: 24px;
-}
-
-/* === 動畫 === */
+/* (你原本的全部樣式保留，我們只在最下面補上動畫的 CSS) */
+.page-container { width: 100%; max-width: 800px; margin: 0 auto; box-sizing: border-box; min-height: 100vh; background-color: transparent; color: #fff; overflow: hidden; }
+.content-layer { display: flex; flex-direction: column; align-items: center; padding-top: 0px; padding-left: 24px; padding-right: 24px; }
 .fade-in-down { opacity: 0; transform: translateY(-20px); transition: all 0.8s ease; }
 .fade-in-up { opacity: 0; transform: translateY(30px); transition: all 0.8s cubic-bezier(0.2, 0.8, 0.2, 1); }
 .enter-active .fade-in-down, .enter-active .fade-in-up { opacity: 1; transform: translateY(0); }
 .delay-1 { transition-delay: 0.2s; }
-
-/* === LOGO === */
 .brand-header { margin-bottom: 100px; }
 .brand-logo { height: 85px; object-fit: contain; filter: drop-shadow(0 0 10px rgba(212, 175, 55, 0.6)); }
-
-/* === 英雄 ID 卡片 === */
-.hero-card-container {
-  width: 100%; max-width: 620px; position: relative;
-  background: rgba(20, 20, 20, 0.65);
-  backdrop-filter: blur(15px); -webkit-backdrop-filter: blur(15px);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 28px; box-shadow: 0 25px 60px rgba(0, 0, 0, 0.6);
-  display: flex; flex-direction: column; align-items: center;
-  padding-bottom: 40px; margin: 0 15px;
-}
+.hero-card-container { width: 100%; max-width: 620px; position: relative; background: rgba(20, 20, 20, 0.65); backdrop-filter: blur(15px); -webkit-backdrop-filter: blur(15px); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 28px; box-shadow: 0 25px 60px rgba(0, 0, 0, 0.6); display: flex; flex-direction: column; align-items: center; padding-bottom: 40px; margin: 0 15px; }
 .card-deco-top { position: absolute; top: 0; left: 15%; right: 15%; height: 2px; background: linear-gradient(90deg, transparent, #D4AF37, transparent); }
 .card-deco-bottom { position: absolute; bottom: 0; left: 30%; right: 30%; height: 1px; background: linear-gradient(90deg, transparent, #555, transparent); }
-
-/* === 頭像 === */
 .avatar-overlap { position: absolute; top: -85px; display: flex; flex-direction: column; align-items: center; z-index: 10; }
 .avatar-ring { width: 170px; height: 170px; border-radius: 50%; padding: 6px; background: linear-gradient(135deg, #fcca30, #222); box-shadow: 0 15px 30px rgba(0,0,0,0.7); }
 .floating { animation: float 4s ease-in-out infinite; }
 @keyframes float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-8px); } }
 .avatar-img { width: 100%; height: 100%; object-fit: cover; border-radius: 50%; border: 4px solid #1a1a1a; background: #000; }
 .lv-badge { margin-top: -18px; z-index: 11; background: #ffcf30; color: #000; font-weight: 900; font-size: 1rem; padding: 5px 16px; border-radius: 14px; box-shadow: 0 4px 12px rgba(0,0,0,0.5); font-family: 'Arial', sans-serif; letter-spacing: 1px; }
-
-/* === 角色資訊 === */
 .card-body { width: 100%; box-sizing: border-box; padding: 140px 30px 10px 30px; display: flex; flex-direction: column; align-items: center; }
 .user-name { font-size: 2.4rem; font-weight: 700; color: #fff; margin: 0 0 12px 0; text-shadow: 0 2px 10px rgba(0,0,0,0.8); line-height: 1.1; text-align: center; }
-
-/* === 🚀 稱號框本體 (純淨置中版) === */
-.user-title-box { 
-  border: 1px solid rgba(212, 175, 55, 0.692); 
-  background: rgba(212, 175, 55, 0.05); 
-  padding: 6px 24px; 
-  border-radius: 8px; 
-  margin-bottom: 10px; 
-  transition: all 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
-  display: inline-flex; 
-  justify-content: center; 
-  align-items: center;
-  min-width: 120px;
-}
+.user-title-box { border: 1px solid rgba(212, 175, 55, 0.692); background: rgba(212, 175, 55, 0.05); padding: 6px 24px; border-radius: 8px; margin-bottom: 10px; transition: all 0.3s cubic-bezier(0.2, 0.8, 0.2, 1); display: inline-flex; justify-content: center; align-items: center; min-width: 120px; }
 .user-title-box.clickable { cursor: pointer; }
-.user-title-box.clickable:hover { 
-  background: rgba(212, 175, 55, 0.2); 
-  box-shadow: 0 0 15px rgba(212, 175, 55, 0.3); 
-  transform: scale(1.05); 
-}
+.user-title-box.clickable:hover { background: rgba(212, 175, 55, 0.2); box-shadow: 0 0 15px rgba(212, 175, 55, 0.3); transform: scale(1.05); }
 .user-title-box.clickable:active { transform: scale(0.95); }
-
-.title-text { 
-  font-size: 1rem; 
-  color: #D4AF37; 
-  letter-spacing: 1.5px; 
-  text-align: center;
-  margin: 0;
-  transition: all 0.3s;
-}
-
-/* 🚀 選擇「無稱號」時的低調狀態 */
-.user-title-box.is-hidden {
-  border-color: rgba(255, 255, 255, 0.15);
-  background: rgba(0, 0, 0, 0.4);
-}
-.user-title-box.is-hidden .title-text {
-  color: #777; 
-  font-size: 0.9rem; 
-}
-.user-title-box.is-hidden.clickable:hover {
-  background: rgba(255, 255, 255, 0.1);
-  box-shadow: 0 0 10px rgba(255, 255, 255, 0.05);
-  border-color: rgba(255, 255, 255, 0.3);
-}
-
+.title-text { font-size: 1rem; color: #D4AF37; letter-spacing: 1.5px; text-align: center; margin: 0; transition: all 0.3s; }
+.user-title-box.is-hidden { border-color: rgba(255, 255, 255, 0.15); background: rgba(0, 0, 0, 0.4); }
+.user-title-box.is-hidden .title-text { color: #777; font-size: 0.9rem; }
+.user-title-box.is-hidden.clickable:hover { background: rgba(255, 255, 255, 0.1); box-shadow: 0 0 10px rgba(255, 255, 255, 0.05); border-color: rgba(255, 255, 255, 0.3); }
 .user-uid { font-size: 1.1rem; font-weight: bold; color: #D4AF37; letter-spacing: 2px; font-family: monospace; background: rgba(0, 0, 0, 0.4); padding: 6px 18px; border-radius: 20px; border: 1px solid rgba(212, 175, 55, 0.4); text-shadow: 0 0 5px rgba(212, 175, 55, 0.5); margin-top: 12px; }
 .divider-line { width: 100%; height: 1px; background: rgba(255,255,255,0.08); margin: 30px 0; }
-
-/* === 數據矩陣 === */
 .stats-matrix { display: flex; width: 100%; justify-content: center; margin-bottom: 35px; }
 .stat-cell { flex: 1; display: flex; flex-direction: column; align-items: center; position: relative; }
 .stat-gap { width: 50px; } 
@@ -311,8 +270,6 @@ onMounted(() => {
 .stat-label { font-size: 0.8rem; color: #888; font-weight: bold; letter-spacing: 2px; margin-bottom: 8px; }
 .stat-num { font-size: 2.8rem; font-weight: 700; color: #fff; line-height: 1; }
 .stat-num.highlight { color: #D4AF37; text-shadow: 0 0 15px rgba(212, 175, 55, 0.4); }
-
-/* === 經驗條 === */
 .exp-section { width: 100%; padding: 0 15px; box-sizing: border-box; }
 .exp-info { display: flex; justify-content: space-between; margin-bottom: 10px; font-size: 0.85rem; font-weight: bold; }
 .exp-label { color: #666; letter-spacing: 1px; }
@@ -320,8 +277,6 @@ onMounted(() => {
 .exp-bar-bg { width: 100%; height: 10px; background: #222; border-radius: 5px; overflow: hidden; position: relative; box-shadow: inset 0 1px 3px rgba(0,0,0,0.5); }
 .exp-bar-fill { height: 100%; background: linear-gradient(90deg, #fac421, #D4AF37); border-radius: 5px; position: relative; transition: width 1s ease; }
 .exp-glare { position: absolute; top: 0; left: 0; width: 100%; height: 50%; background: rgba(255,255,255,0.25); }
-
-/* === 彈窗專屬 CSS === */
 .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); z-index: 3000; display: flex; justify-content: center; align-items: flex-end; backdrop-filter: blur(5px); }
 .title-modal { height: 60vh; background: #161616; width: 100%; max-width: 600px; border-radius: 24px 24px 0 0; border-top: 1px solid #D4AF37; display: flex; flex-direction: column; }
 .modal-top-bar { display: flex; justify-content: space-between; align-items: center; padding: 20px 25px; border-bottom: 1px solid #222; }
@@ -334,7 +289,6 @@ onMounted(() => {
 .title-option-btn.active { background: rgba(212, 175, 55, 0.15); border: 1px solid #D4AF37; color: #D4AF37; font-weight: bold; box-shadow: inset 0 0 10px rgba(212,175,55,0.1); }
 .loading-text { text-align: center; color: #888; padding: 40px; display: flex; flex-direction: column; align-items: center; gap: 15px;}
 .spinner { width: 30px; height: 30px; border: 3px solid rgba(212, 175, 55, 0.2); border-top-color: #D4AF37; border-radius: 50%; animation: spin 1s linear infinite; }
-@keyframes spin { to { transform: rotate(360deg); } }
 .pop-enter-active, .pop-leave-active { transition: transform 0.3s cubic-bezier(0.2, 0.8, 0.2, 1); }
 .pop-enter-from, .pop-leave-to { transform: translateY(100%); }
 
@@ -349,4 +303,32 @@ onMounted(() => {
   .stat-gap { width: 30px; }
   .stat-cell:first-child::after { right: -15px; }
 }
+
+/* 💥 英雄聯盟級晉級動畫專屬 CSS */
+.epic-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.9); z-index: 99999; display: flex; justify-content: center; align-items: center; overflow: hidden; perspective: 1000px; }
+.light-beams { position: absolute; top: 50%; left: 50%; width: 200vw; height: 200vw; background: conic-gradient(from 0deg, transparent 0deg, rgba(212,175,55,0.15) 20deg, transparent 40deg, rgba(212,175,55,0.15) 60deg, transparent 80deg, rgba(212,175,55,0.15) 100deg, transparent 120deg); transform: translate(-50%, -50%); animation: spin-slow 20s linear infinite; }
+@keyframes spin-slow { 100% { transform: translate(-50%, -50%) rotate(360deg); } }
+
+.epic-content { position: relative; z-index: 10; text-align: center; animation: epic-drop 0.8s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards; }
+@keyframes epic-drop { 0% { transform: scale(0.1) translateZ(-500px); opacity: 0; } 100% { transform: scale(1) translateZ(0); opacity: 1; } }
+
+.epic-subtitle { color: #888; font-family: 'Arial Black', sans-serif; letter-spacing: 10px; margin: 0 0 5px 0; font-size: 1.2rem; text-shadow: 0 0 10px rgba(255,255,255,0.3); }
+.epic-title { font-size: 4rem; margin: 0; color: #fff; text-shadow: 0 0 20px #D4AF37, 0 0 40px #D4AF37; letter-spacing: 5px; font-weight: 900; line-height: 1.2; }
+
+.epic-emblem-box { position: relative; width: 150px; height: 150px; margin: 30px auto; display: flex; justify-content: center; align-items: center; background: url('data:image/svg+xml;charset=UTF-8,%3csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"%3e%3cpolygon points="50,5 95,25 95,75 50,95 5,75 5,25" fill="%23111" stroke="%23D4AF37" stroke-width="3"/%3e%3c/svg%3e') no-repeat center center; background-size: contain; animation: float-epic 3s ease-in-out infinite; }
+.emblem-glow { position: absolute; inset: -20px; background: radial-gradient(circle, rgba(212,175,55,0.6) 0%, transparent 70%); z-index: -1; animation: pulse-glow 2s infinite alternate; }
+.emblem-text { font-size: 2.5rem; font-weight: bold; color: #D4AF37; text-shadow: 0 2px 4px #000; }
+
+@keyframes float-epic { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-15px); } }
+@keyframes pulse-glow { 0% { opacity: 0.5; transform: scale(0.9); } 100% { opacity: 1; transform: scale(1.2); } }
+
+.epic-new-title { font-size: 1.2rem; color: #ccc; margin-top: 20px; line-height: 1.6; }
+.gold-text { font-size: 1.8rem; color: #D4AF37; font-weight: bold; display: block; margin-top: 5px; text-shadow: 0 0 10px rgba(212,175,55,0.5); }
+.epic-coupon-text { font-size: 0.9rem; color: #2ecc71; margin-top: 15px; margin-bottom: 30px; font-weight: bold; background: rgba(46, 204, 113, 0.1); padding: 8px 15px; border-radius: 20px; display: inline-block; border: 1px solid #2ecc71; }
+
+.epic-btn { background: linear-gradient(135deg, #D4AF37, #f1c40f); color: #000; font-size: 1.2rem; font-weight: bold; padding: 15px 40px; border: none; border-radius: 30px; cursor: pointer; box-shadow: 0 10px 20px rgba(212,175,55,0.4); transition: 0.3s; width: 100%; max-width: 250px; margin-bottom: 20px; }
+.epic-btn:hover { transform: scale(1.05) translateY(-3px); box-shadow: 0 15px 30px rgba(212,175,55,0.6); }
+
+.epic-pop-enter-active, .epic-pop-leave-active { transition: opacity 0.5s ease; }
+.epic-pop-enter-from, .epic-pop-leave-to { opacity: 0; }
 </style>

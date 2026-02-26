@@ -51,29 +51,34 @@ export const useUserStore = defineStore('user', () => {
       lineProfile.value = profile
       
       // 1. 檢查並註冊會員
-      // 1. 檢查並註冊會員
       await checkAndRegisterUser(profile)
 
-      // 🚀 1.5 四哥的自癒系統：強制校正資料庫等級！(絕對不架空資料庫)
+      // 🪞 裝上監視器：把抓到的資料印出來看看！
+      console.log('🔍 自癒系統啟動中... 目前口袋的 EXP:', userData.value?.total_exp, ' / 資料庫寫的等級:', userData.value?.level)
+
+      // 🚀 1.5 四哥的自癒系統
       if (userData.value) {
-        // 拿他口袋裡的真實經驗值，去算他「應該」要是幾等
         const correctLevelInfo = getLevelInfo(userData.value.total_exp || 0)
         
-        // 如果資料庫寫的等級，跟算出來的等級不一樣 (例如你剛剛手動改了 EXP)
-        if (userData.value.level !== correctLevelInfo.level) {
-          console.log(`🔧 發現資料庫等級不同步！正在自動校正為 LV.${correctLevelInfo.level}...`)
-          
-          // 1. 強制更新資料庫，確保後台看到的資料絕對正確！
-          await supabase.from('users').update({ level: correctLevelInfo.level }).eq('id', userData.value.id)
-          
-          // 2. 把本地的資料也同步成正確的
-          userData.value.level = correctLevelInfo.level
-        }
-      }
+        console.log(`🧮 計算機判定：他應該要是 LV.${correctLevelInfo.level}`)
 
-      // 2. 會員確認後，執行你原本的抓取邏輯！拿真正的 ID 去查！
-      if (userData.value && userData.value.id) {
-        await fetchUserExtraData(userData.value.id)
+        if (userData.value.level !== correctLevelInfo.level) {
+          console.log(`🔧 抓到不同步！正在強制把資料庫等級改成 LV.${correctLevelInfo.level}...`)
+          
+          const { error: updateErr } = await supabase
+            .from('users')
+            .update({ level: correctLevelInfo.level })
+            .eq('id', userData.value.id)
+            
+          if (updateErr) {
+            console.error('❌ 自動校正失敗，是不是資料庫權限卡住了？', updateErr)
+          } else {
+            console.log('✅ 資料庫校正完畢！')
+            userData.value.level = correctLevelInfo.level
+          }
+        } else {
+          console.log('✨ 等級完全正確，不需要校正！')
+        }
       }
 
       // 2. 會員確認後，抓取歷史與優惠券

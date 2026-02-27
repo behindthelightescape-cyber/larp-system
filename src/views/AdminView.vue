@@ -8,6 +8,8 @@ import ScriptManager from '../components/ScriptManager.vue'
 import SessionManager from '../components/SessionManager.vue' 
 import DataImporter from '../components/DataImporter.vue'
 import AnalyticsManager from '../components/AnalyticsManager.vue' // 🚀 引入全新的分析子元件
+import AdminAchievements from '../components/AdminAchievements.vue'
+
 
 const session = ref(null)
 const isLoading = ref(true)
@@ -152,6 +154,9 @@ const changeTab = (tabName) => {
         <button class="nav-btn" :class="{ active: currentTab === 'script' }" @click="changeTab('script')">
           <span class="icon">📜</span> 劇本管理
         </button>
+        <button class="nav-btn" :class="{ active: currentTab === 'achievement' }" @click="changeTab('achievement')">
+          <span class="icon">🏆</span> 成就鑄造
+        </button>
       </nav>
 
       <div class="sidebar-footer">
@@ -184,7 +189,7 @@ const changeTab = (tabName) => {
               currentTab === 'session' ? '場次大廳 (掃碼監控)' :  
               currentTab === 'member' ? '玩家總部 (資料查詢)' : 
               currentTab === 'coupon' ? '發送票券 (導彈系統)' : 
-              currentTab === 'game' ? '批次開場' : '劇本管理' 
+              currentTab === 'achievement' ? '成就鑄造廠' : '劇本管理' /* 👈 這裡補上 achievement 的判斷 */
             }}
           </h2>
         </div>
@@ -225,6 +230,15 @@ const changeTab = (tabName) => {
       <div v-show="currentTab === 'script'" class="panel active">
         <ScriptManager @update-stats="loadDashboardStats" />
       </div>
+      
+      <div v-show="currentTab === 'script'" class="panel active">
+        <ScriptManager @update-stats="loadDashboardStats" />
+      </div>
+
+      <div v-if="currentTab === 'achievement'" class="panel active">
+        <AdminAchievements />
+      </div>
+
     </main>
   </div>
 </template>

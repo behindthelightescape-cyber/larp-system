@@ -12,6 +12,11 @@ const router = createRouter({
     { path: '/history', component: HistoryView },
     { path: '/coupons', component: CouponView },
     { path: '/settings', component: SettingsView },
+    {
+      path: '/achievements',
+      name: 'achievements',
+      component: AchievementsView
+    },
     // 🚀 小四特製：加上管理後台的秘密通道
     { path: '/admin', component: AdminView },
     

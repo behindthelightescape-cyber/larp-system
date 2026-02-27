@@ -5,10 +5,7 @@ const route = useRoute()
 </script>
 
 <template>
-    
-
-
-<nav v-if="route.path !== '/admin'" class="bottom-nav">
+  <nav v-if="route.path !== '/admin'" class="bottom-nav">
     
     <router-link to="/" class="nav-item">
       <svg class="icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -17,14 +14,21 @@ const route = useRoute()
       <span class="label">首頁</span>
     </router-link>
 
-    
-
     <router-link to="/history" class="nav-item">
       <svg class="icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
         <path d="M12 22C17.5228 22 22 17.5228 22 12C22 6.47715 17.5228 2 12 2C6.47715 2 2 6.47715 2 12C2 17.5228 6.47715 22 12 22Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
         <path d="M12 6V12L16 14" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
       </svg>
       <span class="label">歷程</span>
+    </router-link>
+
+    <router-link to="/achievements" class="nav-item">
+      <svg class="icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M8 21H16M12 17V21M7 4H17M12 17C15.3137 17 18 14.3137 18 11V4H6V11C6 14.3137 8.68629 17 12 17Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        <path d="M6 7H4C3.44772 7 3 7.44772 3 8V9C3 10.6569 4.34315 12 6 12V12" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        <path d="M18 7H20C20.5523 7 21 7.44772 21 8V9C21 10.6569 19.6569 12 18 12V12" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      <span class="label">榮耀</span>
     </router-link>
 
     <router-link to="/coupons" class="nav-item">
@@ -41,6 +45,7 @@ const route = useRoute()
       </svg>
       <span class="label">設定</span>
     </router-link>
+
   </nav>
 </template>
 

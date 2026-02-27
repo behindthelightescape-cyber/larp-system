@@ -6,53 +6,57 @@ const store = useUserStore()
 const showModal = ref(false)
 const selectedGame = ref({})
 
-// === 🧪 小四特製：預覽用假資料 ===
+// === 🧪 小四特製：預覽用假資料 (當 Store 沒資料時會顯示這個) ===
 const MOCK_HISTORY = [
   {
     id: 1,
     title: '不靠譜魔法指南',
-    cover: 'https://images.unsplash.com/photo-1634152962476-4b8a00e1915c?auto=format&fit=crop&q=80&w=300&h=400', 
+    cover: 'https://images.unsplash.com/photo-1634152962476-4b8a00e1915c?auto=format&fit=crop&q=80&w=300&h=400', // 魔法書封面示意圖
     date: '2023-11-22',
     gm: '喬巴',
     exp: 100,
-    branch: '西門館1.0',
+    branch: '台北旗艦館',
     location: '201 包廂',
-    mvp: true,
-    story_memory: '第一場魔法考試順利通過！' // 加點假手札看看效果
+    mvp: true // 假設你是 MVP
   },
   {
     id: 2,
-    title: '未知劇本', // 👈 故意放一個未知的來測試替換邏輯
-    cover: 'https://images.unsplash.com/photo-1534447677768-be436bb09401?auto=format&fit=crop&q=80&w=300&h=400', 
+    title: '那一束月光',
+    cover: 'https://images.unsplash.com/photo-1534447677768-be436bb09401?auto=format&fit=crop&q=80&w=300&h=400', // 月光示意圖
     date: '2023-11-03',
     gm: '沙拉',
     exp: 6,
-    branch: '西門館1.0',
+    branch: '台北旗艦館',
     location: '202 包廂',
-    mvp: false,
-    story_memory: '那一束月光' // 👈 標題會自動抓這個！
+    mvp: false
+  },
+  {
+    id: 3,
+    title: '二十四橋明月夜',
+    cover: 'https://images.unsplash.com/photo-1528164344705-47542687000d?auto=format&fit=crop&q=80&w=300&h=400', // 古風示意圖
+    date: '2023-10-28',
+    gm: '丹尼+阿菊',
+    exp: 135,
+    branch: '台北旗艦館',
+    location: '401 包廂',
+    mvp: true
+  },
+  {
+    id: 4,
+    title: '光年之外',
+    cover: 'https://images.unsplash.com/photo-1451187580459-43490279c0fa?auto=format&fit=crop&q=80&w=300&h=400', // 科幻示意圖
+    date: '2023-06-10',
+    gm: '蓓蓓',
+    exp: 65,
+    branch: '台北旗艦館',
+    location: '密室 - 作孽',
+    mvp: false
   }
 ]
 
-// 🚀 核心優化：優先顯示 Store 的資料，並加入「智慧標題替換」邏輯
+// 優先顯示 Store 的資料，如果沒有，就顯示假資料給你看 UI
 const displayList = computed(() => {
-  const rawList = store.history.length > 0 ? store.history : MOCK_HISTORY
-  
-  return rawList.map(item => {
-    let finalTitle = item.title
-
-    // 1. 如果標題是空的，或是我們系統預設的「未知...」，就拿手札來擋！
-    if (!finalTitle || finalTitle.includes('未知')) {
-      finalTitle = item.story_memory || '神秘未知劇本'
-    }
-
-    return {
-      ...item,
-      title: finalTitle,
-      // 2. 如果手札內容已經被拿去當標題了，心得區就清空，避免畫面上重複顯示兩次一樣的字
-      display_memory: (item.story_memory === finalTitle) ? '' : item.story_memory
-    }
-  })
+  return store.history.length > 0 ? store.history : MOCK_HISTORY
 })
 
 const openDetail = (game) => {
@@ -113,7 +117,7 @@ const openDetail = (game) => {
           
           <div class="modal-body">
             <h2 class="modal-title">{{ selectedGame.title }}</h2>
-            <p class="modal-subtitle">{{ selectedGame.branch }} {{ selectedGame.location ? `| ${selectedGame.location}` : '' }}</p>
+            <p class="modal-subtitle">{{ selectedGame.branch }} | {{ selectedGame.location }}</p>
 
             <div class="info-grid">
               <div class="info-item">
@@ -130,15 +134,11 @@ const openDetail = (game) => {
               </div>
             </div>
 
-            <p v-if="selectedGame.display_memory" class="memory-text" style="color: #D4AF37;">
-              {{ selectedGame.display_memory }}
-            </p>
-            <p v-else class="memory-text">
+            <p class="memory-text">
               這是一段難忘的旅程。你在此劇本中展現了非凡的推理能力與角色扮演技巧。
               <br><br>
-              <span style="color: #666; font-size: 0.8rem;">(等待 GM 紀錄您的專屬手札...)</span>
+              (這裡之後可以放玩家的文字心得)
             </p>
-
           </div>
         </div>
       </div>
@@ -236,18 +236,14 @@ const openDetail = (game) => {
   display: flex;
   flex-direction: column;
   justify-content: center;
-  min-width: 0; /* 確保長文字會點點點 */
 }
 
 .game-title { 
   margin: 0 0 6px 0; 
-  font-size: 1.05rem; 
+  font-size: 1rem; 
   color: #fff; 
   font-weight: 600;
   line-height: 1.4;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 .meta-row {
@@ -297,7 +293,7 @@ const openDetail = (game) => {
 .modal-overlay {
   position: fixed; top: 0; left: 0; width: 100%; height: 100%;
   background: rgba(0,0,0,0.85); z-index: 200; 
-  display: flex; justify-content: center; align-items: flex-end; 
+  display: flex; justify-content: center; align-items: flex-end; /* 手機版通常從下面滑上來 */
 }
 
 .modal-content {
@@ -342,10 +338,9 @@ const openDetail = (game) => {
 .modal-body {
   padding: 25px;
   background: #1A1A1A;
-  overflow-y: auto;
 }
 
-.modal-title { margin: 0; color: #fff; font-size: 1.5rem; line-height: 1.3;}
+.modal-title { margin: 0; color: #fff; font-size: 1.5rem; }
 .modal-subtitle { color: #888; font-size: 0.9rem; margin-top: 5px; margin-bottom: 20px; }
 
 .info-grid {
@@ -369,7 +364,6 @@ const openDetail = (game) => {
   line-height: 1.6;
   border-top: 1px solid #333;
   padding-top: 20px;
-  white-space: pre-wrap; /* 讓斷行可以正常顯示 */
 }
 
 /* 動畫設定 */

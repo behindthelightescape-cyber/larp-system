@@ -13,7 +13,7 @@ const router = createRouter({
     { path: '/history', component: HistoryView },
     { path: '/coupons', component: CouponView },
     { path: '/settings', component: SettingsView },
-    {
+   {
       path: '/achievements',
       name: 'achievements',
       component: AchievementsView

@@ -5,30 +5,24 @@ import { useUserStore } from '../stores/user'
 
 const store = useUserStore()
 const isLoaded = ref(false)
+const isClaiming = ref(false) // 防止連點
 const achievements = ref([])
 const scriptsList = ref([]) 
 const userUnlockedIds = ref([]) 
 const unlockedDates = ref({})   
-
-// 🚀 新增：裝載玩家真實玩過的劇本 ID 與標籤
 const playedScriptsData = ref([])
 
 const showDetailModal = ref(false)
 const selectedAch = ref(null)
 
-onMounted(async () => {
-  if (!store.userData) return
-  
+// 🚀 把載入資料包成一個 function，領取完可以重新呼叫刷新畫面
+const loadAchievementData = async () => {
   try {
-    // 1. 一次抓下四大天王：成就、玩家解鎖紀錄、全店劇本庫、以及【玩家的遊玩歷史】
     const [achRes, userAchRes, scriptRes, historyRes] = await Promise.all([
       supabase.from('achievements').select('*').order('created_at', { ascending: false }),
       supabase.from('user_achievements').select('achievement_id, unlocked_at').eq('user_id', store.userData.id),
       supabase.from('scripts').select('id, title'),
-      // 🚀 精準抓取他玩過的所有劇本 ID 與標籤
-      supabase.from('game_participants').select(`
-        games ( script_id, scripts ( tags ) )
-      `).eq('user_id', store.userData.id)
+      supabase.from('game_participants').select(`games ( script_id, scripts ( tags ) )`).eq('user_id', store.userData.id)
     ])
 
     if (achRes.data) achievements.value = achRes.data
@@ -41,22 +35,24 @@ onMounted(async () => {
       })
     }
 
-    // 🚀 解析遊玩歷史，建立進度比對資料庫
     if (historyRes.data) {
       playedScriptsData.value = historyRes.data.map(h => ({
         script_id: h.games?.script_id,
         tags: h.games?.scripts?.tags || ''
-      })).filter(s => s.script_id) // 過濾掉空資料
+      })).filter(s => s.script_id)
     }
-
   } catch (error) {
     console.error('成就載入失敗:', error)
-  } finally {
-    isLoaded.value = true
   }
+}
+
+onMounted(async () => {
+  if (!store.userData) return
+  await loadAchievementData()
+  isLoaded.value = true
 })
 
-// 🚀 計算核心：幫每個成就計算目前的「進度 (Progress)」
+// 🚀 計算進度與「可否領取」狀態
 const displayAchievements = computed(() => {
   return achievements.value.map(ach => {
     const isUnlocked = userUnlockedIds.value.includes(ach.id)
@@ -64,31 +60,32 @@ const displayAchievements = computed(() => {
     
     let currentProgress = 0
     let targetProgress = 1
-    let completedScriptIds = [] // 用來裝「已經玩過的指定劇本」
+    let completedScriptIds = [] 
 
     if (ach.condition_type === 'tag') {
       targetProgress = ach.condition_value?.count || 1
       const targetTag = ach.condition_value?.tag?.toLowerCase() || ''
-      // 計算他玩過的劇本裡，有幾個包含這個標籤
       currentProgress = playedScriptsData.value.filter(s => s.tags.toLowerCase().includes(targetTag)).length
-      if (currentProgress > targetProgress) currentProgress = targetProgress // 封頂限制
+      if (currentProgress > targetProgress) currentProgress = targetProgress 
     } 
     else if (ach.condition_type === 'script') {
       const requiredIds = ach.condition_value?.script_ids || []
       targetProgress = requiredIds.length
-      // 檢查他玩過的劇本 ID 裡，命中了幾個指定劇本
       const playedIds = playedScriptsData.value.map(s => s.script_id)
       completedScriptIds = requiredIds.filter(id => playedIds.includes(id))
       currentProgress = completedScriptIds.length
     }
 
-    // 如果已經解鎖了，直接把進度條拉滿！
     if (isUnlocked) currentProgress = targetProgress
+
+    // 🌟 核心邏輯：進度滿了 + 還沒解鎖 + 沒絕版 = 可以領取！
+    const canClaim = !isUnlocked && !isEnded && (currentProgress >= targetProgress)
 
     return {
       ...ach,
       isUnlocked,
       isMissed: !isUnlocked && isEnded,
+      canClaim,
       unlockedDate: isUnlocked ? unlockedDates.value[ach.id] : null,
       currentProgress,
       targetProgress,
@@ -106,10 +103,65 @@ const openDetail = (ach) => {
   showDetailModal.value = true
 }
 
-// 翻譯單一劇本名稱
 const getScriptName = (id) => {
   const found = scriptsList.value.find(s => s.id === id)
   return found ? found.title : '未知劇本'
+}
+
+// 🎁 玩家點擊「領取獎勵」的超爽結算系統
+const claimReward = async (ach) => {
+  if (isClaiming.value) return
+  isClaiming.value = true
+
+  try {
+    // 1. 寫入解鎖紀錄
+    const { error: achErr } = await supabase.from('user_achievements').insert([
+      { user_id: store.userData.id, achievement_id: ach.id }
+    ])
+    if (achErr) {
+      if(achErr.code === '23505') return alert('這份榮耀你已經領取過囉！')
+      throw achErr
+    }
+
+    let successMsg = `🎉 恭喜解鎖專屬稱號：【${ach.title}】！`
+
+    // 2. 派發折價券
+    if (ach.reward_type === 'coupon' && ach.reward_coupon_title) {
+       const validDays = ach.reward_coupon_valid_days || 30
+       const expiryDate = new Date()
+       expiryDate.setDate(expiryDate.getDate() + validDays)
+
+       await supabase.from('coupons').insert([{
+         user_id: store.userData.id,
+         title: ach.reward_coupon_title,
+         description: ach.reward_coupon_desc || `🎉 解鎖成就【${ach.title}】專屬獎勵`,
+         status: 'available',
+         expiry_date: expiryDate.toISOString()
+       }])
+       successMsg += `\n🎟️ 獲得專屬票券，請至票券匣查看！`
+    }
+
+    // 3. 派發經驗值
+    if (ach.reward_type === 'exp' && ach.reward_exp > 0) {
+      const currentExp = store.userData.total_exp || 0
+      const newExp = currentExp + ach.reward_exp
+      await supabase.from('users').update({ total_exp: newExp }).eq('id', store.userData.id)
+      successMsg += `\n✨ 獲得成就獎勵：+${ach.reward_exp} 經驗值！`
+    }
+
+    // 播放通知！
+    alert(successMsg)
+    
+    // 關閉彈窗、重新讀取資料刷新畫面
+    showDetailModal.value = false
+    await loadAchievementData()
+    // 如果你有寫刷新 user store 的方法，可以在這裡呼叫，例如：store.fetchUserData()
+
+  } catch (err) {
+    alert('領取失敗，請聯絡館長：' + err.message)
+  } finally {
+    isClaiming.value = false
+  }
 }
 </script>
 
@@ -140,7 +192,7 @@ const getScriptName = (id) => {
           v-for="ach in displayAchievements" 
           :key="ach.id" 
           class="ach-card clickable"
-          :class="{ 'is-unlocked': ach.isUnlocked, 'is-missed': ach.isMissed }"
+          :class="{ 'is-unlocked': ach.isUnlocked, 'is-missed': ach.isMissed, 'is-ready': ach.canClaim }"
           @click="openDetail(ach)"
         >
           <div v-if="ach.isMissed" class="missed-stamp">已絕版</div>
@@ -152,7 +204,9 @@ const getScriptName = (id) => {
           
           <div class="ach-content">
             <h3 class="ach-title">{{ ach.title }}</h3>
-            <p v-if="!ach.isUnlocked && !ach.isMissed" class="click-hint">進度：{{ ach.currentProgress }} / {{ ach.targetProgress }} ➔</p>
+            
+            <div v-if="ach.canClaim" class="claim-hint pulsing-gold">🎁 達成條件！點擊領取獎勵</div>
+            <p v-else-if="!ach.isUnlocked && !ach.isMissed" class="click-hint">進度：{{ ach.currentProgress }} / {{ ach.targetProgress }} ➔</p>
             <p v-else class="click-hint">點擊查看詳情 ➔</p>
           </div>
         </div>
@@ -162,7 +216,7 @@ const getScriptName = (id) => {
     <Teleport to="body">
       <transition name="pop">
         <div v-if="showDetailModal && selectedAch" class="modal-overlay" @click.self="showDetailModal = false">
-          <div class="modal-content detail-modal" :class="{ 'unlocked-glow': selectedAch.isUnlocked }">
+          <div class="modal-content detail-modal" :class="{ 'unlocked-glow': selectedAch.isUnlocked, 'ready-glow': selectedAch.canClaim }">
             
             <button class="close-btn" @click="showDetailModal = false">✕</button>
 
@@ -172,6 +226,7 @@ const getScriptName = (id) => {
               
               <div class="detail-status">
                 <span v-if="selectedAch.isUnlocked" class="badge-unlocked">✅ 解鎖於 {{ selectedAch.unlockedDate }}</span>
+                <span v-else-if="selectedAch.canClaim" class="badge-ready">✨ 任務達成，等待領取 ✨</span>
                 <span v-else-if="selectedAch.isMissed" class="badge-missed">⏳ 已絕版 (無法獲取)</span>
                 <span v-else class="badge-locked">🔒 尚未解鎖</span>
               </div>
@@ -188,7 +243,6 @@ const getScriptName = (id) => {
                 
                 <div v-if="selectedAch.condition_type === 'tag'" class="condition-box flex-column">
                   <div style="color: #ccc;">需通關以下標籤劇本：<span class="target-highlight">「{{ selectedAch.condition_value?.tag }}」</span></div>
-                  
                   <div class="mission-progress-container mt-2">
                     <div class="mission-info">
                       <span>當前進度</span>
@@ -202,32 +256,33 @@ const getScriptName = (id) => {
 
                 <div v-else-if="selectedAch.condition_type === 'script'" class="condition-box flex-column">
                   <div style="color: #ccc; margin-bottom: 8px;">需成功通關以下指定劇本：</div>
-                  
                   <div class="script-badge-container">
-                    <span 
-                      v-for="scriptId in selectedAch.condition_value?.script_ids" 
-                      :key="scriptId" 
-                      class="script-badge"
-                      :class="{ 'completed': selectedAch.completedScriptIds.includes(scriptId) }"
-                    >
+                    <span v-for="scriptId in selectedAch.condition_value?.script_ids" :key="scriptId" class="script-badge" :class="{ 'completed': selectedAch.completedScriptIds.includes(scriptId) }">
                       <span v-if="selectedAch.completedScriptIds.includes(scriptId)" style="color: #2ecc71;">✅</span>
                       <span v-else style="color: #666;">🔒</span> 
                       {{ getScriptName(scriptId) }}
                     </span>
                   </div>
-                  
                   <div class="mission-info mt-2" style="width: 100%;">
-                    <span>搜集進度</span>
-                    <span class="gold-text">{{ selectedAch.currentProgress }} / {{ selectedAch.targetProgress }}</span>
+                    <span>搜集進度</span><span class="gold-text">{{ selectedAch.currentProgress }} / {{ selectedAch.targetProgress }}</span>
                   </div>
                 </div>
               </div>
 
-              <div class="info-block">
-                <h4>🎁 解鎖獎勵</h4>
-                <div class="reward-box">
+              <div class="info-block" style="margin-top: 10px;">
+                <button 
+                  v-if="selectedAch.canClaim" 
+                  class="claim-huge-btn" 
+                  @click="claimReward(selectedAch)"
+                  :disabled="isClaiming"
+                >
+                  {{ isClaiming ? '領取中...' : '🎁 點擊領取專屬獎勵！' }}
+                </button>
+
+                <div v-else class="reward-box">
+                  <h4 style="margin: 0 0 10px 0;">🎁 獎勵預覽</h4>
                   <div v-if="!selectedAch.reward_type || selectedAch.reward_type === 'none'" class="reward-item none">
-                    <span class="r-icon">🎖️</span> 專屬榮耀頭銜 (無額外獎勵)
+                    <span class="r-icon">🎖️</span> 專屬榮耀頭銜
                   </div>
                   <div v-else-if="selectedAch.reward_type === 'exp'" class="reward-item exp">
                     <span class="r-icon">✨</span> 經驗值 +{{ selectedAch.reward_exp }} EXP
@@ -236,7 +291,7 @@ const getScriptName = (id) => {
                     <span class="r-icon">🎟️</span> 
                     <div>
                       <div style="font-weight: bold;">{{ selectedAch.reward_coupon_title }}</div>
-                      <div style="font-size: 0.8rem; color: #e67e22; margin-top: 2px;">有效期限：{{ selectedAch.reward_coupon_valid_days }} 天</div>
+                      <div style="font-size: 0.8rem; color: #e67e22; margin-top: 2px;">領取後效期：{{ selectedAch.reward_coupon_valid_days }} 天</div>
                     </div>
                   </div>
                 </div>
@@ -277,7 +332,10 @@ const getScriptName = (id) => {
 
 .ach-card.is-unlocked { background: linear-gradient(145deg, rgba(30,26,10,0.9), rgba(20,20,20,0.9)); border-color: rgba(212,175,55,0.3); }
 .ach-card.is-unlocked::before { background: #D4AF37; box-shadow: 0 0 10px #D4AF37; }
-.ach-card.is-unlocked.clickable:hover { border-color: #D4AF37; box-shadow: 0 4px 15px rgba(212,175,55,0.2); }
+
+/* 🌟 可領取狀態的卡片：呼吸燈特效 */
+.ach-card.is-ready { border-color: #D4AF37; background: rgba(40,35,15,0.9); box-shadow: 0 0 15px rgba(212,175,55,0.2);}
+.ach-card.is-ready::before { background: #f1c40f; box-shadow: 0 0 15px #f1c40f; }
 
 .ach-card.is-missed { opacity: 0.5; filter: grayscale(100%); }
 .missed-stamp { position: absolute; right: 10px; top: 10px; border: 2px solid #888; color: #888; padding: 2px 8px; font-size: 0.7rem; font-weight: bold; transform: rotate(15deg); border-radius: 4px; }
@@ -286,15 +344,21 @@ const getScriptName = (id) => {
 .ach-card.is-unlocked .ach-icon-box { border-color: #D4AF37; background: rgba(212,175,55,0.1); }
 .unlocked-check { position: absolute; bottom: -5px; right: -5px; background: #2ecc71; color: #000; font-size: 0.6rem; width: 18px; height: 18px; display: flex; justify-content: center; align-items: center; border-radius: 50%; border: 2px solid #1a1a1a; font-weight: bold; }
 
-.ach-content { flex: 1; display: flex; justify-content: space-between; align-items: center; }
-.ach-title { margin: 0; font-size: 1.1rem; color: #eee; font-weight: bold; }
+.ach-content { flex: 1; display: flex; flex-direction: column; justify-content: center; }
+.ach-title { margin: 0 0 4px 0; font-size: 1.1rem; color: #eee; font-weight: bold; }
 .ach-card.is-unlocked .ach-title { color: #D4AF37; }
 .click-hint { margin: 0; font-size: 0.8rem; color: #888; font-weight: bold; }
 .ach-card:hover .click-hint { color: #aaa; }
 
+/* 🌟 可領取提示文字 */
+.claim-hint { margin: 0; font-size: 0.85rem; font-weight: bold; color: #f1c40f; text-shadow: 0 0 5px rgba(241,196,15,0.5);}
+@keyframes pulseGlow { 0%, 100% { opacity: 1; } 50% { opacity: 0.6; } }
+.pulsing-gold { animation: pulseGlow 1.5s infinite; }
+
 .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.85); z-index: 9999; display: flex; justify-content: center; align-items: center; backdrop-filter: blur(8px); padding: 20px; }
 .detail-modal { background: #161616; width: 100%; max-width: 400px; border-radius: 20px; border: 1px solid #333; position: relative; overflow: hidden; box-shadow: 0 20px 50px rgba(0,0,0,0.8); }
 .unlocked-glow { border-color: rgba(212, 175, 55, 0.5); box-shadow: 0 0 30px rgba(212,175,55,0.15), 0 20px 50px rgba(0,0,0,0.8); }
+.ready-glow { border-color: #f1c40f; box-shadow: 0 0 40px rgba(241,196,15,0.3); }
 
 .close-btn { position: absolute; top: 15px; right: 15px; background: rgba(255,255,255,0.1); border: none; color: white; width: 32px; height: 32px; border-radius: 50%; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 1rem; z-index: 10; transition: 0.2s; }
 .close-btn:hover { background: rgba(255,255,255,0.2); transform: scale(1.1); }
@@ -308,6 +372,7 @@ const getScriptName = (id) => {
 .badge-unlocked { background: rgba(46, 204, 113, 0.15); color: #2ecc71; padding: 6px 15px; border-radius: 20px; font-size: 0.85rem; font-weight: bold; border: 1px solid rgba(46, 204, 113, 0.3); }
 .badge-locked { background: rgba(255, 255, 255, 0.1); color: #aaa; padding: 6px 15px; border-radius: 20px; font-size: 0.85rem; font-weight: bold; }
 .badge-missed { background: rgba(231, 76, 60, 0.15); color: #e74c3c; padding: 6px 15px; border-radius: 20px; font-size: 0.85rem; font-weight: bold; border: 1px solid rgba(231, 76, 60, 0.3); }
+.badge-ready { background: rgba(241, 196, 15, 0.2); color: #f1c40f; padding: 6px 15px; border-radius: 20px; font-size: 0.85rem; font-weight: bold; border: 1px solid rgba(241, 196, 15, 0.5); animation: pulseGlow 1.5s infinite;}
 
 .detail-body { padding: 25px 20px; display: flex; flex-direction: column; gap: 20px; }
 .info-block h4 { margin: 0 0 10px 0; color: #888; font-size: 0.9rem; letter-spacing: 1px; }
@@ -317,11 +382,9 @@ const getScriptName = (id) => {
 .condition-box.flex-column { flex-direction: column; align-items: flex-start; gap: 8px;}
 .target-highlight { color: #3498db; font-weight: bold; font-size: 1.05rem; }
 
-/* 🚀 新增：任務進度條樣式 */
 .mission-progress-container { width: 100%; background: #1a1a1a; padding: 10px; border-radius: 8px; border: 1px solid #333;}
 .mission-info { display: flex; justify-content: space-between; align-items: center; font-size: 0.85rem; color: #aaa; margin-bottom: 6px; }
 
-/* 🚀 新增：劇本點亮系統樣式 */
 .script-badge-container { display: flex; flex-wrap: wrap; gap: 8px; width: 100%; }
 .script-badge { background: rgba(255,255,255,0.05); border: 1px solid #333; color: #888; padding: 6px 12px; border-radius: 8px; font-size: 0.85rem; transition: 0.3s; display: flex; align-items: center; gap: 5px;}
 .script-badge.completed { background: rgba(46, 204, 113, 0.1); border-color: #2ecc71; color: #fff; font-weight: bold; box-shadow: 0 0 10px rgba(46, 204, 113, 0.2);}
@@ -334,6 +397,12 @@ const getScriptName = (id) => {
 .reward-item.none { color: #ccc; }
 .reward-item.exp { color: #3498db; }
 .reward-item.coupon { color: #D4AF37; }
+
+/* 🎁 終極領取大按鈕 */
+.claim-huge-btn { width: 100%; background: linear-gradient(135deg, #f1c40f, #D4AF37); color: #000; border: none; padding: 16px; border-radius: 12px; font-size: 1.1rem; font-weight: 900; cursor: pointer; box-shadow: 0 5px 20px rgba(212,175,55,0.4); transition: all 0.2s; animation: pulseGlow 1.5s infinite; }
+.claim-huge-btn:hover { transform: translateY(-3px) scale(1.02); box-shadow: 0 8px 25px rgba(212,175,55,0.6); }
+.claim-huge-btn:active { transform: translateY(1px); }
+.claim-huge-btn:disabled { background: #555; color: #888; cursor: not-allowed; animation: none; box-shadow: none; transform: none;}
 
 .pop-enter-active, .pop-leave-active { transition: all 0.3s cubic-bezier(0.2, 0.8, 0.2, 1); }
 .pop-enter-from, .pop-leave-to { opacity: 0; transform: scale(0.9) translateY(20px); }

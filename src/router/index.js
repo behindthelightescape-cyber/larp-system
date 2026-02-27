@@ -4,6 +4,7 @@ import HistoryView from '../views/HistoryView.vue'
 import CouponView from '../views/CouponView.vue'
 import SettingsView from '../views/SettingsView.vue'
 import AdminView from '../views/AdminView.vue' 
+import AchievementsView from '../views/AchievementsView.vue'
 
 const router = createRouter({
   history: createWebHashHistory(), // LIFF 建議用 Hash 模式比較不會雷

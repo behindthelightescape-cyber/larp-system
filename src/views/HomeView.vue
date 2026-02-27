@@ -114,12 +114,7 @@ onMounted(() => {
 
 <template>
   <div class="page-container">
-    <button 
-      @click="store.levelUpData = { level: 6, title: '陽光開朗小萌新', exp: 2500 }" 
-      style="position: fixed; top: 20px; right: 20px; z-index: 9999; background: #D4AF37; color: black; border: none; padding: 10px; border-radius: 8px; font-weight: bold; cursor: pointer;"
-    >
-      🔥 播動畫
-    </button>
+    
     <div class="content-layer" :class="{ 'enter-active': isLoaded }">
       
       <div class="brand-header fade-in-down">

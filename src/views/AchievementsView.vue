@@ -5,7 +5,7 @@ import { useUserStore } from '../stores/user'
 
 const store = useUserStore()
 const isLoaded = ref(false)
-const isClaiming = ref(false) // 防止連點
+const isClaiming = ref(false)
 const achievements = ref([])
 const scriptsList = ref([]) 
 const userUnlockedIds = ref([]) 
@@ -15,7 +15,9 @@ const playedScriptsData = ref([])
 const showDetailModal = ref(false)
 const selectedAch = ref(null)
 
-// 🚀 把載入資料包成一個 function，領取完可以重新呼叫刷新畫面
+// 🚀 新增：控制絕版成就的摺疊狀態
+const showMissed = ref(false)
+
 const loadAchievementData = async () => {
   try {
     const [achRes, userAchRes, scriptRes, historyRes] = await Promise.all([
@@ -52,7 +54,6 @@ onMounted(async () => {
   isLoaded.value = true
 })
 
-// 🚀 計算進度與「可否領取」狀態
 const displayAchievements = computed(() => {
   return achievements.value.map(ach => {
     const isUnlocked = userUnlockedIds.value.includes(ach.id)
@@ -78,12 +79,12 @@ const displayAchievements = computed(() => {
 
     if (isUnlocked) currentProgress = targetProgress
 
-    // 🌟 核心邏輯：進度滿了 + 還沒解鎖 + 沒絕版 = 可以領取！
     const canClaim = !isUnlocked && !isEnded && (currentProgress >= targetProgress)
 
     return {
       ...ach,
       isUnlocked,
+      // 🌟 定義什麼是「錯過的」：已經絕版，且玩家沒拿到
       isMissed: !isUnlocked && isEnded,
       canClaim,
       unlockedDate: isUnlocked ? unlockedDates.value[ach.id] : null,
@@ -94,9 +95,14 @@ const displayAchievements = computed(() => {
   })
 })
 
-const totalAch = computed(() => achievements.value.length)
+// 🚀 核心邏輯升級：把成就分成兩群
+const activeAchievements = computed(() => displayAchievements.value.filter(a => !a.isMissed))
+const missedAchievements = computed(() => displayAchievements.value.filter(a => a.isMissed))
+
+// 🚀 進度條重構：分母只算「活著的」或「玩家已經拿到的絕版品」
+const totalAchievable = computed(() => activeAchievements.value.length)
 const unlockedCount = computed(() => userUnlockedIds.value.length)
-const progressPercent = computed(() => totalAch.value === 0 ? 0 : Math.round((unlockedCount.value / totalAch.value) * 100))
+const progressPercent = computed(() => totalAchievable.value === 0 ? 0 : Math.round((unlockedCount.value / totalAchievable.value) * 100))
 
 const openDetail = (ach) => {
   selectedAch.value = ach
@@ -108,16 +114,12 @@ const getScriptName = (id) => {
   return found ? found.title : '未知劇本'
 }
 
-// 🎁 玩家點擊「領取獎勵」的超爽結算系統
 const claimReward = async (ach) => {
   if (isClaiming.value) return
   isClaiming.value = true
 
   try {
-    // 1. 寫入解鎖紀錄
-    const { error: achErr } = await supabase.from('user_achievements').insert([
-      { user_id: store.userData.id, achievement_id: ach.id }
-    ])
+    const { error: achErr } = await supabase.from('user_achievements').insert([{ user_id: store.userData.id, achievement_id: ach.id }])
     if (achErr) {
       if(achErr.code === '23505') return alert('這份榮耀你已經領取過囉！')
       throw achErr
@@ -125,7 +127,6 @@ const claimReward = async (ach) => {
 
     let successMsg = `🎉 恭喜解鎖專屬稱號：【${ach.title}】！`
 
-    // 2. 派發折價券
     if (ach.reward_type === 'coupon' && ach.reward_coupon_title) {
        const validDays = ach.reward_coupon_valid_days || 30
        const expiryDate = new Date()
@@ -141,7 +142,6 @@ const claimReward = async (ach) => {
        successMsg += `\n🎟️ 獲得專屬票券，請至票券匣查看！`
     }
 
-    // 3. 派發經驗值
     if (ach.reward_type === 'exp' && ach.reward_exp > 0) {
       const currentExp = store.userData.total_exp || 0
       const newExp = currentExp + ach.reward_exp
@@ -149,14 +149,10 @@ const claimReward = async (ach) => {
       successMsg += `\n✨ 獲得成就獎勵：+${ach.reward_exp} 經驗值！`
     }
 
-    // 播放通知！
     alert(successMsg)
-    
-    // 關閉彈窗、重新讀取資料刷新畫面
     showDetailModal.value = false
     await loadAchievementData()
-    // 如果你有寫刷新 user store 的方法，可以在這裡呼叫，例如：store.fetchUserData()
-
+    // store.fetchUserData() // 如果需要更新外部 store 資料可以開這行
   } catch (err) {
     alert('領取失敗，請聯絡館長：' + err.message)
   } finally {
@@ -175,8 +171,8 @@ const claimReward = async (ach) => {
         
         <div class="progress-box">
           <div class="progress-info">
-            <span>全館收集進度</span>
-            <span class="gold-text">{{ unlockedCount }} / {{ totalAch }} ({{ progressPercent }}%)</span>
+            <span>可獲取收集進度</span>
+            <span class="gold-text">{{ unlockedCount }} / {{ totalAchievable }} ({{ progressPercent }}%)</span>
           </div>
           <div class="progress-bar-bg">
             <div class="progress-bar-fill" :style="{ width: progressPercent + '%' }"></div>
@@ -189,14 +185,14 @@ const claimReward = async (ach) => {
         <div v-else-if="displayAchievements.length === 0" class="empty-state">館長正在準備全新的挑戰，敬請期待...</div>
 
         <div 
-          v-for="ach in displayAchievements" 
+          v-for="ach in activeAchievements" 
           :key="ach.id" 
           class="ach-card clickable"
-          :class="{ 'is-unlocked': ach.isUnlocked, 'is-missed': ach.isMissed, 'is-ready': ach.canClaim }"
+          :class="{ 'is-unlocked': ach.isUnlocked, 'is-ready': ach.canClaim }"
           @click="openDetail(ach)"
         >
-          <div v-if="ach.isMissed" class="missed-stamp">已絕版</div>
-          
+          <div v-if="ach.isUnlocked && ach.status === 'ended'" class="missed-stamp gold-stamp">絕版典藏</div>
+
           <div class="ach-icon-box">
             <div class="icon">{{ ach.icon_url || '🏆' }}</div>
             <div v-if="ach.isUnlocked" class="unlocked-check">✔️</div>
@@ -204,12 +200,40 @@ const claimReward = async (ach) => {
           
           <div class="ach-content">
             <h3 class="ach-title">{{ ach.title }}</h3>
-            
             <div v-if="ach.canClaim" class="claim-hint pulsing-gold">🎁 達成條件！點擊領取獎勵</div>
-            <p v-else-if="!ach.isUnlocked && !ach.isMissed" class="click-hint">進度：{{ ach.currentProgress }} / {{ ach.targetProgress }} ➔</p>
+            <p v-else-if="!ach.isUnlocked" class="click-hint">進度：{{ ach.currentProgress }} / {{ ach.targetProgress }} ➔</p>
             <p v-else class="click-hint">點擊查看詳情 ➔</p>
           </div>
         </div>
+
+        <div v-if="missedAchievements.length > 0" class="missed-section mt-4">
+          <div class="divider-header" @click="showMissed = !showMissed">
+            <div class="line"></div>
+            <span class="divider-text">{{ showMissed ? '▲ 收起' : '▼ 點擊展開' }} {{ missedAchievements.length }} 項已絕版遺憾</span>
+            <div class="line"></div>
+          </div>
+
+          <transition name="fade-slide">
+            <div v-show="showMissed" class="missed-list mt-3">
+              <div 
+                v-for="ach in missedAchievements" 
+                :key="ach.id" 
+                class="ach-card is-missed clickable"
+                @click="openDetail(ach)"
+              >
+                <div class="missed-stamp">已絕版</div>
+                <div class="ach-icon-box">
+                  <div class="icon">{{ ach.icon_url || '🏆' }}</div>
+                </div>
+                <div class="ach-content">
+                  <h3 class="ach-title">{{ ach.title }}</h3>
+                  <p class="click-hint">錯過的遺憾 ➔</p>
+                </div>
+              </div>
+            </div>
+          </transition>
+        </div>
+
       </div>
     </div>
 
@@ -217,7 +241,6 @@ const claimReward = async (ach) => {
       <transition name="pop">
         <div v-if="showDetailModal && selectedAch" class="modal-overlay" @click.self="showDetailModal = false">
           <div class="modal-content detail-modal" :class="{ 'unlocked-glow': selectedAch.isUnlocked, 'ready-glow': selectedAch.canClaim }">
-            
             <button class="close-btn" @click="showDetailModal = false">✕</button>
 
             <div class="detail-header" :class="{ 'is-missed': selectedAch.isMissed }">
@@ -240,7 +263,6 @@ const claimReward = async (ach) => {
 
               <div class="info-block">
                 <h4>🎯 任務進度</h4>
-                
                 <div v-if="selectedAch.condition_type === 'tag'" class="condition-box flex-column">
                   <div style="color: #ccc;">需通關以下標籤劇本：<span class="target-highlight">「{{ selectedAch.condition_value?.tag }}」</span></div>
                   <div class="mission-progress-container mt-2">
@@ -270,12 +292,7 @@ const claimReward = async (ach) => {
               </div>
 
               <div class="info-block" style="margin-top: 10px;">
-                <button 
-                  v-if="selectedAch.canClaim" 
-                  class="claim-huge-btn" 
-                  @click="claimReward(selectedAch)"
-                  :disabled="isClaiming"
-                >
+                <button v-if="selectedAch.canClaim" class="claim-huge-btn" @click="claimReward(selectedAch)" :disabled="isClaiming">
                   {{ isClaiming ? '領取中...' : '🎁 點擊領取專屬獎勵！' }}
                 </button>
 
@@ -306,7 +323,7 @@ const claimReward = async (ach) => {
 </template>
 
 <style scoped>
-/* 頁面基礎樣式保持不變 */
+/* 頁面基礎與動畫保持不變 */
 .page-container { width: 100%; max-width: 800px; margin: 0 auto; min-height: 100vh; padding-bottom: 80px; color: #fff; background: transparent; }
 .content-layer { padding: 30px 20px; }
 .fade-in-down { opacity: 0; transform: translateY(-20px); transition: all 0.8s ease; }
@@ -333,12 +350,21 @@ const claimReward = async (ach) => {
 .ach-card.is-unlocked { background: linear-gradient(145deg, rgba(30,26,10,0.9), rgba(20,20,20,0.9)); border-color: rgba(212,175,55,0.3); }
 .ach-card.is-unlocked::before { background: #D4AF37; box-shadow: 0 0 10px #D4AF37; }
 
-/* 🌟 可領取狀態的卡片：呼吸燈特效 */
 .ach-card.is-ready { border-color: #D4AF37; background: rgba(40,35,15,0.9); box-shadow: 0 0 15px rgba(212,175,55,0.2);}
 .ach-card.is-ready::before { background: #f1c40f; box-shadow: 0 0 15px #f1c40f; }
 
-.ach-card.is-missed { opacity: 0.5; filter: grayscale(100%); }
+.ach-card.is-missed { opacity: 0.5; filter: grayscale(100%); background: rgba(15,15,15,0.8); border-color: #222;}
+.ach-card.is-missed::before { background: #333; }
 .missed-stamp { position: absolute; right: 10px; top: 10px; border: 2px solid #888; color: #888; padding: 2px 8px; font-size: 0.7rem; font-weight: bold; transform: rotate(15deg); border-radius: 4px; }
+.gold-stamp { border-color: #D4AF37; color: #D4AF37; background: rgba(212, 175, 55, 0.1); }
+
+/* 🚀 絕版收納區專屬樣式 */
+.missed-section { display: flex; flex-direction: column; }
+.divider-header { display: flex; align-items: center; justify-content: center; cursor: pointer; padding: 10px 0; opacity: 0.7; transition: 0.2s;}
+.divider-header:hover { opacity: 1; }
+.divider-header .line { flex: 1; height: 1px; background: #333; }
+.divider-text { color: #888; font-size: 0.85rem; padding: 0 15px; font-weight: bold; }
+.missed-list { display: flex; flex-direction: column; gap: 12px; }
 
 .ach-icon-box { position: relative; width: 50px; height: 50px; background: #111; border: 1px solid #333; border-radius: 10px; display: flex; justify-content: center; align-items: center; flex-shrink: 0; font-size: 1.8rem; }
 .ach-card.is-unlocked .ach-icon-box { border-color: #D4AF37; background: rgba(212,175,55,0.1); }
@@ -350,62 +376,52 @@ const claimReward = async (ach) => {
 .click-hint { margin: 0; font-size: 0.8rem; color: #888; font-weight: bold; }
 .ach-card:hover .click-hint { color: #aaa; }
 
-/* 🌟 可領取提示文字 */
 .claim-hint { margin: 0; font-size: 0.85rem; font-weight: bold; color: #f1c40f; text-shadow: 0 0 5px rgba(241,196,15,0.5);}
 @keyframes pulseGlow { 0%, 100% { opacity: 1; } 50% { opacity: 0.6; } }
 .pulsing-gold { animation: pulseGlow 1.5s infinite; }
 
+/* 彈窗樣式保持不變 */
 .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.85); z-index: 9999; display: flex; justify-content: center; align-items: center; backdrop-filter: blur(8px); padding: 20px; }
 .detail-modal { background: #161616; width: 100%; max-width: 400px; border-radius: 20px; border: 1px solid #333; position: relative; overflow: hidden; box-shadow: 0 20px 50px rgba(0,0,0,0.8); }
 .unlocked-glow { border-color: rgba(212, 175, 55, 0.5); box-shadow: 0 0 30px rgba(212,175,55,0.15), 0 20px 50px rgba(0,0,0,0.8); }
 .ready-glow { border-color: #f1c40f; box-shadow: 0 0 40px rgba(241,196,15,0.3); }
-
 .close-btn { position: absolute; top: 15px; right: 15px; background: rgba(255,255,255,0.1); border: none; color: white; width: 32px; height: 32px; border-radius: 50%; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 1rem; z-index: 10; transition: 0.2s; }
 .close-btn:hover { background: rgba(255,255,255,0.2); transform: scale(1.1); }
-
 .detail-header { padding: 40px 20px 20px; text-align: center; background: linear-gradient(180deg, rgba(30,30,30,1) 0%, rgba(22,22,22,1) 100%); border-bottom: 1px solid #222; }
 .detail-header.is-missed { filter: grayscale(100%); }
 .detail-icon { font-size: 4rem; margin-bottom: 15px; filter: drop-shadow(0 5px 15px rgba(0,0,0,0.5)); animation: float 3s ease-in-out infinite; }
 @keyframes float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-8px); } }
 .detail-title { margin: 0 0 15px 0; font-size: 1.6rem; color: #D4AF37; font-weight: 900; letter-spacing: 1px;}
-
 .badge-unlocked { background: rgba(46, 204, 113, 0.15); color: #2ecc71; padding: 6px 15px; border-radius: 20px; font-size: 0.85rem; font-weight: bold; border: 1px solid rgba(46, 204, 113, 0.3); }
 .badge-locked { background: rgba(255, 255, 255, 0.1); color: #aaa; padding: 6px 15px; border-radius: 20px; font-size: 0.85rem; font-weight: bold; }
 .badge-missed { background: rgba(231, 76, 60, 0.15); color: #e74c3c; padding: 6px 15px; border-radius: 20px; font-size: 0.85rem; font-weight: bold; border: 1px solid rgba(231, 76, 60, 0.3); }
 .badge-ready { background: rgba(241, 196, 15, 0.2); color: #f1c40f; padding: 6px 15px; border-radius: 20px; font-size: 0.85rem; font-weight: bold; border: 1px solid rgba(241, 196, 15, 0.5); animation: pulseGlow 1.5s infinite;}
-
 .detail-body { padding: 25px 20px; display: flex; flex-direction: column; gap: 20px; }
 .info-block h4 { margin: 0 0 10px 0; color: #888; font-size: 0.9rem; letter-spacing: 1px; }
 .desc-text { margin: 0; color: #eee; line-height: 1.5; font-size: 0.95rem; }
-
 .condition-box { background: #111; border: 1px solid #222; padding: 15px; border-radius: 12px; display: flex; align-items: center; gap: 12px; font-size: 0.9rem; }
 .condition-box.flex-column { flex-direction: column; align-items: flex-start; gap: 8px;}
 .target-highlight { color: #3498db; font-weight: bold; font-size: 1.05rem; }
-
 .mission-progress-container { width: 100%; background: #1a1a1a; padding: 10px; border-radius: 8px; border: 1px solid #333;}
 .mission-info { display: flex; justify-content: space-between; align-items: center; font-size: 0.85rem; color: #aaa; margin-bottom: 6px; }
-
 .script-badge-container { display: flex; flex-wrap: wrap; gap: 8px; width: 100%; }
 .script-badge { background: rgba(255,255,255,0.05); border: 1px solid #333; color: #888; padding: 6px 12px; border-radius: 8px; font-size: 0.85rem; transition: 0.3s; display: flex; align-items: center; gap: 5px;}
 .script-badge.completed { background: rgba(46, 204, 113, 0.1); border-color: #2ecc71; color: #fff; font-weight: bold; box-shadow: 0 0 10px rgba(46, 204, 113, 0.2);}
-
 .mt-2 { margin-top: 10px; }
-
 .reward-box { background: #111; border: 1px solid #222; padding: 15px; border-radius: 12px; }
 .reward-item { display: flex; align-items: center; gap: 12px; font-size: 0.95rem; font-weight: bold; }
 .r-icon { font-size: 1.5rem; }
 .reward-item.none { color: #ccc; }
 .reward-item.exp { color: #3498db; }
 .reward-item.coupon { color: #D4AF37; }
-
-/* 🎁 終極領取大按鈕 */
 .claim-huge-btn { width: 100%; background: linear-gradient(135deg, #f1c40f, #D4AF37); color: #000; border: none; padding: 16px; border-radius: 12px; font-size: 1.1rem; font-weight: 900; cursor: pointer; box-shadow: 0 5px 20px rgba(212,175,55,0.4); transition: all 0.2s; animation: pulseGlow 1.5s infinite; }
 .claim-huge-btn:hover { transform: translateY(-3px) scale(1.02); box-shadow: 0 8px 25px rgba(212,175,55,0.6); }
 .claim-huge-btn:active { transform: translateY(1px); }
 .claim-huge-btn:disabled { background: #555; color: #888; cursor: not-allowed; animation: none; box-shadow: none; transform: none;}
-
 .pop-enter-active, .pop-leave-active { transition: all 0.3s cubic-bezier(0.2, 0.8, 0.2, 1); }
 .pop-enter-from, .pop-leave-to { opacity: 0; transform: scale(0.9) translateY(20px); }
 .spinner { width: 40px; height: 40px; border: 4px solid rgba(212, 175, 55, 0.2); border-top-color: #D4AF37; border-radius: 50%; animation: spin 1s linear infinite; margin: 50px auto; }
 .empty-state { text-align: center; color: #666; padding: 40px 20px; border: 1px dashed #333; border-radius: 12px; }
+.fade-slide-enter-active, .fade-slide-leave-active { transition: all 0.3s ease; }
+.fade-slide-enter-from, .fade-slide-leave-to { opacity: 0; transform: translateY(-10px); }
 </style>

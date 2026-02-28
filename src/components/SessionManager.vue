@@ -1,32 +1,52 @@
 <script setup>
 import { ref, onMounted, computed } from 'vue'
 import { supabase } from '../supabase'
+import QrcodeVue from 'qrcode.vue' // 🚀 引入 QR Code 生成器
 
 const games = ref([])
 const isLoading = ref(false)
 
-// === 🚀 企業級防爆查詢變數 ===
-const viewMode = ref('7days') // 模式：'7days' (近7天與未來) 或 'date' (指定日期)
-
-// 設定「指定日期」的預設值為今天 (YYYY-MM-DD)
+const viewMode = ref('7days') 
 const now = new Date()
 now.setMinutes(now.getMinutes() - now.getTimezoneOffset())
 const specificDate = ref(now.toISOString().split('T')[0]) 
+const searchKeyword = ref('') 
 
-const searchKeyword = ref('') // 畫面上的即時過濾器
+// 🚀 新增：QR Code 彈窗控制狀態
+const showQrModal = ref(false)
+const selectedGameForQr = ref(null)
 
 onMounted(async () => {
   await loadSessions()
 })
 
-// === 1. 根據時間切片抓取資料 ===
+// 卡片用的：只顯示 小時:分鐘 (自動轉當地時區)
+const formatTime = (timeStr) => {
+  if (!timeStr) return ''
+  const d = new Date(timeStr)
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+}
+
+// 🚀 新增：彈窗用的：顯示 年-月-日 小時:分鐘 (自動轉當地時區)
+const formatFullDateTime = (timeStr) => {
+  if (!timeStr) return '未知時間'
+  const d = new Date(timeStr)
+  const yyyy = d.getFullYear()
+  const mm = String(d.getMonth() + 1).padStart(2, '0')
+  const dd = String(d.getDate()).padStart(2, '0')
+  const hh = String(d.getHours()).padStart(2, '0')
+  const min = String(d.getMinutes()).padStart(2, '0')
+  return `${yyyy}-${mm}-${dd} ${hh}:${min}`
+}
+
 const loadSessions = async () => {
   isLoading.value = true
   try {
+    // 🚀 記得把 qr_payload 抓下來
     let query = supabase
       .from('games')
       .select(`
-        id, play_time, gm_name, status,
+        id, play_time, gm_name, status, qr_payload,
         scripts ( title, cover_url, player_limit ),
         game_participants (
           users ( id, display_name, picture_url, legacy_id )
@@ -34,15 +54,12 @@ const loadSessions = async () => {
       `)
       .order('play_time', { ascending: false })
 
-    // 🚀 防爆邏輯：絕對不全抓，只抓特定時間範圍
     if (viewMode.value === '7days') {
-      // 抓取：過去 7 天 ~ 未來的所有場次
       const past = new Date()
       past.setDate(past.getDate() - 7)
       query = query.gte('play_time', past.toISOString())
       
     } else if (viewMode.value === 'date') {
-      // 抓取：指定的那一天 (00:00:00 ~ 23:59:59)
       const startOfDay = new Date(specificDate.value + 'T00:00:00')
       const endOfDay = new Date(specificDate.value + 'T23:59:59')
       query = query.gte('play_time', startOfDay.toISOString()).lte('play_time', endOfDay.toISOString())
@@ -60,15 +77,12 @@ const loadSessions = async () => {
   }
 }
 
-// 點擊切換模式
 const setViewMode = (mode) => {
   viewMode.value = mode
   loadSessions()
 }
 
-// === 2. 前端即時過濾 + 日期分群 ===
 const groupedGames = computed(() => {
-  // 先用關鍵字過濾已抓下來的資料
   let filtered = games.value
   if (searchKeyword.value.trim()) {
     const kw = searchKeyword.value.trim().toLowerCase()
@@ -78,7 +92,6 @@ const groupedGames = computed(() => {
     )
   }
 
-  // 再把過濾後的資料，按照日期分組裝箱
   const groups = {}
   filtered.forEach(game => {
     const dateStr = game.play_time ? game.play_time.split('T')[0] : '未知日期'
@@ -88,10 +101,20 @@ const groupedGames = computed(() => {
   return groups
 })
 
-const formatTime = (timeStr) => {
-  if (!timeStr) return ''
-  const d = new Date(timeStr)
-  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+
+
+// 🚀 新增：點擊卡片打開 QR Code 彈窗
+// 🚀 新增：點擊卡片打開 QR Code 彈窗 (撤除門神，所有場次皆可補掃！)
+const openQrScanner = (game) => {
+  selectedGameForQr.value = game
+  showQrModal.value = true
+}
+
+// 🚀 幫玩家補經驗值的隱藏按鈕 (防呆用，可選)
+// 🚀 終極防呆版：如果 qr_payload 沒存到，直接用 game.id 來生！
+const generateQrUrl = (game) => {
+  const targetId = game.qr_payload || game.id
+  return `https://liff.line.me/2009161687-icfQU9r6?game_id=${targetId}`
 }
 </script>
 
@@ -150,8 +173,13 @@ const formatTime = (timeStr) => {
         </div>
 
         <div class="games-grid">
-          <div v-for="game in gamesOnDate" :key="game.id" class="game-card">
-            
+          <div 
+            v-for="game in gamesOnDate" 
+            :key="game.id" 
+            class="game-card"
+            @click="openQrScanner(game)"
+            style="cursor: pointer;"
+          >
             <div class="game-header">
               <img :src="game.scripts?.cover_url || 'https://via.placeholder.com/50'" class="game-cover">
               <div class="game-info">
@@ -162,6 +190,10 @@ const formatTime = (timeStr) => {
                 </div>
               </div>
               <div class="status-dot" :class="game.status === 'open' ? 'active' : 'closed'" title="狀態"></div>
+            </div>
+
+            <div style="background: rgba(212,175,55,0.1); color: #D4AF37; font-size: 0.75rem; text-align: center; padding: 4px 0; font-weight: bold;">
+              👆 點擊卡片顯示 QR Code 補掃
             </div>
 
             <div class="players-section">
@@ -182,71 +214,84 @@ const formatTime = (timeStr) => {
                   </div>
                 </div>
               </div>
-
             </div>
           </div>
         </div>
       </div>
     </div>
+
+    <Teleport to="body">
+      <div v-if="showQrModal && selectedGameForQr" class="qr-modal-overlay" @click.self="showQrModal = false">
+        <div class="qr-modal-content">
+          <button class="close-btn" @click="showQrModal = false">✕</button>
+          
+          <h2 style="color: #D4AF37; margin-bottom: 5px;">{{ selectedGameForQr.scripts?.title || '未知劇本' }}</h2>
+          <p style="color: #888; margin-top: 0; margin-bottom: 20px;">
+            場次時間：{{ formatFullDateTime(selectedGameForQr.play_time) }}<br>
+            負責 GM：{{ selectedGameForQr.gm_name || '未知 GM' }}
+          </p>
+
+          <div class="qr-box">
+            <qrcode-vue 
+              :value="generateQrUrl(selectedGameForQr)" 
+              :size="250" 
+              level="H" 
+              class="qr-code-img"
+            />
+          </div>
+          
+          <p style="color: #ccc; margin-top: 20px; font-weight: bold;">
+            請玩家使用 LINE 掃描上方條碼補登經驗值！
+          </p>
+          <div v-if="selectedGameForQr.status === 'closed'" style="color: #e74c3c; font-size: 0.85rem; margin-top: 10px;">
+            ⚠️ 注意：此場次已關閉，但仍可提供漏掃玩家補掃。
+          </div>
+        </div>
+      </div>
+    </Teleport>
+
   </div>
 </template>
 
 <style scoped>
+/* 原本的樣式完全保留 */
 .session-manager-container { display: flex; flex-direction: column; gap: 20px; }
 .header-flex { display: flex; justify-content: space-between; align-items: center; background: #111; padding: 20px; border-radius: 12px; border: 1px solid #222; }
-
-/* 🚀 控制面板樣式 */
 .session-controls { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 15px; background: #1a1a1a; padding: 15px 20px; border-radius: 12px; border: 1px solid #333; }
 .control-group { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .search-group { flex: 1; min-width: 250px; justify-content: flex-end; }
-
 .filter-btn { background: #222; color: #aaa; border: 1px solid #444; padding: 8px 15px; border-radius: 6px; cursor: pointer; font-weight: bold; transition: 0.2s; }
 .filter-btn:hover { background: #333; color: #fff; }
 .filter-btn.active { background: #D4AF37; color: black; border-color: #D4AF37; }
-
 .date-picker-wrap { display: flex; gap: 10px; align-items: center; }
 .admin-input { padding: 8px 12px; background: #111; border: 1px solid #444; color: white; border-radius: 6px; font-size: 0.95rem; }
 .admin-input:focus { border-color: #D4AF37; outline: none; }
 .mini-date { padding: 6px 10px; }
 .search-input { width: 100%; max-width: 300px; }
-
 .btn { padding: 8px 15px; border: none; font-weight: bold; border-radius: 8px; cursor: pointer; transition: 0.2s; }
 .btn-gold { background: #D4AF37; color: black; }
 .btn-gold:hover { background: #e5c358; }
 .btn-small { font-size: 0.85rem; }
-
 .loading-state { text-align: center; color: #888; padding: 50px; }
 .timeline-container { display: flex; flex-direction: column; gap: 30px; }
-
-/* 日期標題 */
 .date-header { display: flex; align-items: center; gap: 15px; margin-bottom: 15px; border-bottom: 1px dashed #333; padding-bottom: 10px; }
 .date-badge { background: #222; color: #D4AF37; padding: 5px 15px; border-radius: 20px; font-weight: bold; font-size: 1.1rem; border: 1px solid #D4AF37; }
 .date-count { color: #888; font-size: 0.9rem; }
-
-/* 場次卡片網格 */
 .games-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 20px; }
-
-/* 單一場次卡片 */
 .game-card { background: #151515; border: 1px solid #333; border-radius: 12px; overflow: hidden; transition: transform 0.2s; display: flex; flex-direction: column; }
-.game-card:hover { border-color: #555; transform: translateY(-2px); box-shadow: 0 5px 15px rgba(0,0,0,0.5); }
-
+.game-card:hover { border-color: #D4AF37; transform: translateY(-2px); box-shadow: 0 5px 15px rgba(212,175,55,0.2); }
 .game-header { display: flex; gap: 15px; padding: 15px; background: #1a1a1a; border-bottom: 1px solid #222; position: relative; }
 .game-cover { width: 50px; height: 70px; object-fit: cover; border-radius: 6px; border: 1px solid #444; }
 .game-info { display: flex; flex-direction: column; justify-content: center; gap: 5px; flex: 1; }
 .game-title { font-weight: bold; font-size: 1.1rem; color: #fff; }
 .game-meta { display: flex; gap: 10px; font-size: 0.85rem; color: #aaa; }
 .meta-item { background: #222; padding: 2px 6px; border-radius: 4px; border: 1px solid #333;}
-
-/* 狀態綠點點 */
 .status-dot { position: absolute; top: 15px; right: 15px; width: 10px; height: 10px; border-radius: 50%; }
 .status-dot.active { background: #2ecc71; box-shadow: 0 0 8px #2ecc71; }
 .status-dot.closed { background: #e74c3c; }
-
-/* 玩家區塊 */
 .players-section { padding: 15px; background: #111; flex: 1; }
 .players-header { font-size: 0.85rem; color: #888; margin-bottom: 10px; border-bottom: 1px dashed #333; padding-bottom: 5px; }
 .no-players { font-size: 0.85rem; color: #555; font-style: italic; text-align: center; padding: 10px; }
-
 .players-list { display: flex; flex-wrap: wrap; gap: 8px; }
 .player-chip { display: flex; align-items: center; background: #222; border: 1px solid #333; border-radius: 20px; padding: 4px 10px 4px 4px; gap: 8px; transition: 0.2s;}
 .player-chip:hover { border-color: #D4AF37; }
@@ -254,10 +299,17 @@ const formatTime = (timeStr) => {
 .player-name-wrap { display: flex; flex-direction: column; }
 .p-name { font-size: 0.8rem; font-weight: bold; color: #ddd; white-space: nowrap; }
 .p-id { font-size: 0.65rem; color: #D4AF37; font-family: monospace; line-height: 1; }
-
 .spinner { width: 30px; height: 30px; border: 3px solid rgba(212, 175, 55, 0.2); border-top-color: #D4AF37; border-radius: 50%; animation: spin 1s linear infinite; margin: 0 auto 10px auto; }
 @keyframes spin { to { transform: rotate(360deg); } }
 .empty-state { text-align: center; padding: 40px; color: #666; background: #111; border-radius: 12px; border: 1px dashed #333; }
+
+/* 🚀 QR Code 彈窗專屬樣式 */
+.qr-modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.85); display: flex; justify-content: center; align-items: center; z-index: 9999; backdrop-filter: blur(5px); }
+.qr-modal-content { background: #161616; padding: 40px; border-radius: 16px; border: 1px solid #D4AF37; text-align: center; position: relative; max-width: 400px; width: 90%; box-shadow: 0 10px 40px rgba(0,0,0,0.8); }
+.qr-box { background: white; padding: 20px; border-radius: 12px; display: inline-block; box-shadow: 0 0 20px rgba(255,255,255,0.2); }
+.qr-code-img { display: block; }
+.close-btn { position: absolute; top: 15px; right: 15px; background: transparent; border: 1px solid #555; color: #ccc; width: 30px; height: 30px; border-radius: 50%; cursor: pointer; display: flex; justify-content: center; align-items: center; transition: 0.2s; }
+.close-btn:hover { background: #333; color: white; border-color: #D4AF37; }
 
 @media (max-width: 768px) {
   .search-group { justify-content: flex-start; }

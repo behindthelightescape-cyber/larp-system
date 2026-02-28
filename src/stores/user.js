@@ -250,12 +250,13 @@ export const useUserStore = defineStore('user', () => {
     }
   }
 
-  // 🌟 E. 更新個人資料 + 🚀 階梯式生日填寫禮
+  // 🌟 E. 更新個人資料 + 🚀 資料完善禮 (不再是生日禮)
   const updateProfile = async (formData) => {
     if (!userData.value) return { success: false, message: '尚未登入' }
 
     try {
-      const isFirstTimeBirthday = !userData.value.birthday && formData.birthday;
+      // 檢查是不是第一次填寫生日（代表他終於把資料填齊了）
+      const isFirstTimeCompletingProfile = !userData.value.birthday && formData.birthday;
 
       const { data, error: updateError } = await supabase
         .from('users')
@@ -269,38 +270,27 @@ export const useUserStore = defineStore('user', () => {
       if (updateError) throw updateError
       userData.value = data
 
-      // 🚀 驚喜邏輯：階梯式生日派券系統！
-      if (isFirstTimeBirthday) {
-        const currentLevel = userData.value.level || 1
-        let couponTitle = ''
-        let couponDesc = ''
+      // 🚀 驚喜邏輯：統一派發「資料完善禮」！
+      if (isFirstTimeCompletingProfile) {
+        const couponTitle = '🎁 會員資料完善禮 $50 折價券'
+        const couponDesc = '感謝您完善會員資料！憑此券遊玩可折抵 $50。敬請期待您的專屬生日禮喔！'
 
-        switch (currentLevel) {
-          case 1:
-            couponTitle = '🎂 新手壽星 $100 折價券'
-            couponDesc = '感謝您完善個人資料，祝您生日快樂！憑此券遊玩可折抵 $100。'
-            break
-          case 2:
-            couponTitle = '🎂 進階壽星 $200 折價券'
-            couponDesc = 'LV.2 尊榮壽星您好！祝您生日快樂！憑此券遊玩可折抵 $200，快來挑戰新劇本！'
-            break
-          case 3:
-            couponTitle = '🎂 VVIP 壽星 👑 免費暢玩券'
-            couponDesc = '👑 頂級玩家專屬！感謝您對劇光燈的熱愛。憑此券本月內可「免費」遊玩任一劇本一次，祝您生日快樂！'
-            break
-          default:
-            couponTitle = `🎂 LV.${currentLevel} 專屬壽星禮`
-            couponDesc = '祝您生日快樂！感謝您對劇光燈的支持。'
-        }
+        // 幫他把折價券印出來塞進錢包 (給個 3 個月的效期)
+        const expiryDate = new Date()
+        expiryDate.setMonth(expiryDate.getMonth() + 3)
 
         await supabase.from('coupons').insert([{
           user_id: userData.value.id,
           title: couponTitle,
           description: couponDesc,
           status: 'available',
-          expiry_date: new Date(new Date().setFullYear(new Date().getFullYear() + 1)).toISOString()
+          expiry_date: expiryDate.toISOString()
         }])
-        return { success: true, message: `資料已更新！恭喜獲得 ${couponTitle}！` }
+        
+        // 🚀 重新抓取優惠券資料，讓他的票券夾立刻多出這張券
+        await fetchUserExtraData(userData.value.id)
+        
+        return { success: true, message: `資料已更新！恭喜獲得：${couponTitle}！` }
       }
 
       return { success: true, message: '資料儲存成功' }

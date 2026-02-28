@@ -179,10 +179,34 @@ const saveAchievement = async () => {
 }
 
 const deleteAchievement = async (id, title) => {
-  if (!confirm(`確定要刪除成就「${title}」嗎？玩家將失去此成就！`)) return
+  if (!confirm(`確定要刪除成就「${title}」嗎？`)) return
+  
   try {
-    await supabase.from('achievements').delete().eq('id', id)
+    // 1. 先嘗試溫柔地刪除
+    const { error } = await supabase.from('achievements').delete().eq('id', id)
+    
+    // 2. 如果碰到「已經有人領取」的鐵板 (錯誤代碼 23503)
+    if (error && error.code === '23503') {
+      const forceDelete = confirm(`⚠️ 警告：這個成就已經有玩家（包括你自己）領取過了！\n\n如果繼續刪除，所有擁有此稱號的玩家將會【失去這個成就】（適合用來清除測試資料）。\n\n確定要「強制抹殺」嗎？`)
+      
+      if (forceDelete) {
+        // 🚀 上帝模式啟動：先殺死所有關聯的玩家紀錄
+        await supabase.from('user_achievements').delete().eq('achievement_id', id)
+        // 🚀 再砍掉成就本體
+        await supabase.from('achievements').delete().eq('id', id)
+        
+        alert('💥 強制抹殺成功！連同測試紀錄已徹底清除。')
+        await fetchAchievements()
+      }
+      return // 結束流程
+    } else if (error) {
+      throw error // 其他未知的錯誤，丟給 catch 處理
+    }
+    
+    // 如果一開始就沒有人領取，溫柔刪除成功
+    alert('✅ 成就刪除成功！')
     await fetchAchievements()
+    
   } catch (err) {
     alert('刪除失敗：' + err.message)
   }

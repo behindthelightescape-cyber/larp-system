@@ -30,6 +30,16 @@ watch(() => store.userData, (newVal) => {
 const save = async () => {
   if (store.isLoading) return
 
+  // 🚀 關鍵防護網：手機號碼必填檢查！
+  if (!form.value.phone || form.value.phone.trim() === '') {
+    return alert('⚠️ 請填寫您的手機號碼喔！這是必填欄位。')
+  }
+
+  // (可選) 簡單的手機號碼長度防呆，避免亂填 "123"
+  if (form.value.phone.length < 8) {
+    return alert('⚠️ 請填寫有效的手機號碼格式喔！')
+  }
+
   const payload = {
     name: form.value.name,
     phone: form.value.phone,
@@ -41,7 +51,7 @@ const save = async () => {
   if (result.success) {
     alert(result.message)
     
-    // 🚀 關鍵：只要他這次有填生日存檔成功，前端直接切換開關，瞬間上鎖！
+    // 🚀 只要他這次有填生日存檔成功，前端直接切換開關，瞬間上鎖！
     if (form.value.birthday) {
       isBirthdayLocked.value = true
     }
@@ -66,7 +76,7 @@ const save = async () => {
         </div>
 
         <div class="form-group">
-          <label>手機號碼</label>
+          <label>手機號碼 <span style="color: #e74c3c;">*</span></label>
           <input v-model="form.phone" type="tel" placeholder="0912-345-678" />
         </div>
 
@@ -84,7 +94,7 @@ const save = async () => {
           </div>
           
           <p v-if="isBirthdayLocked" class="hint-text">🔒 生日已設定，如需修改請聯繫客服。</p>
-          <p v-else class="hint-text" style="color: #D4AF37;">🎁 首次填寫生日將獲得驚喜禮物！</p>
+          <p v-else class="hint-text" style="color: #D4AF37;">🎁 首次填寫生日並完善聯絡資訊，將獲得驚喜禮物！</p>
         </div>
 
         <button class="save-btn" @click="save">確認修改</button>
@@ -106,7 +116,7 @@ const save = async () => {
 }
 .form-group input:focus { border-color: #D4AF37; outline: none; }
 
-/* 🚀 鎖定後的純文字方塊樣式 */
+/* 鎖定後的純文字方塊樣式 */
 .locked-display {
   width: 100%; 
   padding: 12px; 

@@ -7,8 +7,9 @@ import GameManager from '../components/GameManager.vue'
 import ScriptManager from '../components/ScriptManager.vue' 
 import SessionManager from '../components/SessionManager.vue' 
 import DataImporter from '../components/DataImporter.vue'
-import AnalyticsManager from '../components/AnalyticsManager.vue' // 🚀 引入全新的分析子元件
+import AnalyticsManager from '../components/AnalyticsManager.vue' 
 import AdminAchievements from '../components/AdminAchievements.vue'
+import AdminPromoCodes from '../components/AdminPromoCodes.vue' // 🚀 1. 引入剛剛做好的兌換碼印鈔機
 
 
 const session = ref(null)
@@ -151,6 +152,9 @@ const changeTab = (tabName) => {
         <button class="nav-btn" :class="{ active: currentTab === 'coupon' }" @click="changeTab('coupon')">
           <span class="icon">🎟️</span> 票券發送
         </button>
+        <button class="nav-btn" :class="{ active: currentTab === 'promo_code' }" @click="changeTab('promo_code')">
+          <span class="icon">🎁</span> 兌換碼設定
+        </button>
         <button class="nav-btn" :class="{ active: currentTab === 'script' }" @click="changeTab('script')">
           <span class="icon">📜</span> 劇本管理
         </button>
@@ -189,7 +193,8 @@ const changeTab = (tabName) => {
               currentTab === 'session' ? '場次大廳 (掃碼監控)' :  
               currentTab === 'member' ? '玩家總部 (資料查詢)' : 
               currentTab === 'coupon' ? '發送票券 (導彈系統)' : 
-              currentTab === 'achievement' ? '成就鑄造廠' : '劇本管理' /* 👈 這裡補上 achievement 的判斷 */
+              currentTab === 'promo_code' ? '萬用兌換碼印鈔機' : /* 🚀 3. 補上標題判斷 */
+              currentTab === 'achievement' ? '成就鑄造廠' : '劇本管理' 
             }}
           </h2>
         </div>
@@ -219,6 +224,10 @@ const changeTab = (tabName) => {
         <CouponManager @update-stats="loadDashboardStats" />
       </div>
 
+      <div v-if="currentTab === 'promo_code'" class="panel active">
+        <AdminPromoCodes />
+      </div>
+
       <div v-show="currentTab === 'session'" class="panel active">
         <SessionManager :branch="adminProfile.managed_branch" />
       </div>
@@ -227,10 +236,6 @@ const changeTab = (tabName) => {
         <GameManager :branch="adminProfile.managed_branch" @update-stats="loadDashboardStats" />
       </div>
 
-      <div v-show="currentTab === 'script'" class="panel active">
-        <ScriptManager @update-stats="loadDashboardStats" />
-      </div>
-      
       <div v-show="currentTab === 'script'" class="panel active">
         <ScriptManager @update-stats="loadDashboardStats" />
       </div>

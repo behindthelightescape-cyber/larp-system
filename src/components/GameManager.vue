@@ -111,7 +111,7 @@ const processBatch = async () => {
     const LIFF_BASE_URL = 'https://liff.line.me/2009161687-icfQU9r6'
 
     for (const item of batchQueue.value) {
-      // 🚀 4. 正式寫入資料庫的 branch_name 欄位
+      // 1. 先建立遊戲，拿到唯一的 ID
       const { data, error } = await supabase
         .from('games')
         .insert([{
@@ -127,8 +127,13 @@ const processBatch = async () => {
       
       if (error) throw error
 
-      const url = `${LIFF_BASE_URL}?action=join&game_id=${data[0].id}`
-      // 🚀 把場館名稱傳給繪圖函數
+      const newGameId = data[0].id
+      
+      // 🚀 2. 關鍵修補：把 game_id 寫進這場遊戲的 qr_payload 欄位！
+      await supabase.from('games').update({ qr_payload: newGameId }).eq('id', newGameId)
+
+      // 3. 繼續畫圖
+      const url = `${LIFF_BASE_URL}?game_id=${newGameId}` // 👈 注意：我把 action=join 拿掉了，保持網址乾淨
       const imgDataUrl = await generateLabelQR(url, item.sn, item.gm, item.dt, item.branchName)
       
       const safeName = item.sn.replace(/[\\/:*?"<>|]/g, "_")
@@ -263,7 +268,7 @@ const downloadAllZip = async () => {
           <label>開場時間 (掃碼圖片將強制轉為24小時制)</label>
           <input v-model="gameTime" type="datetime-local" class="admin-input">
         </div>
-        
+
         <div class="form-group">
           <label>✨ 本場發放 EXP (活動可加碼)</label>
           <input v-model="gameExp" type="number" class="admin-input" style="color: #D4AF37; font-weight: bold; font-size: 1.1rem;">

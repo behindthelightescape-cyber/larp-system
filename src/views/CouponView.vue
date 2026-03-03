@@ -5,207 +5,334 @@ import { supabase } from '../supabase'
 
 const store = useUserStore()
 
-const promoCodeInput = ref('')
-const isRedeeming = ref(false)
+// === 控制彈窗 ===
+const showDetailModal = ref(false)
+const showConfirmModal = ref(false)
+const selectedCoupon = ref(null) 
+const isSubmitting = ref(false)
 
-// 過濾並排序：可用的排前面，過期的/已使用的排後面
-const sortedCoupons = computed(() => {
+// === 🚀 強化防呆的資料轉換 ===
+const displayCoupons = computed(() => {
+  if (!store.coupons || !Array.isArray(store.coupons)) return []
+
+  // 加上排序：可用的排上面，用過或過期的排下面
   return [...store.coupons].sort((a, b) => {
-    if (a.status === 'available' && b.status !== 'available') return -1
-    if (a.status !== 'available' && b.status === 'available') return 1
+    const aActive = (a.status || 'available') === 'available'
+    const bActive = (b.status || 'available') === 'available'
+    if (aActive && !bActive) return -1
+    if (!aActive && bActive) return 1
     return new Date(b.created_at) - new Date(a.created_at)
+  }).map(c => {
+    const status = c.status || 'available'
+    return {
+      ...c,
+      uiStatus: (status === 'available') ? 'active' : 'used',
+      uiType: (c.title && c.title.includes('券')) ? 'discount' : 'gift',
+      uiCode: c.id ? `NO. ${c.id.toString().padStart(8, '0')}` : 'NO. --------',
+      uiExpiry: c.expiry_date ? c.expiry_date.split('T')[0] : '無限期',
+      uiUsedAt: c.used_at ? c.used_at.split('T')[0] : ''
+    }
   })
 })
 
-const formatDate = (dateStr) => {
-  if (!dateStr) return '無期限'
-  const d = new Date(dateStr)
-  const yyyy = d.getFullYear()
-  const mm = String(d.getMonth() + 1).padStart(2, '0')
-  const dd = String(d.getDate()).padStart(2, '0')
-  return `${yyyy}-${mm}-${dd}`
+const openDetail = (coupon) => {
+  selectedCoupon.value = coupon
+  showDetailModal.value = true
 }
 
-// 🚀 核心印鈔邏輯：玩家輸入兌換碼
-const redeemPromoCode = async () => {
-  const code = promoCodeInput.value.trim().toUpperCase()
-  if (!code) return alert('⚠️ 請輸入兌換碼喔！')
-  if (!store.userData) return alert('⚠️ 請先確認登入狀態！')
-  
-  if (isRedeeming.value) return
-  isRedeeming.value = true
+const handleRedeemClick = () => {
+  showDetailModal.value = false
+  showConfirmModal.value = true
+}
+
+const confirmRedeem = async () => {
+  if (isSubmitting.value || !selectedCoupon.value) return
+  isSubmitting.value = true
 
   try {
-    // 1. 去金庫尋找這張兌換碼
-    const { data: promoData, error: promoErr } = await supabase
-      .from('promo_codes')
-      .select('*')
-      .eq('code', code)
-      .single()
-
-    if (promoErr || !promoData) throw new Error('找不到此兌換碼，請確認是否有打錯字喔！')
-    
-    // 2. 狀態與庫存檢查
-    if (!promoData.is_active) throw new Error('此兌換碼活動已經結束或暫停囉！')
-    if (promoData.max_uses > 0 && promoData.used_count >= promoData.max_uses) {
-      throw new Error('手腳太慢啦！這組兌換碼已經被搶光了 😭')
-    }
-
-    // 3. 玩家個人領取上限檢查 (防白嫖機制)
-    const { count: userUsedCount, error: countErr } = await supabase
+    const now = new Date().toISOString()
+    const { error } = await supabase
       .from('coupons')
-      .select('*', { count: 'exact', head: true })
-      .eq('user_id', store.userData.id)
-      .eq('source_promo_code', promoData.id)
+      .update({ status: 'used', used_at: now })
+      .eq('id', selectedCoupon.value.id)
 
-    if (userUsedCount >= promoData.limit_per_user) {
-      throw new Error(`這組代碼每人最多只能領 ${promoData.limit_per_user} 次，你已經領滿囉！`)
+    if (error) throw error
+
+    // 更新本地狀態
+    const target = store.coupons.find(c => c.id === selectedCoupon.value.id)
+    if (target) {
+      target.status = 'used'
+      target.used_at = now
     }
 
-    // 4. 驗證通過！開始印鈔票發給玩家！
-    const expiryDate = new Date()
-    expiryDate.setDate(expiryDate.getDate() + (promoData.valid_days || 30))
-
-    const { error: insertErr } = await supabase.from('coupons').insert([{
-      user_id: store.userData.id,
-      title: promoData.title,
-      description: promoData.description,
-      status: 'available',
-      expiry_date: expiryDate.toISOString(),
-      source_promo_code: promoData.id // 🚀 記錄來源，防刷機制的核心
-    }])
-
-    if (insertErr) throw insertErr
-
-    // 5. 更新大金庫的總消耗數量
-    await supabase.from('promo_codes')
-      .update({ used_count: promoData.used_count + 1 })
-      .eq('id', promoData.id)
-
-    // 6. 成功回饋與重整畫面
-    alert(`🎉 兌換成功！已將【${promoData.title}】放入您的票券夾！`)
-    promoCodeInput.value = '' // 清空輸入框
-    
-    // 呼叫大腦重新去資料庫撈最新的票券，讓畫面瞬間生出那張券
-    // (注意：你原本的 user.js 如果沒有把 fetchUserExtraData export 出來，可以直接重跑 initLiff，或者我們用更聰明的方法)
-    window.location.reload() // 為了保證狀態最乾淨，這裡先用重整。稍後整理 EXP 引擎時我們會把它優化成無感刷新。
-
+    showConfirmModal.value = false
+    alert('核銷成功！')
   } catch (err) {
-    alert('❌ 兌換失敗：' + err.message)
+    console.error('核銷失敗:', err.message)
+    alert('連線失敗，請稍後再試')
   } finally {
-    isRedeeming.value = false
+    isSubmitting.value = false
   }
 }
 </script>
 
 <template>
   <div class="page-container">
-    <div class="header-section">
-      <h2 class="page-title">我的票券夾</h2>
-      <p class="page-subtitle">結帳時請主動出示給工作人員核銷喔！</p>
+    <div class="header-area">
+      <h2 class="page-title">我的票券</h2>
+      <span class="count-badge">
+        {{ displayCoupons.filter(c => c.uiStatus === 'active').length }} 張可用
+      </span>
     </div>
-    
-    <div v-if="store.isLoading" class="loading-state">
-      <div class="spinner"></div>
-    </div>
-    
-    <div v-else class="content-wrapper">
+
+    <div class="coupon-list">
+      <div v-if="store.isLoading" class="loading-state">
+        <div class="spinner"></div>
+      </div>
       
-      <div class="promo-code-box">
-        <h3 class="promo-title">🎁 領取活動獎勵</h3>
-        <div class="input-group">
-          <input 
-            v-model="promoCodeInput" 
-            type="text" 
-            placeholder="請輸入兌換碼..." 
-            class="promo-input"
-            @keyup.enter="redeemPromoCode"
-          />
-          <button 
-            class="redeem-btn" 
-            @click="redeemPromoCode"
-            :disabled="isRedeeming"
-          >
-            {{ isRedeeming ? '兌換中...' : '兌換' }}
-          </button>
-        </div>
-      </div>
-
-      <div v-if="sortedCoupons.length === 0" class="empty-state">
-        目前口袋空空如也，多參加活動來獲取折價券吧！
-      </div>
-
-      <div class="coupon-list">
+      <template v-else>
         <div 
-          v-for="coupon in sortedCoupons" 
+          v-for="coupon in displayCoupons" 
           :key="coupon.id" 
-          class="coupon-card"
-          :class="coupon.status"
+          class="coupon-ticket"
+          :class="{ 'is-used': coupon.uiStatus === 'used' }"
+          @click="openDetail(coupon)"
         >
-          <div class="coupon-left">
-            <div class="coupon-icon">🎟️</div>
+          <div class="ticket-left">
+            <div class="punch-hole-top"></div>
+            <div class="punch-hole-bottom"></div>
           </div>
-          <div class="coupon-right">
-            <h3 class="coupon-name">{{ coupon.title }}</h3>
-            <p class="coupon-desc">{{ coupon.description }}</p>
-            <div class="coupon-meta">
-              <span class="expiry-date">效期至：{{ formatDate(coupon.expiry_date) }}</span>
-              <span class="status-badge" v-if="coupon.status === 'used'">已使用</span>
-              <span class="status-badge expired" v-else-if="coupon.status === 'expired'">已過期</span>
+          <div class="ticket-main">
+            <div class="ticket-title">{{ coupon.title }}</div>
+            <div class="ticket-expiry">
+              <template v-if="coupon.uiStatus === 'active'">效期至: {{ coupon.uiExpiry }}</template>
+              <template v-else>已於 {{ coupon.uiUsedAt }} 核銷</template>
+            </div>
+          </div>
+          <div class="ticket-right">
+            <button v-if="coupon.uiStatus === 'active'" class="use-btn" @click.stop="openDetail(coupon)">使用</button>
+            <div v-else class="used-stamp">已失效</div>
+          </div>
+        </div>
+
+        <div v-if="displayCoupons.length === 0" class="empty-text">
+          目前沒有票券紀錄
+        </div>
+      </template>
+      
+      <div class="spacer"></div>
+    </div>
+
+    <Teleport to="body">
+      <transition name="pop">
+        <div v-if="showDetailModal && selectedCoupon" class="modal-overlay" @click.self="showDetailModal = false">
+          <div class="modal-content detail-mode">
+            <div class="modal-header">
+              <h3>票券詳情</h3>
+              <button class="close-btn-icon" @click="showDetailModal = false">✕</button>
+            </div>
+            
+            <div class="detail-scroll-area">
+              <div class="detail-content-wrapper">
+                <div class="detail-icon-large">
+                  {{ selectedCoupon.uiType === 'discount' ? '🎟️' : '🎁' }}
+                </div>
+                <h2 class="detail-title">{{ selectedCoupon.title }}</h2>
+                <p class="detail-code">{{ selectedCoupon.uiCode }}</p>
+                <div class="detail-divider"></div>
+                <div class="detail-desc">
+                  <h4>使用說明</h4>
+                  <p class="desc-text">{{ selectedCoupon.description || '無說明內容' }}</p>
+                </div>
+                <p class="expiry-text">有效期限：{{ selectedCoupon.uiExpiry }}</p>
+              </div>
+
+              <div class="detail-footer-scroll">
+                <button 
+                  v-if="selectedCoupon.uiStatus === 'active'" 
+                  class="action-btn"
+                  @click="handleRedeemClick"
+                >
+                  立即使用
+                </button>
+                <button v-else class="action-btn disabled" disabled>此票券已失效</button>
+              </div>
+              <div class="safe-zone"></div>
             </div>
           </div>
         </div>
-      </div>
-    </div>
+      </transition>
+    </Teleport>
+
+    <Teleport to="body">
+      <transition name="fade">
+        <div v-if="showConfirmModal" class="modal-overlay confirm-overlay" @click.self="showConfirmModal = false">
+          <div class="confirm-box">
+            <div class="confirm-icon">⚠️</div>
+            <h3>確定要核銷嗎？</h3>
+            <p>請將畫面出示給工作人員，<br>由工作人員指示後再點擊！<br>一旦核銷將無法復原！</p>
+            <div class="confirm-actions">
+              <button class="btn-cancel" @click="showConfirmModal = false">取消</button>
+              <button class="btn-confirm" :disabled="isSubmitting" @click="confirmRedeem">
+                {{ isSubmitting ? '處理中...' : '確認核銷' }}
+              </button>
+            </div>
+          </div>
+        </div>
+      </transition>
+    </Teleport>
   </div>
 </template>
 
 <style scoped>
-.page-container { padding: 20px 20px 100px 20px; max-width: 600px; margin: 0 auto; }
-.header-section { text-align: center; margin-bottom: 25px; }
-.page-title { color: #D4AF37; margin: 0 0 5px 0; font-size: 1.8rem; font-weight: 900; letter-spacing: 1px;}
-.page-subtitle { color: #888; font-size: 0.9rem; margin: 0; }
+.page-container {
+  width: 100%;
+  max-width: 800px;
+  margin: 0 auto;
+  box-sizing: border-box;
+  padding: 16px;
+  padding-bottom: 100px;
+  min-height: 100vh;
+  background-color: transparent;
+  color: #fff;
+}
 
-.loading-state { display: flex; justify-content: center; padding: 50px 0; }
-.spinner { width: 40px; height: 40px; border: 4px solid rgba(212, 175, 55, 0.2); border-top-color: #D4AF37; border-radius: 50%; animation: spin 1s linear infinite; }
+.header-area {
+  display: flex; justify-content: space-between; align-items: center;
+  margin-bottom: 20px; padding: 0 4px;
+  border-bottom: 1px solid rgba(255,255,255,0.1);
+  padding-bottom: 12px;
+}
+.page-title { font-size: 1.5rem; font-weight: 700; color: #D4AF37; margin: 0; }
+.count-badge { font-size: 0.9rem; color: #888; background: rgba(0,0,0,0.5); padding: 4px 10px; border-radius: 20px; }
+
+.loading-state { display: flex; justify-content: center; padding: 40px 0; }
+.spinner { width: 30px; height: 30px; border: 3px solid rgba(212, 175, 55, 0.2); border-top-color: #D4AF37; border-radius: 50%; animation: spin 1s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
-/* 🚀 兌換碼區塊樣式 */
-.promo-code-box { background: linear-gradient(145deg, #1a1a1a, #111); border: 1px solid #333; padding: 20px; border-radius: 16px; margin-bottom: 25px; box-shadow: 0 5px 20px rgba(0,0,0,0.5); }
-.promo-title { margin: 0 0 15px 0; color: #eee; font-size: 1.1rem; }
-.input-group { display: flex; gap: 10px; }
-.promo-input { flex: 1; padding: 12px 15px; background: #222; border: 1px solid #444; border-radius: 8px; color: #fff; font-size: 1rem; text-transform: uppercase; font-weight: bold; letter-spacing: 1px; transition: 0.3s;}
-.promo-input:focus { border-color: #D4AF37; outline: none; box-shadow: 0 0 10px rgba(212,175,55,0.2); }
-.promo-input::placeholder { font-weight: normal; letter-spacing: normal; text-transform: none; color: #666;}
-.redeem-btn { background: #D4AF37; color: black; border: none; padding: 0 25px; border-radius: 8px; font-weight: bold; font-size: 1rem; cursor: pointer; transition: 0.2s; white-space: nowrap; }
-.redeem-btn:hover { background: #f1c40f; transform: translateY(-2px); }
-.redeem-btn:active { transform: translateY(0); }
-.redeem-btn:disabled { background: #555; color: #888; cursor: not-allowed; transform: none; }
+/* 票券卡片 */
+.coupon-ticket {
+  display: flex;
+  background: linear-gradient(145deg, #222, #1a1a1a);
+  height: 90px;
+  margin-bottom: 16px;
+  border-radius: 12px;
+  position: relative;
+  overflow: hidden;
+  box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+  border: 1px solid #333;
+  transition: transform 0.2s;
+  cursor: pointer;
+}
+.coupon-ticket:active { transform: scale(0.98); }
 
-.empty-state { text-align: center; color: #666; padding: 40px 20px; border: 1px dashed #333; border-radius: 12px; background: #111; }
+.ticket-left {
+  width: 24px; background: #D4AF37; position: relative; flex-shrink: 0;
+  border-right: 2px dashed #333;
+}
+.punch-hole-top, .punch-hole-bottom {
+  position: absolute; width: 16px; height: 16px; background-color: #050505;
+  border-radius: 50%; left: 16px; z-index: 2;
+}
+.punch-hole-top { top: -8px; }
+.punch-hole-bottom { bottom: -8px; }
 
-.coupon-list { display: flex; flex-direction: column; gap: 15px; }
-.coupon-card { display: flex; background: #1a1a1a; border: 1px solid #333; border-radius: 12px; overflow: hidden; position: relative; transition: 0.3s; }
-.coupon-card.available { border-color: #D4AF37; background: linear-gradient(135deg, rgba(30,26,10,0.8), rgba(26,26,26,0.9)); box-shadow: 0 5px 15px rgba(212,175,55,0.1); }
-.coupon-card.used, .coupon-card.expired { opacity: 0.5; filter: grayscale(100%); }
+.ticket-main {
+  flex: 1; padding: 10px 15px; padding-left: 20px;
+  display: flex; flex-direction: column; justify-content: center;
+}
+.ticket-title { font-size: 1.1rem; font-weight: bold; color: #fff; margin-bottom: 5px; }
+.ticket-expiry { font-size: 0.8rem; color: #888; }
 
-.coupon-left { background: #111; padding: 20px; display: flex; align-items: center; justify-content: center; border-right: 1px dashed #444; position: relative; }
-.coupon-card.available .coupon-left { background: rgba(212,175,55,0.1); border-right-color: rgba(212,175,55,0.3); }
-.coupon-left::before, .coupon-left::after { content: ''; position: absolute; right: -8px; width: 16px; height: 16px; background: #050505; border-radius: 50%; border: 1px solid #333; z-index: 1; }
-.coupon-left::before { top: -9px; border-top: none; border-left: none; transform: rotate(45deg); }
-.coupon-left::after { bottom: -9px; border-bottom: none; border-right: none; transform: rotate(225deg); }
-.coupon-card.available .coupon-left::before, .coupon-card.available .coupon-left::after { border-color: #D4AF37; }
+.ticket-right { width: 90px; display: flex; align-items: center; justify-content: center; }
+.use-btn {
+  background: transparent; color: #D4AF37; border: 1px solid #D4AF37;
+  padding: 6px 16px; border-radius: 20px; font-weight: bold; font-size: 0.9rem; pointer-events: none; /* 讓點擊事件穿透到卡片上 */
+}
+.coupon-ticket.is-used { filter: grayscale(1); opacity: 0.6; }
+.coupon-ticket.is-used .ticket-left { background: #555; }
+.used-stamp {
+  border: 2px solid #fff; color: #fff; padding: 5px; 
+  font-weight: bold; font-size: 0.8rem; transform: rotate(-15deg); opacity: 0.8;
+}
 
-.coupon-icon { font-size: 2rem; }
+.empty-text { text-align: center; color: #666; padding: 40px 20px; border: 1px dashed #333; border-radius: 12px; background: rgba(255,255,255,0.02); }
 
-.coupon-right { padding: 15px; flex: 1; display: flex; flex-direction: column; justify-content: center; }
-.coupon-name { margin: 0 0 5px 0; font-size: 1.1rem; color: #eee; }
-.coupon-card.available .coupon-name { color: #D4AF37; font-weight: bold; }
-.coupon-desc { margin: 0 0 10px 0; font-size: 0.85rem; color: #aaa; line-height: 1.4; }
-.coupon-meta { display: flex; justify-content: space-between; align-items: center; font-size: 0.8rem; font-weight: bold; }
-.expiry-date { color: #888; }
-.coupon-card.available .expiry-date { color: #e67e22; }
+/* === 彈窗設定 === */
+.modal-overlay {
+  position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+  background: rgba(0,0,0,0.85); 
+  z-index: 9999; 
+  display: flex; justify-content: center; align-items: flex-end;
+  backdrop-filter: blur(5px);
+}
 
-.status-badge { background: #333; color: #fff; padding: 3px 8px; border-radius: 4px; font-size: 0.7rem; }
-.status-badge.expired { background: #331111; color: #e74c3c; border: 1px solid #552222; }
+.modal-content.detail-mode {
+  width: 100%; max-width: 600px;
+  background: #1a1a1a;
+  border-radius: 20px 20px 0 0;
+  border-top: 1px solid #333;
+  display: flex; flex-direction: column;
+  height: 85vh; 
+  box-shadow: 0 -10px 40px rgba(0,0,0,0.8);
+}
+
+.modal-header {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 20px 25px 10px 25px;
+  flex-shrink: 0;
+  border-bottom: 1px solid #222;
+}
+.modal-header h3 { margin: 0; color: #fff; }
+.close-btn-icon { background: none; border: none; color: #888; font-size: 1.5rem; cursor: pointer; }
+
+/* 捲動區 */
+.detail-scroll-area {
+  flex: 1; overflow-y: auto; padding: 0 25px;
+  -webkit-overflow-scrolling: touch;
+}
+
+.detail-content-wrapper { text-align: center; padding-top: 20px; }
+.detail-icon-large { font-size: 3rem; margin-bottom: 10px; }
+.detail-title { color: #D4AF37; margin: 5px 0; font-size: 1.5rem; }
+.detail-code { color: #666; font-family: monospace; letter-spacing: 1px; font-size: 1rem; margin-bottom: 20px; }
+.detail-divider { height: 1px; background: #333; margin: 15px 0; }
+.detail-desc { text-align: left; color: #ccc; font-size: 0.95rem; line-height: 1.6; background: #222; padding: 15px; border-radius: 8px; }
+.desc-text { white-space: pre-wrap; margin: 0; }
+.expiry-text { color: #666; font-size: 0.8rem; margin-top: 20px; margin-bottom: 10px; }
+
+/* 按鈕區 */
+.detail-footer-scroll { margin-top: 20px; }
+
+.action-btn {
+  width: 100%; padding: 16px; border-radius: 12px; border: none;
+  font-size: 1.1rem; font-weight: bold; cursor: pointer;
+  background: #D4AF37; color: #000;
+  box-shadow: 0 4px 15px rgba(212, 175, 55, 0.4);
+}
+.action-btn:active { transform: scale(0.98); }
+.action-btn.disabled { background: #444; color: #888; box-shadow: none; cursor: not-allowed; }
+
+/* 安全氣囊 */
+.safe-zone { height: 100px; width: 100%; }
+
+/* Double Check */
+.modal-overlay.confirm-overlay { align-items: center; }
+.confirm-box {
+  background: #222; width: 80%; max-width: 320px;
+  padding: 25px; border-radius: 16px; text-align: center;
+  border: 1px solid #444; box-shadow: 0 10px 30px rgba(0,0,0,0.8);
+}
+.confirm-icon { font-size: 3rem; margin-bottom: 10px; }
+.confirm-box h3 { color: #fff; margin: 0 0 10px 0; }
+.confirm-box p { color: #aaa; font-size: 0.9rem; margin: 0 0 20px 0; line-height: 1.5; }
+.confirm-actions { display: flex; gap: 10px; }
+.confirm-actions button { flex: 1; padding: 12px; border-radius: 8px; border: none; font-weight: bold; cursor: pointer; }
+.btn-cancel { background: #333; color: #fff; }
+.btn-confirm { background: #D4AF37; color: #000; }
+
+.pop-enter-active, .pop-leave-active { transition: transform 0.3s ease; }
+.pop-enter-from, .pop-leave-to { transform: translateY(100%); }
+.fade-enter-active, .fade-leave-active { transition: opacity 0.2s ease; }
+.fade-enter-from, .fade-leave-to { opacity: 0; }
 </style>

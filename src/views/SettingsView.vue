@@ -241,11 +241,14 @@ const bindFriendCode = async () => {
           </div>
         </div>
 
-        <div class="promo-section mt-4" style="border-color: rgba(212, 175, 55, 0.3); position: relative;">
-          <button class="rules-btn" @click="showRulesModal = true">❓ 規則說明</button>
+        <div class="promo-section mt-4" style="border-color: rgba(212, 175, 55, 0.3);">
           
-          <h3 class="promo-title" style="color: #D4AF37;">🤝 好友推坑計畫</h3>
-          <p class="promo-desc">分享專屬碼給新手，當他們完成第一場遊戲，雙方都能獲得獎勵！</p>
+          <div class="promo-header-flex">
+            <h3 class="promo-title" style="color: #D4AF37; margin: 0;">🤝 好友推坑計畫</h3>
+            <button class="rules-btn" @click="showRulesModal = true">❓ 規則說明</button>
+          </div>
+          
+          <p class="promo-desc mt-2">分享專屬碼給新手，當他們完成第一場遊戲，雙方都能獲得獎勵！</p>
           
           <div class="referral-box">
             <span class="ref-label">你的專屬推坑碼：</span>
@@ -353,7 +356,11 @@ const bindFriendCode = async () => {
 
 /* === 兌換碼/推薦碼專區樣式 === */
 .promo-section { background: linear-gradient(145deg, #151515, #111); border: 1px solid #222; padding: 20px; border-radius: 12px; }
-.promo-title { margin: 0 0 5px 0; color: #eee; font-size: 1.1rem; }
+
+/* 🚀 Flexbox 標題列 */
+.promo-header-flex { display: flex; justify-content: space-between; align-items: center; }
+
+.promo-title { margin: 0; color: #eee; font-size: 1.1rem; }
 .promo-desc { margin: 0 0 15px 0; font-size: 0.85rem; color: #888; line-height: 1.4;}
 
 .promo-input-group { display: flex; gap: 10px; }
@@ -383,8 +390,8 @@ const bindFriendCode = async () => {
 .friend-btn { color: #D4AF37; border-color: #D4AF37; }
 .friend-btn:hover { background: rgba(212, 175, 55, 0.1); }
 
-/* ❓ 規則按鈕 */
-.rules-btn { position: absolute; top: 20px; right: 20px; background: transparent; border: 1px solid #555; color: #aaa; border-radius: 20px; padding: 4px 10px; font-size: 0.75rem; cursor: pointer; transition: 0.2s;}
+/* ❓ 規則按鈕 (已修正，不再用 absolute) */
+.rules-btn { background: transparent; border: 1px solid #555; color: #aaa; border-radius: 20px; padding: 4px 10px; font-size: 0.75rem; cursor: pointer; transition: 0.2s; white-space: nowrap; }
 .rules-btn:hover { color: #D4AF37; border-color: #D4AF37;}
 
 /* === 📖 規則彈窗樣式 === */

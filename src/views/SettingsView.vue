@@ -62,7 +62,7 @@ const save = async () => {
   }
 }
 
-// 🎁 兌換行銷代碼 (保持不變)
+// 🎁 兌換官方行銷代碼
 const redeemPromoCode = async () => {
   const code = promoCodeInput.value.trim().toUpperCase()
   if (!code) return alert('⚠️ 請輸入兌換碼喔！')
@@ -110,14 +110,8 @@ const generateMyCode = async () => {
   isGeneratingCode.value = true
   
   try {
-    // 產生 6 碼隨機大寫英數
     const randomCode = Math.random().toString(36).substring(2, 8).toUpperCase()
-    
-    const { error } = await supabase
-      .from('users')
-      .update({ my_referral_code: randomCode })
-      .eq('id', store.userData.id)
-      
+    const { error } = await supabase.from('users').update({ my_referral_code: randomCode }).eq('id', store.userData.id)
     if (error) throw error
     
     myReferralCode.value = randomCode
@@ -138,7 +132,7 @@ const copyMyCode = () => {
     .catch(() => alert('複製失敗，請手動選取複製'))
 }
 
-// 🚀 綁定朋友的推薦碼
+// 🚀 綁定朋友的推薦碼 (邏輯1：綁定瞬間發放新手禮)
 const bindFriendCode = async () => {
   const code = friendCodeInput.value.trim().toUpperCase()
   if (!code) return alert('請輸入朋友的推薦碼！')
@@ -165,10 +159,23 @@ const bindFriendCode = async () => {
 
     if (updateErr) throw updateErr
 
-    alert(`✅ 成功綁定！你是由【${targetUser.display_name || '神秘玩家'}】推薦的！\n（未來你完成首場遊戲時，雙方都會獲得獎勵喔！）`)
+    // 3. 🚀 發送「新手迎新禮」給自己 (B)
+    const expiryDate = new Date()
+    expiryDate.setDate(expiryDate.getDate() + 30) // 給 30 天效期來推動首購
+
+    await supabase.from('coupons').insert([{
+      user_id: store.userData.id,
+      title: '🎁 新手推坑專屬 $50 折價券',
+      description: `由【${targetUser.display_name || '老手'}】推薦入坑！憑此券首次遊玩可折抵 50 元。`,
+      status: 'available',
+      expiry_date: expiryDate.toISOString()
+    }])
+
+    alert(`✅ 成功綁定！你是由【${targetUser.display_name || '神秘玩家'}】推薦的！\n\n🎉 系統已自動發送一張【新手推坑 $50 折價券】到你的票券夾！快去看看吧！`)
+    
     isReferredLocked.value = true
     referredBy.value = code
-    await store.initLiff()
+    await store.initLiff() // 刷新狀態，讓票券夾即時更新
 
   } catch (err) {
     alert('❌ 綁定失敗：' + err.message)
@@ -208,8 +215,8 @@ const bindFriendCode = async () => {
         <div class="divider"></div>
 
         <div class="promo-section">
-          <h3 class="promo-title">🎁 領取活動獎勵</h3>
-          <p class="promo-desc">輸入官方專屬活動代碼來獲取折價券！</p>
+          <h3 class="promo-title">🎁 官方活動代碼</h3>
+          <p class="promo-desc">輸入官方發布的專屬活動代碼來獲取折價券！</p>
           
           <div class="promo-input-group">
             <input 
@@ -225,9 +232,9 @@ const bindFriendCode = async () => {
           </div>
         </div>
 
-        <div class="promo-section mt-4" style="border-color: rgba(52, 152, 219, 0.4);">
-          <h3 class="promo-title" style="color: #3498db;">🤝 好友推坑計畫</h3>
-          <p class="promo-desc">分享你的專屬碼給新手，當他們完成第一場遊戲，雙方都能獲得獎勵！</p>
+        <div class="promo-section mt-4" style="border-color: rgba(212, 175, 55, 0.3);">
+          <h3 class="promo-title" style="color: #D4AF37;">🤝 好友推坑計畫</h3>
+          <p class="promo-desc">分享專屬碼給新手，當他們完成第一場遊戲，雙方都能獲得獎勵！</p>
           
           <div class="referral-box">
             <span class="ref-label">你的專屬推坑碼：</span>
@@ -246,15 +253,15 @@ const bindFriendCode = async () => {
               <input 
                 v-model="friendCodeInput" 
                 type="text" 
-                placeholder="輸入朋友的推坑碼..." 
+                placeholder="輸入推坑碼，現領 $50..." 
                 class="promo-input friend-input"
               />
               <button class="redeem-btn friend-btn" @click="bindFriendCode" :disabled="isBindingCode">
                 綁定
               </button>
             </div>
-            <div v-else class="locked-display mt-2" style="border-color: #3498db; color: #3498db; background: rgba(52, 152, 219, 0.05); text-align: center; font-weight: bold;">
-              ✅ 已綁定推薦人代碼：{{ referredBy }}
+            <div v-else class="locked-display mt-2" style="border-color: #D4AF37; color: #D4AF37; background: rgba(212, 175, 55, 0.05); text-align: center; font-weight: bold;">
+              🤝 已綁定推坑老手：{{ referredBy }}
             </div>
           </div>
 
@@ -298,20 +305,22 @@ const bindFriendCode = async () => {
 .redeem-btn:active { transform: translateY(0); }
 .redeem-btn:disabled { background: #111; color: #555; border-color: #333; cursor: not-allowed; transform: none; }
 
-/* 推薦碼特化樣式 */
+/* 黑金版推薦碼特化樣式 */
 .referral-box { background: #0a0a0a; border: 1px solid #222; padding: 15px; border-radius: 8px; margin-top: 10px;}
 .ref-label { font-size: 0.85rem; color: #888; display: block; margin-bottom: 8px;}
-.ref-display-group { display: flex; justify-content: space-between; align-items: center; background: #1a1a1a; padding: 10px 15px; border-radius: 6px; border: 1px dashed #3498db;}
-.ref-code { font-size: 1.3rem; font-weight: 900; color: #3498db; letter-spacing: 2px; font-family: monospace;}
-.ref-copy-btn { background: #3498db; color: white; border: none; padding: 6px 12px; border-radius: 4px; font-size: 0.85rem; cursor: pointer; font-weight: bold;}
+.ref-display-group { display: flex; justify-content: space-between; align-items: center; background: #1a1a1a; padding: 10px 15px; border-radius: 6px; border: 1px dashed #D4AF37;}
+.ref-code { font-size: 1.3rem; font-weight: 900; color: #D4AF37; letter-spacing: 2px; font-family: monospace;}
+.ref-copy-btn { background: #222; color: #D4AF37; border: 1px solid #D4AF37; padding: 6px 12px; border-radius: 4px; font-size: 0.85rem; cursor: pointer; font-weight: bold; transition: 0.2s;}
+.ref-copy-btn:hover { background: #D4AF37; color: black; }
 .ref-copy-btn:active { transform: scale(0.95); }
 
-.btn-generate { width: 100%; padding: 12px; background: rgba(52, 152, 219, 0.1); border: 1px solid #3498db; color: #3498db; border-radius: 8px; font-weight: bold; cursor: pointer;}
+.btn-generate { width: 100%; padding: 12px; background: rgba(212, 175, 55, 0.05); border: 1px solid #D4AF37; color: #D4AF37; border-radius: 8px; font-weight: bold; cursor: pointer; transition: 0.2s;}
+.btn-generate:hover { background: rgba(212, 175, 55, 0.15); }
 
-.friend-input { color: #3498db; border-color: #333; }
-.friend-input:focus { border-color: #3498db; box-shadow: 0 0 10px rgba(52, 152, 219, 0.1); }
-.friend-btn { color: #3498db; border-color: #3498db; }
-.friend-btn:hover { background: rgba(52, 152, 219, 0.1); }
+.friend-input { color: #D4AF37; border-color: #333; }
+.friend-input:focus { border-color: #D4AF37; box-shadow: 0 0 10px rgba(212, 175, 55, 0.1); }
+.friend-btn { color: #D4AF37; border-color: #D4AF37; }
+.friend-btn:hover { background: rgba(212, 175, 55, 0.1); }
 
 .mt-2 { margin-top: 8px; }
 .mt-4 { margin-top: 25px; }

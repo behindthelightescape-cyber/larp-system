@@ -134,6 +134,7 @@ const copyMyCode = () => {
 
 // 🚀 綁定朋友的推薦碼 (邏輯1：綁定瞬間發放新手禮)
 const bindFriendCode = async () => {
+    if (store.userData.total_exp > 0) return alert('老司機別裝萌新啦！推坑碼僅限「從未遊玩過」的新手綁定喔！')
   const code = friendCodeInput.value.trim().toUpperCase()
   if (!code) return alert('請輸入朋友的推薦碼！')
   if (code === myReferralCode.value) return alert('你不能輸入自己的推薦碼啦！')

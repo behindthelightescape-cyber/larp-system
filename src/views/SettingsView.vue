@@ -1,5 +1,5 @@
 <script setup>
-import { ref, watch } from 'vue'
+import { ref, watch, computed } from 'vue'
 import { useUserStore } from '../stores/user'
 import { supabase } from '../supabase'
 
@@ -24,6 +24,13 @@ const referredBy = ref('')
 const isReferredLocked = ref(false)
 const isGeneratingCode = ref(false)
 const isBindingCode = ref(false)
+
+// 🚀 新增：規則彈窗開關
+const showRulesModal = ref(false)
+
+// 🚀 新增：老手/新手判定引擎 (根據總經驗值)
+const totalExp = computed(() => store.userData?.total_exp || 0)
+const isNewbie = computed(() => totalExp.value === 0)
 
 // 監聽使用者資料
 watch(() => store.userData, (newVal) => {
@@ -104,8 +111,10 @@ const redeemPromoCode = async () => {
   }
 }
 
-// 🚀 產生自己的專屬推薦碼
+// 🚀 產生自己的專屬推薦碼 (加上老手防護)
 const generateMyCode = async () => {
+  if (isNewbie.value) return alert('🔒 萌新請先完成首場遊戲，獲得經驗值後才能解鎖推坑碼喔！')
+
   if (isGeneratingCode.value) return
   isGeneratingCode.value = true
   
@@ -132,9 +141,10 @@ const copyMyCode = () => {
     .catch(() => alert('複製失敗，請手動選取複製'))
 }
 
-// 🚀 綁定朋友的推薦碼 (邏輯1：綁定瞬間發放新手禮)
+// 🚀 綁定朋友的推薦碼 (加上新手防護)
 const bindFriendCode = async () => {
-    if (store.userData.total_exp > 0) return alert('老司機別裝萌新啦！推坑碼僅限「從未遊玩過」的新手綁定喔！')
+  if (!isNewbie.value) return alert('🚫 老司機別裝萌新啦！推坑碼僅限「首次遊玩前」綁定喔！')
+
   const code = friendCodeInput.value.trim().toUpperCase()
   if (!code) return alert('請輸入朋友的推薦碼！')
   if (code === myReferralCode.value) return alert('你不能輸入自己的推薦碼啦！')
@@ -143,7 +153,6 @@ const bindFriendCode = async () => {
   isBindingCode.value = true
 
   try {
-    // 1. 檢查這組推薦碼存不存在
     const { data: targetUser, error: searchErr } = await supabase
       .from('users')
       .select('id, display_name')
@@ -152,7 +161,6 @@ const bindFriendCode = async () => {
 
     if (searchErr || !targetUser) throw new Error('找不到這組推薦碼，請確認是否打錯！')
 
-    // 2. 更新自己的 referred_by 欄位
     const { error: updateErr } = await supabase
       .from('users')
       .update({ referred_by: code })
@@ -160,9 +168,9 @@ const bindFriendCode = async () => {
 
     if (updateErr) throw updateErr
 
-    // 3. 🚀 發送「新手迎新禮」給自己 (B)
+    // 發送新手迎新禮
     const expiryDate = new Date()
-    expiryDate.setDate(expiryDate.getDate() + 30) // 給 30 天效期來推動首購
+    expiryDate.setDate(expiryDate.getDate() + 30) 
 
     await supabase.from('coupons').insert([{
       user_id: store.userData.id,
@@ -176,7 +184,7 @@ const bindFriendCode = async () => {
     
     isReferredLocked.value = true
     referredBy.value = code
-    await store.initLiff() // 刷新狀態，讓票券夾即時更新
+    await store.initLiff() 
 
   } catch (err) {
     alert('❌ 綁定失敗：' + err.message)
@@ -233,7 +241,9 @@ const bindFriendCode = async () => {
           </div>
         </div>
 
-        <div class="promo-section mt-4" style="border-color: rgba(212, 175, 55, 0.3);">
+        <div class="promo-section mt-4" style="border-color: rgba(212, 175, 55, 0.3); position: relative;">
+          <button class="rules-btn" @click="showRulesModal = true">❓ 規則說明</button>
+          
           <h3 class="promo-title" style="color: #D4AF37;">🤝 好友推坑計畫</h3>
           <p class="promo-desc">分享專屬碼給新手，當他們完成第一場遊戲，雙方都能獲得獎勵！</p>
           
@@ -243,14 +253,26 @@ const bindFriendCode = async () => {
               <span class="ref-code">{{ myReferralCode }}</span>
               <button class="ref-copy-btn" @click="copyMyCode">📋 複製</button>
             </div>
-            <button v-else class="btn-generate" @click="generateMyCode" :disabled="isGeneratingCode">
+            <button v-else-if="!isNewbie" class="btn-generate" @click="generateMyCode" :disabled="isGeneratingCode">
               {{ isGeneratingCode ? '生成中...' : '✨ 點我生成專屬代碼' }}
             </button>
+            <div v-else class="locked-display mt-2" style="border-color: #444; color: #888; text-align: center; font-size: 0.85rem; padding: 10px;">
+              🔒 需完成首場遊戲後解鎖專屬碼
+            </div>
           </div>
 
           <div style="margin-top: 15px;">
             <span class="ref-label">是朋友推薦你來的嗎？</span>
-            <div v-if="!isReferredLocked" class="promo-input-group mt-2">
+            
+            <div v-if="isReferredLocked" class="locked-display mt-2" style="border-color: #D4AF37; color: #D4AF37; background: rgba(212, 175, 55, 0.05); text-align: center; font-weight: bold;">
+              🤝 已綁定推坑老手：{{ referredBy }}
+            </div>
+            
+            <div v-else-if="!isNewbie" class="locked-display mt-2" style="border-color: rgba(231, 76, 60, 0.3); color: #e74c3c; background: rgba(231, 76, 60, 0.05); text-align: center; font-size: 0.85rem; padding: 10px;">
+              🚫 綁定失敗：推坑碼僅限「首次遊玩前」填寫！
+            </div>
+            
+            <div v-else class="promo-input-group mt-2">
               <input 
                 v-model="friendCodeInput" 
                 type="text" 
@@ -261,14 +283,52 @@ const bindFriendCode = async () => {
                 綁定
               </button>
             </div>
-            <div v-else class="locked-display mt-2" style="border-color: #D4AF37; color: #D4AF37; background: rgba(212, 175, 55, 0.05); text-align: center; font-weight: bold;">
-              🤝 已綁定推坑老手：{{ referredBy }}
-            </div>
           </div>
-
         </div>
 
     </div>
+
+    <Teleport to="body">
+      <transition name="fade">
+        <div v-if="showRulesModal" class="modal-overlay" @click.self="showRulesModal = false">
+          <div class="rules-modal-content">
+            <div class="rules-header">
+              <h3 style="color: #D4AF37; margin: 0;">🤝 推坑計畫規則說明</h3>
+              <button class="close-btn-icon" @click="showRulesModal = false">✕</button>
+            </div>
+            
+            <div class="rules-body">
+              <div class="rule-item">
+                <div class="rule-icon">🌱</div>
+                <div class="rule-text">
+                  <h4>誰可以填寫別人的推坑碼？</h4>
+                  <p>必須是<strong style="color: #e74c3c;">從未遊玩過（經驗值為 0）</strong>的新手才能填寫。綁定後即可立即獲得 $50 迎新折價券！<br><span style="font-size: 0.8rem; color: #888;">(若已完成過首場遊戲，系統將自動關閉綁定功能，無法事後補填喔！)</span></p>
+                </div>
+              </div>
+
+              <div class="rule-item">
+                <div class="rule-icon">👑</div>
+                <div class="rule-text">
+                  <h4>誰可以產生自己的推坑碼？</h4>
+                  <p>只要您<strong style="color: #D4AF37;">完成過至少一場遊戲</strong>，系統就會為您解鎖專屬的推坑碼，讓您可以分享給親朋好友。</p>
+                </div>
+              </div>
+
+              <div class="rule-item">
+                <div class="rule-icon">🎁</div>
+                <div class="rule-text">
+                  <h4>老手要怎麼拿到推坑獎勵？</h4>
+                  <p>當您推薦的新手成功綁定您的代碼，並且來店裡<strong style="color: #D4AF37;">完成他們的第一場遊戲（掃描核銷獲得經驗值）</strong>後，系統就會自動發送一張 $100 折價券到您的票券夾中！</p>
+                </div>
+              </div>
+            </div>
+            
+            <button class="rules-close-btn" @click="showRulesModal = false">我知道了</button>
+          </div>
+        </div>
+      </transition>
+    </Teleport>
+
   </div>
 </template>
 
@@ -306,7 +366,7 @@ const bindFriendCode = async () => {
 .redeem-btn:active { transform: translateY(0); }
 .redeem-btn:disabled { background: #111; color: #555; border-color: #333; cursor: not-allowed; transform: none; }
 
-/* 黑金版推薦碼特化樣式 */
+/* 推薦碼特化樣式 */
 .referral-box { background: #0a0a0a; border: 1px solid #222; padding: 15px; border-radius: 8px; margin-top: 10px;}
 .ref-label { font-size: 0.85rem; color: #888; display: block; margin-bottom: 8px;}
 .ref-display-group { display: flex; justify-content: space-between; align-items: center; background: #1a1a1a; padding: 10px 15px; border-radius: 6px; border: 1px dashed #D4AF37;}
@@ -323,6 +383,26 @@ const bindFriendCode = async () => {
 .friend-btn { color: #D4AF37; border-color: #D4AF37; }
 .friend-btn:hover { background: rgba(212, 175, 55, 0.1); }
 
+/* ❓ 規則按鈕 */
+.rules-btn { position: absolute; top: 20px; right: 20px; background: transparent; border: 1px solid #555; color: #aaa; border-radius: 20px; padding: 4px 10px; font-size: 0.75rem; cursor: pointer; transition: 0.2s;}
+.rules-btn:hover { color: #D4AF37; border-color: #D4AF37;}
+
+/* === 📖 規則彈窗樣式 === */
+.modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.85); display: flex; justify-content: center; align-items: center; z-index: 9999; backdrop-filter: blur(5px); padding: 20px; }
+.rules-modal-content { background: #161616; width: 100%; max-width: 450px; border-radius: 16px; border: 1px solid #333; box-shadow: 0 10px 40px rgba(0,0,0,0.8); display: flex; flex-direction: column; overflow: hidden; }
+.rules-header { padding: 20px; background: #111; border-bottom: 1px solid #222; display: flex; justify-content: space-between; align-items: center; }
+.close-btn-icon { background: none; border: none; color: #888; font-size: 1.2rem; cursor: pointer; }
+.rules-body { padding: 20px; max-height: 60vh; overflow-y: auto; }
+.rule-item { display: flex; gap: 15px; margin-bottom: 25px; }
+.rule-icon { font-size: 2rem; flex-shrink: 0; }
+.rule-text h4 { margin: 0 0 5px 0; color: #eee; font-size: 1rem; }
+.rule-text p { margin: 0; color: #aaa; font-size: 0.9rem; line-height: 1.5; }
+.rules-close-btn { width: calc(100% - 40px); margin: 0 20px 20px 20px; padding: 12px; background: #222; color: #fff; border: 1px solid #444; border-radius: 8px; font-weight: bold; cursor: pointer; }
+.rules-close-btn:hover { background: #333; }
+
 .mt-2 { margin-top: 8px; }
 .mt-4 { margin-top: 25px; }
+
+.fade-enter-active, .fade-leave-active { transition: opacity 0.3s ease; }
+.fade-enter-from, .fade-leave-to { opacity: 0; }
 </style>

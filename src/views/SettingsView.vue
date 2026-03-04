@@ -142,6 +142,7 @@ const copyMyCode = () => {
 }
 
 // 🚀 綁定朋友的推薦碼 (加上新手防護)
+// 🚀 綁定朋友的推薦碼 (升級為：動態讀取中央派發規則)
 const bindFriendCode = async () => {
   if (!isNewbie.value) return alert('🚫 老司機別裝萌新啦！推坑碼僅限「首次遊玩前」綁定喔！')
 
@@ -153,6 +154,7 @@ const bindFriendCode = async () => {
   isBindingCode.value = true
 
   try {
+    // 1. 尋找推薦人
     const { data: targetUser, error: searchErr } = await supabase
       .from('users')
       .select('id, display_name')
@@ -161,6 +163,7 @@ const bindFriendCode = async () => {
 
     if (searchErr || !targetUser) throw new Error('找不到這組推薦碼，請確認是否打錯！')
 
+    // 2. 綁定推薦關係
     const { error: updateErr } = await supabase
       .from('users')
       .update({ referred_by: code })
@@ -168,19 +171,56 @@ const bindFriendCode = async () => {
 
     if (updateErr) throw updateErr
 
-    // 發送新手迎新禮
-    const expiryDate = new Date()
-    expiryDate.setDate(expiryDate.getDate() + 30) 
+    // ==========================================
+    // 🚀 3. 呼叫中央派發大腦：撈取「推坑新手禮」
+    // ==========================================
+    const { data: rewards, error: rewardErr } = await supabase
+      .from('system_rewards')
+      .select('*')
+      .eq('event_type', 'referral_newbie')
+      .eq('is_active', true)
 
-    await supabase.from('coupons').insert([{
-      user_id: store.userData.id,
-      title: '🎁 新手推坑專屬 $50 折價券',
-      description: `由【${targetUser.display_name || '老手'}】推薦入坑！憑此券首次遊玩可折抵 50 元。`,
-      status: 'available',
-      expiry_date: expiryDate.toISOString()
-    }])
+    let grantedTitles = []
 
-    alert(`✅ 成功綁定！你是由【${targetUser.display_name || '神秘玩家'}】推薦的！\n\n🎉 系統已自動發送一張【新手推坑 $50 折價券】到你的票券夾！快去看看吧！`)
+    if (rewards && rewards.length > 0) {
+      const newCoupons = []
+      for (const rule of rewards) {
+        const qty = rule.reward_qty || 1
+        const expiryDate = new Date()
+        expiryDate.setDate(expiryDate.getDate() + (rule.valid_days || 30))
+
+        // 小巧思：把文案裡的 {referrer} 自動替換成推薦人的名字
+        const finalDesc = (rule.reward_desc || '').replace('{referrer}', targetUser.display_name || '熱心老手')
+
+        for (let i = 0; i < qty; i++) {
+          newCoupons.push({
+            user_id: store.userData.id,
+            title: rule.reward_title,
+            description: finalDesc,
+            status: 'available',
+            expiry_date: expiryDate.toISOString()
+          })
+        }
+        grantedTitles.push(`${rule.reward_title}` + (qty > 1 ? ` (x${qty})` : ''))
+      }
+
+      // 發送實體票券
+      if (newCoupons.length > 0) {
+        const { error: insertErr } = await supabase.from('coupons').insert(newCoupons)
+        if (insertErr) console.error('發送新手禮失敗:', insertErr)
+      }
+    }
+    // ==========================================
+
+    // 4. 組合成功訊息
+    let alertMsg = `✅ 成功綁定！你是由【${targetUser.display_name || '神秘玩家'}】推薦的！`
+    if (grantedTitles.length > 0) {
+       alertMsg += `\n\n🎉 系統已自動發送迎新大禮包：\n- ` + grantedTitles.join('\n- ') + `\n\n快去票券夾看看吧！`
+    } else {
+       alertMsg += `\n\n(目前官方暫無迎新派發活動，但您的綁定已成功紀錄！)`
+    }
+    
+    alert(alertMsg)
     
     isReferredLocked.value = true
     referredBy.value = code

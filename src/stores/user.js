@@ -33,29 +33,30 @@ export const useUserStore = defineStore('user', () => {
   // ==========================================
   // 🚀 核心大腦：自動派發引擎 (Universal Reward Engine)
   // ==========================================
-  const grantSystemRewards = async (targetUserId, eventType, conditionValue = null) => {
+  // ==========================================
+  // 🚀 核心大腦：自動派發引擎 (加入自訂效期功能)
+  // ==========================================
+  const grantSystemRewards = async (targetUserId, eventType, conditionValue = null, customExpiryDate = null) => { // 🌟 多加一個參數
     try {
-      // 1. 去中控台問：現在有哪些規則是「開啟」而且符合條件的？
-      let query = supabase.from('system_rewards')
-        .select('*')
-        .eq('is_active', true)
-        .eq('event_type', eventType)
-      
-      if (conditionValue !== null) {
-        query = query.eq('condition_value', conditionValue)
-      }
+      let query = supabase.from('system_rewards').select('*').eq('is_active', true).eq('event_type', eventType)
+      if (conditionValue !== null) query = query.eq('condition_value', conditionValue)
 
       const { data: rules, error } = await query
-      if (error || !rules || rules.length === 0) return [] // 沒規則就提早下班
+      if (error || !rules || rules.length === 0) return [] 
 
       const newCoupons = []
       const rewardTitles = []
 
-      // 2. 把所有符合的規則印成實體票券 (支援數量 reward_qty)
       for (const rule of rules) {
         const qty = rule.reward_qty || 1
-        const expiryDate = new Date()
-        expiryDate.setDate(expiryDate.getDate() + (rule.valid_days || 30))
+        
+        // 🚀 效期判斷：如果有強制指定的日期就用指定的，不然就照系統設定的天數算
+        let finalExpiry = customExpiryDate
+        if (!finalExpiry) {
+          const expiryDate = new Date()
+          expiryDate.setDate(expiryDate.getDate() + (rule.valid_days || 30))
+          finalExpiry = expiryDate.toISOString()
+        }
 
         for (let i = 0; i < qty; i++) {
           newCoupons.push({
@@ -63,26 +64,22 @@ export const useUserStore = defineStore('user', () => {
             title: rule.reward_title,
             description: rule.reward_desc,
             status: 'available',
-            expiry_date: expiryDate.toISOString()
+            expiry_date: finalExpiry // 🌟 塞入最終決定的效期
           })
         }
-        // 紀錄發了什麼，等一下要彈窗告訴玩家 (例如：$100 折價券 x2)
         rewardTitles.push(`${rule.reward_title}` + (qty > 1 ? ` (x${qty})` : ''))
       }
 
-      // 3. 一次性把大禮包全部塞進玩家錢包
       if (newCoupons.length > 0) {
         const { error: insertErr } = await supabase.from('coupons').insert(newCoupons)
         if (insertErr) throw insertErr
       }
-
-      return rewardTitles // 回傳獲得的獎勵清單
+      return rewardTitles
     } catch (err) {
       console.error(`發送 ${eventType} 獎勵失敗:`, err.message)
       return []
     }
   }
-
 
   // === 2. 動作 (Actions) ===
 
@@ -135,22 +132,27 @@ export const useUserStore = defineStore('user', () => {
           const claimYear = bMonth === targetMonth ? targetYear : currentYear
 
           // 檢查今年領過沒？
+          // 檢查今年領過沒？
           if (userData.value.birthday_claimed_year !== claimYear) {
             console.log('🎂 捕捉到野生壽星！準備發放禮包...')
             
-            // 呼叫自動派發引擎，依據他的等級發放生日禮！
-            const grantedTitles = await grantSystemRewards(userData.value.id, 'birthday', userData.value.level)
+            // ==========================================
+            // 🚀 神級邏輯：算出他生日月份的「最後一天 23:59:59」
+            // 在 JS 中，new Date(年, 月, 0) 會自動推算出「上個月的最後一天」。
+            // 因為我們的 bMonth 是 1~12，剛好等同於 JS 裡的「下個月的 Index」！
+            // 所以 new Date(claimYear, bMonth, 0) 完美抓到該月月底！
+            // ==========================================
+            const endOfBirthdayMonth = new Date(claimYear, bMonth, 0, 23, 59, 59).toISOString()
+
+            // 呼叫自動派發引擎，並強制塞入「月底過期」的指令！🌟
+            const grantedTitles = await grantSystemRewards(userData.value.id, 'birthday', userData.value.level, endOfBirthdayMonth)
             
             if (grantedTitles.length > 0) {
-              // 更新領取鎖，防止他明天打開又領一次
               await supabase.from('users').update({ birthday_claimed_year: claimYear }).eq('id', userData.value.id)
               userData.value.birthday_claimed_year = claimYear
-              
-              // 重新抓取票券讓他畫面上馬上出現
               await fetchUserExtraData(userData.value.id)
 
-              // 炸出華麗彈窗！
-              alert(`🎉 祝尊榮的 LV.${userData.value.level} 玩家生日快樂！\n\n🎁 您的專屬生日大禮包已送達：\n- ` + grantedTitles.join('\n- ') + `\n\n請至票券夾查看，期待在劇光燈為您慶生！`)
+              alert(`🎉 祝尊榮的 LV.${userData.value.level} 玩家生日快樂！\n\n🎁 您的專屬生日大禮包已送達：\n- ` + grantedTitles.join('\n- ') + `\n\n票券效期至月底，期待在劇光燈為您慶生！`)
             }
           }
         }

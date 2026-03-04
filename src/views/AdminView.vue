@@ -9,8 +9,9 @@ import SessionManager from '../components/SessionManager.vue'
 import DataImporter from '../components/DataImporter.vue'
 import AnalyticsManager from '../components/AnalyticsManager.vue' 
 import AdminAchievements from '../components/AdminAchievements.vue'
-import AdminPromoCodes from '../components/AdminPromoCodes.vue' // 🚀 1. 引入剛剛做好的兌換碼印鈔機
-
+import AdminPromoCodes from '../components/AdminPromoCodes.vue' 
+import AdminAutoRewards from '../components/AdminAutoRewards.vue' // 🚀 1. 引入自動派發中控台
+import AdminPushLogs from '../components/AdminPushLogs.vue'
 
 const session = ref(null)
 const isLoading = ref(true)
@@ -155,6 +156,14 @@ const changeTab = (tabName) => {
         <button class="nav-btn" :class="{ active: currentTab === 'promo_code' }" @click="changeTab('promo_code')">
           <span class="icon">🎁</span> 兌換碼設定
         </button>
+        <button class="nav-btn" :class="{ active: currentTab === 'push_log' }" @click="changeTab('push_log')">
+          <span class="icon">📡</span> 系統推播監控
+        </button>
+        
+        <button class="nav-btn" :class="{ active: currentTab === 'auto_reward' }" @click="changeTab('auto_reward')">
+          <span class="icon">⚙️</span> 自動派發設定
+        </button>
+
         <button class="nav-btn" :class="{ active: currentTab === 'script' }" @click="changeTab('script')">
           <span class="icon">📜</span> 劇本管理
         </button>
@@ -193,7 +202,8 @@ const changeTab = (tabName) => {
               currentTab === 'session' ? '場次大廳 (掃碼監控)' :  
               currentTab === 'member' ? '玩家總部 (資料查詢)' : 
               currentTab === 'coupon' ? '發送票券 (導彈系統)' : 
-              currentTab === 'promo_code' ? '萬用兌換碼印鈔機' : /* 🚀 3. 補上標題判斷 */
+              currentTab === 'promo_code' ? '萬用兌換碼印鈔機' :
+              currentTab === 'auto_reward' ? '全自動派發中控台' : 
               currentTab === 'achievement' ? '成就鑄造廠' : '劇本管理' 
             }}
           </h2>
@@ -212,6 +222,8 @@ const changeTab = (tabName) => {
         <DataImporter @update-stats="loadDashboardStats" />
       </div>
 
+<div v-if="currentTab === 'push_log'" class="panel active"><AdminPushLogs /></div>
+
       <div v-if="currentTab === 'analytics'" class="panel active">
         <AnalyticsManager />
       </div>
@@ -226,6 +238,10 @@ const changeTab = (tabName) => {
 
       <div v-if="currentTab === 'promo_code'" class="panel active">
         <AdminPromoCodes />
+      </div>
+
+      <div v-if="currentTab === 'auto_reward'" class="panel active">
+        <AdminAutoRewards />
       </div>
 
       <div v-show="currentTab === 'session'" class="panel active">
@@ -249,7 +265,7 @@ const changeTab = (tabName) => {
 </template>
 
 <style scoped>
-/* 原本的 CSS 完全不變，保留你的完美排版 */
+/* CSS 保持完美不變 */
 .admin-layout { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 9999; background-color: #050505; color: white; font-family: 'Segoe UI', sans-serif; }
 .center-content { display: flex; flex-direction: column; justify-content: center; align-items: center; }
 .login-box { border: 1px solid #333; width: 100%; max-width: 380px; padding: 40px; border-radius: 12px; background: #111; box-shadow: 0 10px 30px rgba(0,0,0,0.8); }

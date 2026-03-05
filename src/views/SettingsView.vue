@@ -348,10 +348,10 @@ const bindFriendCode = async () => {
 <style scoped>
 /* ── 基礎 ── */
 .page-container {
+  width: 100%; max-width: 800px; margin: 0 auto;
+  box-sizing: border-box; min-height: 100vh;
   padding: 32px 20px 100px;
-  /* 跟其他頁面保持相同 max-width，避免切換時畫面跳動 */
-  max-width: 800px; margin: 0 auto;
-  color: #fff;
+  background-color: transparent; color: #fff;
 }
 
 /* 內容區限制在 560px，視覺上置中 */

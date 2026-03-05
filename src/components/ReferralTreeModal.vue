@@ -1,7 +1,60 @@
 <script setup>
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, computed, defineComponent } from 'vue'
 import { useUserStore } from '../stores/user'
 import { supabase } from '../supabase'
+
+// ── 遞迴樹節點元件（定義在 script setup 內才能正確使用）──
+const TreeNodeVue = defineComponent({
+  name: 'TreeNodeVue',
+  props: { node: Object },
+  components: {}, // 自我遞迴：Vue 3 會自動用 name 找自己
+  setup(props) {
+    const isExpanded = ref(true)
+    const hasChildren = computed(() => props.node?.children?.length > 0)
+    const isActive = computed(() => props.node?.total_exp > 0)
+    const toggle = () => { if (hasChildren.value) isExpanded.value = !isExpanded.value }
+    return { isExpanded, hasChildren, isActive, toggle, defaultSvgAvatar }
+  },
+  template: `
+    <div class="t-node-wrap">
+      <div class="t-node-col">
+        <div
+          class="t-card"
+          :class="[node.isRoot ? 't-card-root' : '', isActive ? 't-card-active' : '']"
+          @click="toggle"
+        >
+          <div class="t-avatar-wrap">
+            <img :src="node.picture_url || defaultSvgAvatar" class="t-avatar" />
+            <div v-if="node.isRoot" class="t-crown">👑</div>
+            <div v-else class="t-status-dot" :class="isActive ? 'dot-active' : 'dot-pending'"></div>
+          </div>
+          <div class="t-info">
+            <div class="t-name">{{ node.display_name?.slice(0, 7) }}{{ node.display_name?.length > 7 ? '…' : '' }}</div>
+            <div class="t-meta">
+              <span v-if="node.isRoot" class="t-badge t-badge-root">祖師</span>
+              <span v-else class="t-badge">{{ node.generation }}代</span>
+              <span class="t-lv">Lv.{{ node.level || 1 }}</span>
+            </div>
+          </div>
+          <div v-if="hasChildren" class="t-toggle" :class="isExpanded ? 'expanded' : ''">▾</div>
+        </div>
+        <div v-if="hasChildren && isExpanded" class="t-vline-down"></div>
+      </div>
+
+      <div v-if="hasChildren && isExpanded" class="t-children-wrap">
+        <div class="t-hline"></div>
+        <div class="t-children-row">
+          <div v-for="child in node.children" :key="child.id" class="t-child-col">
+            <div class="t-vline-up"></div>
+            <TreeNodeVue :node="child" />
+          </div>
+        </div>
+      </div>
+    </div>
+  `
+})
+
+const defaultSvgAvatar = `data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='40' height='40'%3E%3Crect width='40' height='40' rx='20' fill='%23333'/%3E%3Ctext x='50%25' y='55%25' text-anchor='middle' dominant-baseline='middle' fill='%23888' font-size='16'%3E?%3C/text%3E%3C/svg%3E`
 
 const props = defineProps({ show: Boolean })
 const emit = defineEmits(['close'])
@@ -228,71 +281,7 @@ const closeModal = () => emit('close')
   </Teleport>
 </template>
 
-<!-- ===================== 遞迴子元件 ===================== -->
-<script>
-// 遞迴樹節點元件（寫在同一個檔案裡）
-const TreeNodeVue = {
-  name: 'TreeNodeVue',
-  props: { node: Object },
-  setup(props) {
-    const isExpanded = ref(true)
-    const hasChildren = computed(() => props.node.children?.length > 0)
-    const isActive = computed(() => props.node.total_exp > 0)
 
-    const toggle = () => { isExpanded.value = !isExpanded.value }
-
-    return { isExpanded, hasChildren, isActive, toggle }
-  },
-  template: `
-    <div class="t-node-wrap">
-      <!-- 節點卡片 -->
-      <div class="t-node-col">
-        <div
-          class="t-card"
-          :class="[node.isRoot ? 't-card-root' : '', isActive ? 't-card-active' : '']"
-          @click="hasChildren && toggle()"
-        >
-          <div class="t-avatar-wrap">
-            <img :src="node.picture_url || 'data:image/svg+xml,%3Csvg xmlns=\\'http://www.w3.org/2000/svg\\' width=\\'40\\' height=\\'40\\'%3E%3Crect width=\\'40\\' height=\\'40\\' rx=\\'20\\' fill=\\'%23333\\'/%3E%3Ctext x=\\'50%25\\' y=\\'55%25\\' text-anchor=\\'middle\\' dominant-baseline=\\'middle\\' fill=\\'%23888\\' font-size=\\'16\\'%3E?%3C/text%3E%3C/svg%3E'" class="t-avatar" />
-            <div v-if="node.isRoot" class="t-crown">👑</div>
-            <div v-else class="t-status-dot" :class="isActive ? 'dot-active' : 'dot-pending'"></div>
-          </div>
-          <div class="t-info">
-            <div class="t-name">{{ node.display_name?.slice(0, 7) }}{{ node.display_name?.length > 7 ? '…' : '' }}</div>
-            <div class="t-meta">
-              <span v-if="node.isRoot" class="t-badge t-badge-root">祖師</span>
-              <span v-else class="t-badge">{{ node.generation }}代</span>
-              <span class="t-lv">Lv.{{ node.level || 1 }}</span>
-            </div>
-          </div>
-          <!-- 展開/收合箭頭 -->
-          <div v-if="hasChildren" class="t-toggle" :class="isExpanded ? 'expanded' : ''">▾</div>
-        </div>
-
-        <!-- 垂直連接線（往下） -->
-        <div v-if="hasChildren && isExpanded" class="t-vline-down"></div>
-      </div>
-
-      <!-- 子節點區塊 -->
-      <div v-if="hasChildren && isExpanded" class="t-children-wrap">
-        <!-- 水平連接線 -->
-        <div class="t-hline"></div>
-        <!-- 遞迴渲染子節點 -->
-        <div class="t-children-row">
-          <div v-for="child in node.children" :key="child.id" class="t-child-col">
-            <div class="t-vline-up"></div>
-            <TreeNodeVue :node="child" />
-          </div>
-        </div>
-      </div>
-
-    </div>
-  `
-}
-
-import { ref, computed } from 'vue'
-export default { components: { TreeNodeVue } }
-</script>
 
 <style scoped>
 /* ========== Modal 框架 ========== */

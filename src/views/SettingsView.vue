@@ -621,4 +621,53 @@ const bindFriendCode = async () => {
 /* modal 動畫 */
 .slide-up-enter-active, .slide-up-leave-active { transition: all 0.35s cubic-bezier(0.2,0.8,0.2,1); }
 .slide-up-enter-from, .slide-up-leave-to { opacity: 0; transform: translateY(100%); }
+
+/* ── RWD ── */
+
+/* 小螢幕手機 (≤ 390px，例如 iPhone SE / 舊款 Android) */
+@media (max-width: 390px) {
+  .page-container { padding: 24px 14px 100px; }
+  .page-title { font-size: 1.7rem; letter-spacing: 2px; }
+  .setting-card { padding: 18px 14px 20px; border-radius: 16px; }
+
+  /* 代碼輸入行在極小螢幕改直排 */
+  .code-input-row { flex-direction: column; gap: 8px; }
+  .action-btn { width: 100%; padding: 13px; }
+
+  /* 推坑碼展示縮小 */
+  .big-code { font-size: 1.2rem; letter-spacing: 2px; }
+  .code-display-box { padding: 12px 14px; }
+  .copy-btn { padding: 7px 10px; font-size: 0.78rem; }
+
+  /* bound-box 改直排 */
+  .bound-box { flex-direction: column; align-items: flex-start; gap: 4px; }
+  .bound-code { font-size: 1rem; }
+
+  /* 規則 icon 縮小 */
+  .rule-icon-box { width: 38px; height: 38px; font-size: 1.4rem; flex-shrink: 0; }
+  .rule-text h4 { font-size: 0.9rem; }
+  .rule-text p  { font-size: 0.82rem; }
+}
+
+/* 一般手機 (391px ~ 480px) */
+@media (min-width: 391px) and (max-width: 480px) {
+  .page-title { font-size: 1.9rem; }
+  .setting-card { padding: 20px 16px 22px; }
+  .big-code { font-size: 1.35rem; }
+}
+
+/* 中型螢幕 (481px ~ 600px)：基本上就是設計稿尺寸，不需大幅修改 */
+@media (min-width: 481px) and (max-width: 600px) {
+  .page-container { padding: 28px 18px 100px; }
+}
+
+/* 平板 / 桌機 (> 600px)：讓卡片看起來更有質感，加點外邊距 */
+@media (min-width: 601px) {
+  .page-container { padding: 40px 24px 120px; }
+  .page-title { font-size: 2.4rem; }
+  .setting-card { padding: 26px 24px 28px; }
+  .field-input { font-size: 1.05rem; }
+  .big-code { font-size: 1.7rem; letter-spacing: 4px; }
+  .save-btn { font-size: 1.05rem; padding: 15px; }
+}
 </style>

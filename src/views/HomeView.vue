@@ -2,7 +2,6 @@
 import { computed, onMounted, ref } from 'vue'
 import { useUserStore } from '../stores/user'
 import { supabase } from '../supabase'
-import { ref } from 'vue'
 import ReferralTreeModal from '../components/ReferralTreeModal.vue' // 引入族譜彈窗
 
 const showTreeModal = ref(false) // 控制彈窗開關

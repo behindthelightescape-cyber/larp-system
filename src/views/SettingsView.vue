@@ -354,7 +354,6 @@ const bindFriendCode = async () => {
 .page-container {
   width: 100%; max-width: 800px; margin: 0 auto;
   box-sizing: border-box; min-height: 100vh;
-  padding: 32px 20px 100px;
   background-color: transparent; color: #fff;
 }
 
@@ -363,6 +362,8 @@ const bindFriendCode = async () => {
   max-width: 560px;
   margin: 0 auto;
   width: 100%;
+  padding: 32px 20px 100px;
+  box-sizing: border-box;
 }
 
 /* ── Header ── */
@@ -638,7 +639,7 @@ const bindFriendCode = async () => {
 
 /* 小螢幕手機 (≤ 390px，例如 iPhone SE / 舊款 Android) */
 @media (max-width: 390px) {
-  .page-container { padding: 24px 14px 100px; }
+  .inner-wrap { padding: 24px 14px 100px; }
   .page-title { font-size: 1.7rem; letter-spacing: 2px; }
   .setting-card { padding: 18px 14px 20px; border-radius: 16px; }
 
@@ -670,17 +671,16 @@ const bindFriendCode = async () => {
 
 /* 中型螢幕 (481px ~ 600px)：基本上就是設計稿尺寸，不需大幅修改 */
 @media (min-width: 481px) and (max-width: 600px) {
-  .page-container { padding: 28px 18px 100px; }
+  .inner-wrap { padding: 28px 18px 100px; }
 }
 
 /* 平板 / 桌機 (> 600px)：讓卡片看起來更有質感，加點外邊距 */
 @media (min-width: 601px) {
-  .page-container { padding: 40px 24px 120px; }
+  .inner-wrap { padding: 40px 24px 120px; }
   .page-title { font-size: 2.4rem; }
   .setting-card { padding: 26px 24px 28px; }
   .field-input { font-size: 1.05rem; }
   .big-code { font-size: 1.7rem; letter-spacing: 4px; }
   .save-btn { font-size: 1.05rem; padding: 15px; }
 }
-
 </style>

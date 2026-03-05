@@ -9,7 +9,7 @@ const searchResults = ref([])
 const selectedMember = ref(null)
 const memberCoupons = ref([])
 const memberHistory = ref([])
-const memberAchievements = ref([]) // 🚀 新增：用來裝稱號
+const memberAchievements = ref([]) 
 const isSearching = ref(false)
 
 const showQuickGiftForm = ref(false)
@@ -27,7 +27,8 @@ const searchMembers = async () => {
   try {
     const { data, error } = await supabase
       .from('users')
-      .select('id, display_name, legacy_id, picture_url, total_exp, level, created_at')
+      // 🚀 擴充：把生日領取年份的鎖也一起抓下來！
+      .select('id, display_name, legacy_id, picture_url, total_exp, level, created_at, last_birthday_year, birthday_claimed_year')
       .or(`display_name.ilike.%${searchQuery.value}%,legacy_id.ilike.%${searchQuery.value}%`)
       .limit(8)
     if (error) throw error
@@ -45,11 +46,9 @@ const selectMember = async (user) => {
   searchQuery.value = ''   
   showQuickGiftForm.value = false 
 
-  // 🚀 大合體！同時去抓：優惠券、遊玩歷程 (加入 character_name 欄位！)、以及成就稱號！
   const [couponsRes, historyRes, achieveRes] = await Promise.all([
     supabase.from('coupons').select('*').eq('user_id', user.id).order('created_at', { ascending: false }),
     supabase.from('game_participants')
-      // 🚀 這裡一定要有 character_name 跟 story_memory！不然前端收不到！
       .select('created_at, character_name, games ( play_time, gm_name, story_memory, scripts ( title ) )')
       .eq('user_id', user.id)
       .order('created_at', { ascending: false }),
@@ -62,6 +61,41 @@ const selectMember = async (user) => {
   memberCoupons.value = couponsRes.data || []
   memberHistory.value = historyRes.data || []
   memberAchievements.value = achieveRes.data || []
+}
+
+// 🚀 新增：手動預先核銷本年度生日優惠
+const preRedeemBirthday = async (user) => {
+  const currentYear = new Date().getFullYear()
+
+  // 防呆：檢查是不是已經核銷過了
+  if (user.birthday_claimed_year === currentYear) {
+    return alert(`⚠️ 【${user.display_name || '該玩家'}】的 ${currentYear} 年度生日禮已經是「已核銷 / 已領取」狀態囉！`)
+  }
+
+  // 二度確認，畢竟這按下去就沒有自動發券了
+  const confirmMsg = `⚠️ 確定要在櫃檯預先核銷【${user.display_name || '該玩家'}】的 ${currentYear} 年度生日優惠嗎？\n\n執行後，系統將「強制跳過」這位玩家，今年絕對不會再自動發送生日推播與票券給他！`
+  if (!confirm(confirmMsg)) return
+
+  try {
+    const { error } = await supabase
+      .from('users')
+      .update({
+        last_birthday_year: currentYear,      // 鎖住推播狙擊手
+        birthday_claimed_year: currentYear    // 鎖住 APP 領取攔截器
+      })
+      .eq('id', user.id)
+
+    if (error) throw error
+
+    alert(`✅ 預先核銷成功！已完美封鎖【${user.display_name || '該玩家'}】今年的自動生日發放系統。`)
+    
+    // 讓畫面上的資料即時更新 (不需要重整網頁)
+    user.last_birthday_year = currentYear
+    user.birthday_claimed_year = currentYear
+
+  } catch (err) {
+    alert('❌ 核銷失敗：' + err.message)
+  }
 }
 
 const sendQuickGift = async () => {
@@ -91,27 +125,27 @@ const sendQuickGift = async () => {
     isSendingQuickGift.value = false
   }
 }
-// 🚀 新增：找回失蹤的核銷票券功能！
+
 const redeemCoupon = async (coupon) => {
   if (!confirm(`⚠️ 確定要核銷這張「${coupon.title}」嗎？核銷後無法復原喔！`)) return 
   
   try {
     const { error } = await supabase
       .from('coupons')
-      .update({ status: 'used' }) // 把狀態改成已核銷
+      .update({ status: 'used' }) 
       .eq('id', coupon.id)
 
     if (error) throw error
 
-    // 🚀 更新畫面上的狀態，不用重新整理就能看到變成「已核銷」
     coupon.status = 'used'
     alert('✅ 核銷成功！')
     
-    emit('update-stats') // 呼叫老大哥更新數據
+    emit('update-stats') 
   } catch (error) {
     alert('核銷失敗：' + error.message)
   }
 }
+
 const deleteCoupon = async (couponId, couponTitle) => {
   if (!confirm(`⚠️ 確定要強制刪除「${couponTitle}」嗎？`)) return 
   try {
@@ -122,8 +156,6 @@ const deleteCoupon = async (couponId, couponTitle) => {
     alert('刪除失敗：' + error.message)
   }
 }
-
-
 
 const calculateDays = (dateString) => {
   if (!dateString) return 0
@@ -174,6 +206,17 @@ const calculateDays = (dateString) => {
         <div class="stat-box"><div class="stat-label">加入天數</div><div class="stat-value">{{ calculateDays(selectedMember.created_at) }} 天</div></div>
       </div>
 
+      <div class="privilege-section">
+        <p class="privilege-title">👑 櫃台特權操作區</p>
+        <button 
+          class="btn-outline-red" 
+          @click="preRedeemBirthday(selectedMember)" 
+          :disabled="selectedMember.birthday_claimed_year === new Date().getFullYear()"
+        >
+          {{ selectedMember.birthday_claimed_year === new Date().getFullYear() ? '✅ 今年壽星優惠已核銷/領取' : '🎂 在櫃檯預先核銷今年生日禮 (防系統重複發送)' }}
+        </button>
+      </div>
+
       <div class="details-grid">
         <div class="detail-column">
           <div class="section-header-flex">
@@ -199,7 +242,6 @@ const calculateDays = (dateString) => {
               </div>
 
             <div class="coupon-actions">
-                
                 <button 
                   v-if="coupon.status === 'available'" 
                   class="btn-mini-green" 
@@ -218,8 +260,6 @@ const calculateDays = (dateString) => {
 
                 <button class="btn-mini-red" @click="deleteCoupon(coupon.id, coupon.title)">✕</button>
               </div>
-
-             
             </div>
           </div>
         </div>
@@ -275,10 +315,18 @@ const calculateDays = (dateString) => {
 .m-legacy-id { color: #888; font-family: monospace; font-size: 0.9rem; background: #222; padding: 3px 8px; border-radius: 4px; border: 1px solid #333;}
 .achievements-wrap { margin-top: 10px; display: flex; flex-wrap: wrap; gap: 8px; }
 .ach-badge { background: #222; border: 1px solid #D4AF37; color: #D4AF37; padding: 4px 10px; border-radius: 20px; font-size: 0.8rem; font-weight: bold; box-shadow: 0 0 5px rgba(212, 175, 55, 0.2); }
-.member-stats { display: flex; gap: 15px; flex-wrap: wrap; margin-bottom: 30px; }
+.member-stats { display: flex; gap: 15px; flex-wrap: wrap; margin-bottom: 25px; }
 .stat-box { background: #1a1a1a; padding: 15px; border-radius: 8px; flex: 1; min-width: 120px; border: 1px solid #222; text-align: center; }
 .stat-label { font-size: 0.85rem; color: #888; margin-bottom: 5px; }
 .stat-value { font-size: 1.5rem; font-weight: bold; color: #D4AF37; }
+
+/* 🚀 櫃檯特權專區的霸氣紅邊框設計 */
+.privilege-section { margin-bottom: 25px; padding: 15px; background: rgba(231, 76, 60, 0.05); border: 1px dashed rgba(231, 76, 60, 0.4); border-radius: 8px; }
+.privilege-title { margin: 0 0 12px 0; color: #e74c3c; font-size: 0.9rem; font-weight: bold; }
+.btn-outline-red { width: 100%; padding: 10px; background: transparent; border: 1px solid #e74c3c; color: #e74c3c; border-radius: 6px; font-weight: bold; cursor: pointer; transition: 0.2s; }
+.btn-outline-red:hover:not(:disabled) { background: rgba(231, 76, 60, 0.15); }
+.btn-outline-red:disabled { border-color: #444; color: #777; background: #222; cursor: not-allowed; }
+
 .details-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 25px; }
 .section-header-flex { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px dashed #333; padding-bottom: 10px; }
 .section-title-inline { color: #D4AF37; margin: 0; font-size: 1.1rem; }
@@ -300,19 +348,7 @@ const calculateDays = (dateString) => {
 .status-used { background: #222; color: #666; text-decoration: line-through; border: 1px solid #444; }
 .status-expired { background: rgba(231, 76, 60, 0.2); color: #e74c3c; border: 1px solid #e74c3c; }
 .btn-mini-red { background: #331111; color: #ff5555; border: 1px solid #552222; padding: 4px 8px; border-radius: 4px; font-size: 0.75rem; cursor: pointer; }
-
-/* 🚀 這是給核銷按鈕穿的綠色帥氣衣服 */
-.btn-mini-green { 
-  background: #113311; 
-  color: #2ecc71; 
-  border: 1px solid #225522; 
-  padding: 4px 10px; 
-  border-radius: 4px; 
-  font-size: 0.8rem; 
-  font-weight: bold;
-  cursor: pointer; 
-  transition: 0.2s;
-}
+.btn-mini-green { background: #113311; color: #2ecc71; border: 1px solid #225522; padding: 4px 10px; border-radius: 4px; font-size: 0.8rem; font-weight: bold; cursor: pointer; transition: 0.2s;}
 .btn-mini-green:hover { background: #225522; color: #55ff55; }
 .empty-state { text-align: center; padding: 60px 20px; background: #111; border-radius: 12px; border: 1px dashed #333; }
 @media (max-width: 768px) { .details-grid { grid-template-columns: 1fr; } .mini-form-row { flex-direction: column; } }

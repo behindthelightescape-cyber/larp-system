@@ -2,6 +2,10 @@
 import { computed, onMounted, ref } from 'vue'
 import { useUserStore } from '../stores/user'
 import { supabase } from '../supabase'
+import { ref } from 'vue'
+import ReferralTreeModal from '../components/ReferralTreeModal.vue' // 引入族譜彈窗
+
+const showTreeModal = ref(false) // 控制彈窗開關
 
 const store = useUserStore()
 const isLoaded = ref(false)
@@ -174,6 +178,21 @@ onMounted(() => {
         <div class="card-deco-bottom"></div>
       </div>
     </div>
+    <div class="home-action-area" style="margin: 20px 0;">
+  <button 
+    @click="showTreeModal = true" 
+    class="tree-entry-btn"
+  >
+    <span class="btn-icon">🌳</span>
+    <div class="btn-text">
+      <span class="btn-title">宗門血脈族譜</span>
+      <span class="btn-sub">查看我的推坑帝國與獎勵</span>
+    </div>
+    <span class="btn-arrow">➔</span>
+  </button>
+</div>
+
+<ReferralTreeModal :show="showTreeModal" @close="showTreeModal = false" />
 
     <Teleport to="body">
       <transition name="pop">
@@ -372,7 +391,30 @@ onMounted(() => {
 
 .epic-btn { background: linear-gradient(135deg, #D4AF37, #f1c40f, #D4AF37); background-size: 200% auto; color: #000; font-size: 1.2rem; font-weight: bold; padding: 16px 50px; border: none; border-radius: 50px; cursor: pointer; box-shadow: 0 10px 30px rgba(212, 175, 55, 0.3), inset 0 2px 2px rgba(255,255,255,0.5); transition: 0.3s; width: auto; min-width: 200px; margin-bottom: 20px; animation-delay: 1.6s; }
 .epic-btn:hover { transform: scale(1.05) translateY(-3px); box-shadow: 0 20px 40px rgba(212, 175, 55, 0.5); background-position: right center; }
-
+.tree-entry-btn {
+  width: 100%;
+  background: linear-gradient(135deg, #1a1a1a 0%, #0d0d0d 100%);
+  border: 1px solid #D4AF37;
+  border-radius: 12px;
+  padding: 15px 20px;
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  cursor: pointer;
+  transition: 0.3s;
+  box-shadow: 0 4px 15px rgba(212, 175, 55, 0.1);
+  text-align: left;
+}
+.tree-entry-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(212, 175, 55, 0.2);
+  background: linear-gradient(135deg, #222 0%, #111 100%);
+}
+.btn-icon { font-size: 2rem; }
+.btn-text { display: flex; flex-direction: column; flex: 1; }
+.btn-title { color: #D4AF37; font-size: 1.1rem; font-weight: bold; margin-bottom: 4px; }
+.btn-sub { color: #888; font-size: 0.8rem; }
+.btn-arrow { color: #D4AF37; font-size: 1.2rem; }
 /* ================= 動畫關鍵影格定義 ================= */
 @keyframes title-crash { 0% { opacity: 0; transform: scale(3); filter: blur(20px); } 80% { transform: scale(0.9); } 100% { opacity: 1; transform: scale(1); filter: blur(0); } }
 @keyframes emblem-arrival { 0% { opacity: 0; transform: translateY(-200px) scale(0.5) rotate(-180deg); } 70% { transform: translateY(20px) scale(1.1) rotate(10deg); } 100% { opacity: 1; transform: translateY(0) scale(1) rotate(0deg); } }

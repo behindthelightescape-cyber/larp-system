@@ -155,7 +155,6 @@ const bindFriendCode = async () => {
 
     <div class="page-inner">
 
-    <!-- Header -->
     <div class="page-header">
       <div class="header-deco">✦</div>
       <h2 class="page-title">個人設定</h2>
@@ -169,7 +168,6 @@ const bindFriendCode = async () => {
 
     <div v-else class="sections-wrap">
 
-      <!-- ── 個人資料 ── -->
       <div class="setting-card">
         <div class="card-deco-top"></div>
         <div class="card-section-label">
@@ -206,14 +204,12 @@ const bindFriendCode = async () => {
         </button>
       </div>
 
-      <!-- 分隔 -->
       <div class="section-divider">
         <div class="div-line"></div>
         <span class="div-gem">◆</span>
         <div class="div-line"></div>
       </div>
 
-      <!-- ── 官方活動代碼 ── -->
       <div class="setting-card">
         <div class="card-deco-top"></div>
         <div class="card-section-label">
@@ -236,7 +232,6 @@ const bindFriendCode = async () => {
         </div>
       </div>
 
-      <!-- ── 好友推坑計畫 ── -->
       <div class="setting-card referral-card">
         <div class="card-deco-top gold-deco"></div>
 
@@ -250,7 +245,6 @@ const bindFriendCode = async () => {
 
         <p class="card-desc">分享專屬碼給新手，完成首場遊戲後雙方都能獲得獎勵！</p>
 
-        <!-- 我的推坑碼 -->
         <div class="sub-block">
           <div class="sub-label">你的專屬推坑碼</div>
 
@@ -272,7 +266,6 @@ const bindFriendCode = async () => {
           </div>
         </div>
 
-        <!-- 綁定朋友碼 -->
         <div class="sub-block" style="margin-top:16px">
           <div class="sub-label">是朋友推薦你來的嗎？</div>
 
@@ -302,10 +295,7 @@ const bindFriendCode = async () => {
 
     </div>
 
-    <!-- 規則說明 Modal -->
-    </div><!-- /page-inner -->
-
-    <Teleport to="body">
+    </div><Teleport to="body">
       <transition name="slide-up">
         <div v-if="showRulesModal" class="modal-overlay" @click.self="showRulesModal = false">
           <div class="rules-modal">
@@ -350,31 +340,19 @@ const bindFriendCode = async () => {
 </template>
 
 <style scoped>
-/* ── 基礎 ── */
-/* ── 基礎 ── */
+/* ── 🚀 基礎排版修復：絕對置中 ── */
 .page-container {
-  width: 100%;
-  max-width: 100vw; /* 避免超出螢幕 */
-  min-height: 100vh;
+  max-width: 600px;  /* 鎖定最完美的寬度 */
+  margin: 0 auto;    /* 核心魔法：左右自動置中 */
+  padding: 30px 20px 100px 20px;
   box-sizing: border-box;
-  padding: 0 0 100px;
-  background-color: transparent;
   color: #fff;
-  
-  /* 🚀 暴力雙重置中法 */
-  display: flex;
-  flex-direction: column;
-  align-items: center; /* 讓裡面的東西強制置中 */
-  margin: 0 auto;
 }
 
 .page-inner {
-  width: 100%;
-  max-width: 500px; /* 🚀 鎖死最大寬度 (手機與平板視覺最舒適的寬度) */
-  box-sizing: border-box;
-  padding: 32px 20px 0;
-  margin: 0 auto; /* 讓 inner 自己也置中 */
+  width: 100%;       /* 移除所有干擾的 padding */
 }
+
 /* ── Header ── */
 .page-header { text-align: center; margin-bottom: 32px; }
 .header-deco { color: #D4AF37; font-size: 1rem; letter-spacing: 8px; opacity: 0.5; margin-bottom: 8px; }
@@ -647,48 +625,33 @@ const bindFriendCode = async () => {
 .slide-up-enter-active, .slide-up-leave-active { transition: all 0.35s cubic-bezier(0.2,0.8,0.2,1); }
 .slide-up-enter-from, .slide-up-leave-to { opacity: 0; transform: translateY(100%); }
 
-/* ── RWD ── */
+/* ── RWD 🚀 移除所有破壞置中的寫法 ── */
 
-/* 小螢幕手機 (≤ 390px，例如 iPhone SE / 舊款 Android) */
+/* 小螢幕手機 (≤ 390px) */
 @media (max-width: 390px) {
-  .page-inner { padding: 24px 14px 0; }
   .page-title { font-size: 1.7rem; letter-spacing: 2px; }
   .setting-card { padding: 18px 14px 20px; border-radius: 16px; }
-
-  /* 代碼輸入行在極小螢幕改直排 */
   .code-input-row { flex-direction: column; gap: 8px; }
   .action-btn { width: 100%; padding: 13px; }
-
-  /* 推坑碼展示縮小 */
   .big-code { font-size: 1.2rem; letter-spacing: 2px; }
   .code-display-box { padding: 12px 14px; }
   .copy-btn { padding: 7px 10px; font-size: 0.78rem; }
-
-  /* bound-box 改直排 */
   .bound-box { flex-direction: column; align-items: flex-start; gap: 4px; }
   .bound-code { font-size: 1rem; }
-
-  /* 規則 icon 縮小 */
   .rule-icon-box { width: 38px; height: 38px; font-size: 1.4rem; flex-shrink: 0; }
   .rule-text h4 { font-size: 0.9rem; }
   .rule-text p  { font-size: 0.82rem; }
 }
 
-/* 一般手機 (391px ~ 480px) */
-@media (min-width: 391px) and (max-width: 480px) {
+/* 中型螢幕 (391px ~ 600px) */
+@media (min-width: 391px) and (max-width: 600px) {
   .page-title { font-size: 1.9rem; }
   .setting-card { padding: 20px 16px 22px; }
   .big-code { font-size: 1.35rem; }
 }
 
-/* 中型螢幕 (481px ~ 600px)：基本上就是設計稿尺寸，不需大幅修改 */
-@media (min-width: 481px) and (max-width: 600px) {
-  .page-inner { padding: 28px 20px 0; }
-}
-
-/* 平板 / 桌機 (> 600px)：讓卡片看起來更有質感，移除會導致跑版的超大 padding */
+/* 平板 / 桌機 (> 600px) */
 @media (min-width: 601px) {
-  .page-inner { padding: 40px 20px 0; max-width: 600px; } /* 稍微加寬一點點即可 */
   .page-title { font-size: 2.4rem; }
   .setting-card { padding: 26px 24px 28px; }
   .field-input { font-size: 1.05rem; }

@@ -178,8 +178,8 @@ onMounted(() => {
             <div class="tree-btn-left">
               <span class="tree-btn-icon">🌳</span>
               <div class="tree-btn-text">
-                <span class="tree-btn-title">宗門血脈族譜</span>
-                <span class="tree-btn-sub">查看推坑帝國與獎勵</span>
+                <span class="tree-btn-title">宗門弟子族譜</span>
+                <span class="tree-btn-sub">查看推坑的弟子們</span>
               </div>
             </div>
             <div class="tree-btn-right">

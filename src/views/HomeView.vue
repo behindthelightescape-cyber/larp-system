@@ -179,7 +179,7 @@ onMounted(() => {
               <span class="tree-btn-icon">🌳</span>
               <div class="tree-btn-text">
                 <span class="tree-btn-title">宗門弟子族譜</span>
-                <span class="tree-btn-sub">查看推坑的弟子們</span>
+                <span class="tree-btn-sub">查看你推坑的弟子們</span>
               </div>
             </div>
             <div class="tree-btn-right">

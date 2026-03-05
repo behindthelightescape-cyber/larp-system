@@ -1,435 +1,724 @@
 <script setup>
-import { computed, onMounted, ref } from 'vue'
-import { useUserStore } from '../stores/user'
+import { ref, computed, onMounted } from 'vue'
 import { supabase } from '../supabase'
-import ReferralTreeModal from '../components/ReferralTreeModal.vue'
-
-const showTreeModal = ref(false)
+import { useUserStore } from '../stores/user'
 
 const store = useUserStore()
 const isLoaded = ref(false)
+const isClaiming = ref(false)
+const achievements = ref([])
+const scriptsList = ref([]) 
+const userUnlockedIds = ref([]) 
+const unlockedDates = ref({})   
+const playedScriptsData = ref([])
 
-const BRAND_LOGO = 'https://meee.com.tw/VInVFKh.png' 
+const showDetailModal = ref(false)
+const selectedAch = ref(null)
+const showMissed = ref(false)
 
-const MOCK_STATS = {
-  historyCount: 0,
-  daysJoined: 0,
-  level: 1,
-  points: 0,
-  nextLevel: 1000,
-  title: '載入中...'
+const loadAchievementData = async () => {
+  try {
+    const [achRes, userAchRes, scriptRes, historyRes] = await Promise.all([
+      supabase.from('achievements').select('*').order('created_at', { ascending: false }),
+      supabase.from('user_achievements').select('achievement_id, unlocked_at').eq('user_id', store.userData.id),
+      supabase.from('scripts').select('id, title'),
+      supabase.from('game_participants').select(`games ( script_id, scripts ( tags ) )`).eq('user_id', store.userData.id)
+    ])
+
+    if (achRes.data) achievements.value = achRes.data
+    if (scriptRes.data) scriptsList.value = scriptRes.data
+
+    if (userAchRes.data) {
+      userUnlockedIds.value = userAchRes.data.map(a => a.achievement_id)
+      userAchRes.data.forEach(a => {
+        unlockedDates.value[a.achievement_id] = new Date(a.unlocked_at).toLocaleDateString('zh-TW')
+      })
+    }
+
+    if (historyRes.data) {
+      playedScriptsData.value = historyRes.data.map(h => ({
+        script_id: h.games?.script_id,
+        tags: h.games?.scripts?.tags || ''
+      })).filter(s => s.script_id)
+    }
+  } catch (error) {
+    console.error('成就載入失敗:', error)
+  }
 }
 
-const stats = computed(() => {
-  if (store.userData) {
-    const currentExp = store.userData.total_exp || 0
-    const levelInfo = store.getLevelInfo ? store.getLevelInfo(currentExp) : { level: 1, title: '剛加入的冒險者', nextExp: 100 }
+onMounted(async () => {
+  if (!store.userData) return
+  await loadAchievementData()
+  isLoaded.value = true
+})
+
+const displayAchievements = computed(() => {
+  return achievements.value.map(ach => {
+    const isUnlocked = userUnlockedIds.value.includes(ach.id)
+    const isEnded = ach.status === 'ended'
     
-    let displayTitle = store.userData.current_title || levelInfo.title
+    let currentProgress = 0
+    let targetProgress = 1
+    let completedScriptIds = [] 
+
+    if (ach.condition_type === 'tag') {
+      targetProgress = ach.condition_value?.count || 1
+      const targetTag = ach.condition_value?.tag?.toLowerCase() || ''
+      currentProgress = playedScriptsData.value.filter(s => s.tags.toLowerCase().includes(targetTag)).length
+      if (currentProgress > targetProgress) currentProgress = targetProgress 
+    } else if (ach.condition_type === 'script') {
+      const requiredIds = ach.condition_value?.script_ids || []
+      targetProgress = requiredIds.length
+      const playedIds = playedScriptsData.value.map(s => s.script_id)
+      completedScriptIds = requiredIds.filter(id => playedIds.includes(id))
+      currentProgress = completedScriptIds.length
+    }
+
+    if (isUnlocked) currentProgress = targetProgress
+
+    const canClaim = !isUnlocked && !isEnded && (currentProgress >= targetProgress)
 
     return {
-      historyCount: store.history?.length || 0,
-      daysJoined: store.daysJoined || 0,
-      level: levelInfo.level,
-      points: currentExp,
-      nextLevel: levelInfo.nextExp,
-      title: displayTitle,
-      isTitleHidden: displayTitle === '無稱號'
+      ...ach,
+      isUnlocked,
+      isMissed: !isUnlocked && isEnded,
+      canClaim,
+      unlockedDate: isUnlocked ? unlockedDates.value[ach.id] : null,
+      currentProgress,
+      targetProgress,
+      completedScriptIds
     }
-  }
-  return MOCK_STATS
+  })
 })
 
-const closeLevelUpAnimation = () => {
-  store.levelUpData = null
+const activeAchievements = computed(() => displayAchievements.value.filter(a => !a.isMissed))
+const missedAchievements = computed(() => displayAchievements.value.filter(a => a.isMissed))
+
+const totalAchievable = computed(() => activeAchievements.value.length)
+const unlockedCount = computed(() => userUnlockedIds.value.length)
+const progressPercent = computed(() => totalAchievable.value === 0 ? 0 : Math.round((unlockedCount.value / totalAchievable.value) * 100))
+
+const openDetail = (ach) => {
+  selectedAch.value = ach
+  showDetailModal.value = true
 }
 
-const openTitleModal = async () => {
-  if (!store.userData) return
-  showTitleModal.value = true
-  isLoadingTitles.value = true
-  
-  const currentLevel = store.userData?.level || 1
-  const allLevelTitles = [
-    '剛加入的冒險者', '不怕死的探險家', '主角光環的勇者', 
-    '平行宇宙開拓家', '穿越時空成癮者', '陽光開朗小萌新'
-  ]
-  const unlockedLevelTitles = allLevelTitles.slice(0, currentLevel)
-  let baseTitles = ['無稱號', ...unlockedLevelTitles] 
+const getScriptName = (id) => {
+  const found = scriptsList.value.find(s => s.id === id)
+  return found ? found.title : '未知劇本'
+}
+
+const claimReward = async (ach) => {
+  if (isClaiming.value) return
+  isClaiming.value = true
 
   try {
-    const { data, error } = await supabase
-      .from('user_achievements')
-      .select('achievements ( title )')
-      .eq('user_id', store.userData.id)
-
-    if (error) throw error
-
-    if (data && data.length > 0) {
-      const achTitles = data.map(d => d.achievements?.title).filter(t => t)
-      baseTitles = [...baseTitles, ...achTitles]
+    const { error: achErr } = await supabase.from('user_achievements').insert([{ user_id: store.userData.id, achievement_id: ach.id }])
+    if (achErr) {
+      if (achErr.code === '23505') return alert('這份榮耀你已經領取過囉！')
+      throw achErr
     }
+
+    let successMsg = `🎉 恭喜解鎖專屬稱號：【${ach.title}】！`
+
+    if (ach.reward_type === 'coupon' && ach.reward_coupon_title) {
+      const validDays = ach.reward_coupon_valid_days || 30
+      const expiryDate = new Date()
+      expiryDate.setDate(expiryDate.getDate() + validDays)
+      await supabase.from('coupons').insert([{
+        user_id: store.userData.id,
+        title: ach.reward_coupon_title,
+        description: ach.reward_coupon_desc || `🎉 解鎖成就【${ach.title}】專屬獎勵`,
+        status: 'available',
+        expiry_date: expiryDate.toISOString()
+      }])
+      successMsg += `\n🎟️ 獲得專屬票券，請至票券匣查看！`
+    }
+
+    if (ach.reward_type === 'exp' && ach.reward_exp > 0) {
+      const currentExp = store.userData.total_exp || 0
+      const newExp = currentExp + ach.reward_exp
+      await supabase.from('users').update({ total_exp: newExp }).eq('id', store.userData.id)
+      successMsg += `\n✨ 獲得成就獎勵：+${ach.reward_exp} 經驗值！`
+    }
+
+    alert(successMsg)
+    showDetailModal.value = false
+    await loadAchievementData()
   } catch (err) {
-    console.error('撈取稱號庫失敗:', err)
+    alert('領取失敗，請聯絡館長：' + err.message)
   } finally {
-    availableTitles.value = [...new Set(baseTitles)]
-    isLoadingTitles.value = false
+    isClaiming.value = false
   }
 }
-
-const changeTitle = async (newTitle) => {
-  try {
-    const { error } = await supabase
-      .from('users')
-      .update({ current_title: newTitle })
-      .eq('id', store.userData.id)
-    
-    if (error) throw error
-
-    store.userData.current_title = newTitle
-    showTitleModal.value = false
-  } catch (err) {
-    alert('更換稱號失敗，請稍後再試！')
-  }
-}
-
-const showTitleModal = ref(false)
-const availableTitles = ref([])
-const isLoadingTitles = ref(false)
-
-const expPercentage = computed(() => {
-  return Math.min((stats.value.points / stats.value.nextLevel) * 100, 100) + '%'
-})
-
-onMounted(() => {
-  setTimeout(() => {
-    isLoaded.value = true
-  }, 100)
-})
 </script>
 
 <template>
   <div class="page-container">
-    
     <div class="content-layer" :class="{ 'enter-active': isLoaded }">
-      
-      <div class="brand-header fade-in-down">
-        <img :src="BRAND_LOGO" class="brand-logo" alt="劇光燈 Spotlight" />
+
+      <!-- Header -->
+      <div class="header-section fade-in-down">
+        <div class="header-deco">✦</div>
+        <h1 class="page-title">榮耀成就館</h1>
+        <p class="page-subtitle">探索未知，銘刻你的專屬傳奇</p>
+
+        <div class="progress-box">
+          <div class="progress-top">
+            <span class="progress-label">收集進度</span>
+            <span class="progress-fraction">
+              <span class="fraction-current">{{ unlockedCount }}</span>
+              <span class="fraction-sep"> / </span>
+              <span class="fraction-total">{{ totalAchievable }}</span>
+            </span>
+          </div>
+          <div class="progress-bar-bg">
+            <div class="progress-bar-fill" :style="{ width: progressPercent + '%' }">
+              <div class="bar-glare"></div>
+            </div>
+          </div>
+          <div class="progress-percent-label">{{ progressPercent }}% 完成</div>
+        </div>
       </div>
 
-      <div class="hero-card-container fade-in-up delay-1">
-        <div class="card-deco-top"></div>
-
-        <div class="avatar-overlap">
-          <div class="avatar-ring floating">
-            <img :src="store.userData?.picture_url || store.lineProfile?.pictureUrl || 'https://meee.com.tw/D45hJIi.PNG'" class="avatar-img" />
-          </div>
-          <div class="lv-badge">LV.{{ stats.level }}</div>
+      <!-- 成就列表 -->
+      <div class="achievements-list fade-in-up delay-1">
+        <div v-if="!isLoaded" class="loading-state">
+          <div class="spinner"></div>
+          <p>翻閱榮耀卷宗中...</p>
+        </div>
+        <div v-else-if="displayAchievements.length === 0" class="empty-state">
+          館長正在準備全新的挑戰，敬請期待...
         </div>
 
-        <div class="card-body">
-          <h1 class="user-name">{{ store.userData?.display_name || '載入中...' }}</h1>
-          
-          <div 
-            class="user-title-box clickable" 
-            :class="{ 'is-hidden': stats.isTitleHidden }" 
-            @click="openTitleModal"
-          >
-            <span class="title-text">{{ stats.title }}</span>
-          </div>
-          
-          <p class="user-uid">UID: {{ store.userData?.legacy_id || '000000' }}</p>
+        <div
+          v-for="ach in activeAchievements"
+          :key="ach.id"
+          class="ach-card"
+          :class="{ 'is-unlocked': ach.isUnlocked, 'is-ready': ach.canClaim }"
+          @click="openDetail(ach)"
+        >
+          <!-- 左側狀態條 -->
+          <div class="ach-side-bar"></div>
 
-          <div class="divider-line"></div>
-
-          <div class="stats-matrix">
-            <div class="stat-cell">
-              <span class="stat-label">DAYS</span>
-              <span class="stat-num">{{ stats.daysJoined }}</span>
-            </div>
-            <div class="stat-gap"></div>
-            <div class="stat-cell border-left">
-              <span class="stat-label">GAMES</span>
-              <span class="stat-num highlight">{{ stats.historyCount }}</span>
-            </div>
+          <!-- 圖示 -->
+          <div class="ach-icon-box">
+            <span class="ach-icon">{{ ach.icon_url || '🏆' }}</span>
+            <div v-if="ach.isUnlocked" class="unlocked-check">✔</div>
+            <div v-if="ach.isUnlocked && ach.status === 'ended'" class="vintage-tag">典藏</div>
           </div>
 
-          <div class="exp-section">
-            <div class="exp-info">
-              <span class="exp-label">EXP PROGRESS</span>
-              <span class="exp-val">{{ stats.points }} / {{ stats.nextLevel }}</span>
+          <!-- 內容 -->
+          <div class="ach-content">
+            <div class="ach-title-row">
+              <h3 class="ach-title">{{ ach.title }}</h3>
+              <span v-if="ach.canClaim" class="ready-chip">可領取</span>
             </div>
-            <div class="exp-bar-bg">
-              <div class="exp-bar-fill" :style="{ width: expPercentage }">
-                <div class="exp-glare"></div>
+            <div v-if="ach.canClaim" class="claim-hint">🎁 達成條件！點擊領取獎勵</div>
+            <div v-else-if="!ach.isUnlocked" class="progress-mini-wrap">
+              <div class="progress-mini-bar-bg">
+                <div class="progress-mini-fill" :style="{ width: Math.round((ach.currentProgress / ach.targetProgress) * 100) + '%' }"></div>
               </div>
+              <span class="progress-mini-text">{{ ach.currentProgress }} / {{ ach.targetProgress }}</span>
             </div>
+            <div v-else class="unlocked-date">解鎖於 {{ ach.unlockedDate }}</div>
           </div>
 
+          <!-- 右箭頭 -->
+          <div class="ach-arrow">
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+              <path d="M5 2l5 5-5 5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </div>
         </div>
-        <div class="card-deco-bottom"></div>
-      </div>
 
-      <!-- 宗門族譜入口按鈕 -->
-      <div class="home-action-area fade-in-up delay-2">
-        <button @click="showTreeModal = true" class="tree-entry-btn">
-          <div class="tree-btn-deco-top"></div>
-          <div class="tree-btn-inner">
-            <div class="tree-btn-left">
-              <span class="tree-btn-icon">🌳</span>
-              <div class="tree-btn-text">
-                <span class="tree-btn-title">宗門弟子族譜</span>
-                <span class="tree-btn-sub">查看你推坑的弟子們</span>
+        <!-- 絕版收納區 -->
+        <div v-if="missedAchievements.length > 0" class="missed-section">
+          <div class="divider-header" @click="showMissed = !showMissed">
+            <div class="divider-line"></div>
+            <span class="divider-text">
+              {{ showMissed ? '▲ 收起' : '▼ 展開' }} {{ missedAchievements.length }} 項已絕版遺憾
+            </span>
+            <div class="divider-line"></div>
+          </div>
+
+          <transition name="fade-slide">
+            <div v-show="showMissed" class="missed-list">
+              <div
+                v-for="ach in missedAchievements"
+                :key="ach.id"
+                class="ach-card is-missed"
+                @click="openDetail(ach)"
+              >
+                <div class="ach-side-bar"></div>
+                <div class="ach-icon-box">
+                  <span class="ach-icon">{{ ach.icon_url || '🏆' }}</span>
+                  <div class="missed-badge">絕版</div>
+                </div>
+                <div class="ach-content">
+                  <h3 class="ach-title">{{ ach.title }}</h3>
+                  <span class="missed-hint">錯過的遺憾</span>
+                </div>
+                <div class="ach-arrow">
+                  <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                    <path d="M5 2l5 5-5 5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+                  </svg>
+                </div>
               </div>
             </div>
-            <div class="tree-btn-right">
-              <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-                <path d="M6 3l5 5-5 5" stroke="#D4AF37" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
-              </svg>
-            </div>
-          </div>
-          <div class="tree-btn-deco-bottom"></div>
-        </button>
+          </transition>
+        </div>
       </div>
-
     </div>
 
-    <ReferralTreeModal :show="showTreeModal" @close="showTreeModal = false" />
-
+    <!-- 詳情彈窗 -->
     <Teleport to="body">
       <transition name="pop">
-        <div v-if="showTitleModal" class="modal-overlay" @click.self="showTitleModal = false">
-          <div class="modal-content title-modal">
-            
-            <div class="modal-top-bar">
-              <h3>更換個人稱號</h3>
-              <button class="close-btn-icon" @click="showTitleModal = false">✕</button>
+        <div v-if="showDetailModal && selectedAch" class="modal-overlay" @click.self="showDetailModal = false">
+          <div class="detail-modal" :class="{ 'unlocked-glow': selectedAch.isUnlocked, 'ready-glow': selectedAch.canClaim }">
+            <button class="modal-close-btn" @click="showDetailModal = false">✕</button>
+
+            <!-- 彈窗 Header -->
+            <div class="modal-header" :class="{ 'is-missed': selectedAch.isMissed }">
+              <div class="modal-icon">{{ selectedAch.icon_url || '🏆' }}</div>
+              <h2 class="modal-title">{{ selectedAch.title }}</h2>
+              <div class="modal-status-row">
+                <span v-if="selectedAch.isUnlocked" class="status-badge badge-unlocked">✅ 解鎖於 {{ selectedAch.unlockedDate }}</span>
+                <span v-else-if="selectedAch.canClaim" class="status-badge badge-ready pulsing">✨ 任務達成，等待領取</span>
+                <span v-else-if="selectedAch.isMissed" class="status-badge badge-missed">⏳ 已絕版</span>
+                <span v-else class="status-badge badge-locked">🔒 尚未解鎖</span>
+              </div>
             </div>
-            
+
+            <!-- 彈窗 Body -->
             <div class="modal-body">
-              <div v-if="isLoadingTitles" class="loading-text">
-                <div class="spinner"></div>
-                正在翻找你的榮譽徽章...
+              <div class="info-block">
+                <div class="block-label">📜 傳奇卷宗</div>
+                <p class="desc-text">{{ selectedAch.description }}</p>
               </div>
-              <div v-else class="title-list">
-                <button 
-                  v-for="title in availableTitles" 
-                  :key="title"
-                  class="title-option-btn"
-                  :class="{ active: stats.title === title }"
-                  @click="changeTitle(title)"
-                >
-                  <span v-if="title !== '無稱號'">🎖️ </span>{{ title }}
+
+              <div class="info-block">
+                <div class="block-label">🎯 任務進度</div>
+
+                <div v-if="selectedAch.condition_type === 'tag'" class="condition-box">
+                  <div class="condition-text">需通關標籤劇本：<span class="tag-highlight">「{{ selectedAch.condition_value?.tag }}」</span></div>
+                  <div class="mission-bar-wrap">
+                    <div class="mission-bar-info">
+                      <span>當前進度</span>
+                      <span class="gold-text">{{ selectedAch.currentProgress }} / {{ selectedAch.targetProgress }}</span>
+                    </div>
+                    <div class="progress-bar-bg" style="height:6px">
+                      <div class="progress-bar-fill" :style="{ width: Math.round((selectedAch.currentProgress / selectedAch.targetProgress) * 100) + '%' }">
+                        <div class="bar-glare"></div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div v-else-if="selectedAch.condition_type === 'script'" class="condition-box">
+                  <div class="condition-text">需通關以下指定劇本：</div>
+                  <div class="script-list">
+                    <span
+                      v-for="scriptId in selectedAch.condition_value?.script_ids"
+                      :key="scriptId"
+                      class="script-chip"
+                      :class="{ completed: selectedAch.completedScriptIds.includes(scriptId) }"
+                    >
+                      {{ selectedAch.completedScriptIds.includes(scriptId) ? '✅' : '🔒' }}
+                      {{ getScriptName(scriptId) }}
+                    </span>
+                  </div>
+                  <div class="mission-bar-info" style="margin-top:10px">
+                    <span>收集進度</span>
+                    <span class="gold-text">{{ selectedAch.currentProgress }} / {{ selectedAch.targetProgress }}</span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- 獎勵 / 領取 -->
+              <div class="info-block">
+                <button v-if="selectedAch.canClaim" class="claim-btn" @click="claimReward(selectedAch)" :disabled="isClaiming">
+                  {{ isClaiming ? '領取中...' : '🎁 點擊領取專屬獎勵！' }}
                 </button>
+                <div v-else class="reward-preview">
+                  <div class="block-label">🎁 獎勵預覽</div>
+                  <div v-if="!selectedAch.reward_type || selectedAch.reward_type === 'none'" class="reward-row reward-title">
+                    <span class="r-icon">🎖️</span> 專屬榮耀頭銜
+                  </div>
+                  <div v-else-if="selectedAch.reward_type === 'exp'" class="reward-row reward-exp">
+                    <span class="r-icon">✨</span> 經驗值 +{{ selectedAch.reward_exp }} EXP
+                  </div>
+                  <div v-else-if="selectedAch.reward_type === 'coupon'" class="reward-row reward-coupon">
+                    <span class="r-icon">🎟️</span>
+                    <div>
+                      <div class="reward-coupon-title">{{ selectedAch.reward_coupon_title }}</div>
+                      <div class="reward-coupon-valid">領取後效期：{{ selectedAch.reward_coupon_valid_days }} 天</div>
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
-
-          </div>
-        </div>
-      </transition>
-
-      <transition name="epic-pop">
-        <div v-if="store.levelUpData" class="epic-overlay">
-          <div class="light-beams"></div>
-          
-          <div class="epic-content">
-            <h4 class="epic-subtitle">RANK UP</h4>
-            <h1 class="epic-title">晉級成功</h1>
-            
-            <div class="epic-emblem-box">
-              <div class="emblem-glow"></div>
-              <div class="emblem-text">LV.{{ store.levelUpData.level }}</div>
-            </div>
-            
-            <p class="epic-new-title">解鎖全新榮耀稱號：<br><span class="gold-text">{{ store.levelUpData.title }}</span></p>
-            <p class="epic-coupon-text">🎟️ 系統已將「尊榮升級專屬禮」派發至您的票券匣</p>
-            
-            <button class="epic-btn" @click="closeLevelUpAnimation">華麗收下</button>
           </div>
         </div>
       </transition>
     </Teleport>
-
   </div>
 </template>
 
 <style scoped>
-.page-container { width: 100%; max-width: 800px; margin: 0 auto; box-sizing: border-box; min-height: 100vh; background-color: transparent; color: #fff; overflow: hidden; }
-.content-layer { display: flex; flex-direction: column; align-items: center; padding-top: 0px; padding-left: 24px; padding-right: 24px; padding-bottom: 40px; }
+/* ── 基礎 ── */
+.page-container {
+  width: 100%; max-width: 800px; margin: 0 auto;
+  min-height: 100vh; padding-bottom: 100px;
+  color: #fff; background: transparent;
+}
+.content-layer { padding: 36px 20px 0; }
 
 /* 進場動畫 */
 .fade-in-down { opacity: 0; transform: translateY(-20px); transition: all 0.8s ease; }
-.fade-in-up { opacity: 0; transform: translateY(30px); transition: all 0.8s cubic-bezier(0.2, 0.8, 0.2, 1); }
+.fade-in-up   { opacity: 0; transform: translateY(30px);  transition: all 0.8s cubic-bezier(0.2, 0.8, 0.2, 1); }
 .enter-active .fade-in-down,
 .enter-active .fade-in-up { opacity: 1; transform: translateY(0); }
 .delay-1 { transition-delay: 0.2s; }
-.delay-2 { transition-delay: 0.4s; }
 
-/* 品牌 Header */
-.brand-header { margin-bottom: 100px; }
-.brand-logo { height: 85px; object-fit: contain; filter: drop-shadow(0 0 10px rgba(212, 175, 55, 0.6)); }
-
-/* Hero 卡片 */
-.hero-card-container { width: 100%; max-width: 620px; position: relative; background: rgba(20, 20, 20, 0.65); backdrop-filter: blur(15px); -webkit-backdrop-filter: blur(15px); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 28px; box-shadow: 0 25px 60px rgba(0, 0, 0, 0.6); display: flex; flex-direction: column; align-items: center; padding-bottom: 40px; margin: 0 15px; }
-.card-deco-top { position: absolute; top: 0; left: 15%; right: 15%; height: 2px; background: linear-gradient(90deg, transparent, #D4AF37, transparent); }
-.card-deco-bottom { position: absolute; bottom: 0; left: 30%; right: 30%; height: 1px; background: linear-gradient(90deg, transparent, #555, transparent); }
-
-/* 頭像 */
-.avatar-overlap { position: absolute; top: -85px; display: flex; flex-direction: column; align-items: center; z-index: 10; }
-.avatar-ring { width: 170px; height: 170px; border-radius: 50%; padding: 6px; background: linear-gradient(135deg, #fcca30, #222); box-shadow: 0 15px 30px rgba(0,0,0,0.7); }
-.floating { animation: float 4s ease-in-out infinite; }
-@keyframes float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-8px); } }
-.avatar-img { width: 100%; height: 100%; object-fit: cover; border-radius: 50%; border: 4px solid #1a1a1a; background: #000; }
-.lv-badge { margin-top: -18px; z-index: 11; background: #ffcf30; color: #000; font-weight: 900; font-size: 1rem; padding: 5px 16px; border-radius: 14px; box-shadow: 0 4px 12px rgba(0,0,0,0.5); font-family: 'Arial', sans-serif; letter-spacing: 1px; }
-
-/* 卡片內容 */
-.card-body { width: 100%; box-sizing: border-box; padding: 140px 30px 10px 30px; display: flex; flex-direction: column; align-items: center; }
-.user-name { font-size: 2.4rem; font-weight: 700; color: #fff; margin: 0 0 12px 0; text-shadow: 0 2px 10px rgba(0,0,0,0.8); line-height: 1.1; text-align: center; }
-.user-title-box { border: 1px solid rgba(212, 175, 55, 0.692); background: rgba(212, 175, 55, 0.05); padding: 6px 24px; border-radius: 8px; margin-bottom: 10px; transition: all 0.3s cubic-bezier(0.2, 0.8, 0.2, 1); display: inline-flex; justify-content: center; align-items: center; min-width: 120px; }
-.user-title-box.clickable { cursor: pointer; }
-.user-title-box.clickable:hover { background: rgba(212, 175, 55, 0.2); box-shadow: 0 0 15px rgba(212, 175, 55, 0.3); transform: scale(1.05); }
-.user-title-box.clickable:active { transform: scale(0.95); }
-.title-text { font-size: 1rem; color: #D4AF37; letter-spacing: 1.5px; text-align: center; margin: 0; transition: all 0.3s; }
-.user-title-box.is-hidden { border-color: rgba(255, 255, 255, 0.15); background: rgba(0, 0, 0, 0.4); }
-.user-title-box.is-hidden .title-text { color: #777; font-size: 0.9rem; }
-.user-title-box.is-hidden.clickable:hover { background: rgba(255, 255, 255, 0.1); box-shadow: 0 0 10px rgba(255, 255, 255, 0.05); border-color: rgba(255, 255, 255, 0.3); }
-.user-uid { font-size: 1.1rem; font-weight: bold; color: #D4AF37; letter-spacing: 2px; font-family: monospace; background: rgba(0, 0, 0, 0.4); padding: 6px 18px; border-radius: 20px; border: 1px solid rgba(212, 175, 55, 0.4); text-shadow: 0 0 5px rgba(212, 175, 55, 0.5); margin-top: 12px; }
-.divider-line { width: 100%; height: 1px; background: rgba(255,255,255,0.08); margin: 30px 0; }
-
-/* 統計 */
-.stats-matrix { display: flex; width: 100%; justify-content: center; margin-bottom: 35px; }
-.stat-cell { flex: 1; display: flex; flex-direction: column; align-items: center; position: relative; }
-.stat-gap { width: 50px; }
-.stat-cell:first-child::after { content: ''; position: absolute; right: -25px; top: 10%; height: 80%; width: 1px; background: rgba(255,255,255,0.1); }
-.stat-label { font-size: 0.8rem; color: #888; font-weight: bold; letter-spacing: 2px; margin-bottom: 8px; }
-.stat-num { font-size: 2.8rem; font-weight: 700; color: #fff; line-height: 1; }
-.stat-num.highlight { color: #D4AF37; text-shadow: 0 0 15px rgba(212, 175, 55, 0.4); }
-
-/* 經驗條 */
-.exp-section { width: 100%; padding: 0 15px; box-sizing: border-box; }
-.exp-info { display: flex; justify-content: space-between; margin-bottom: 10px; font-size: 0.85rem; font-weight: bold; }
-.exp-label { color: #666; letter-spacing: 1px; }
-.exp-val { color: #ccc; }
-.exp-bar-bg { width: 100%; height: 10px; background: #222; border-radius: 5px; overflow: hidden; position: relative; box-shadow: inset 0 1px 3px rgba(0,0,0,0.5); }
-.exp-bar-fill { height: 100%; background: linear-gradient(90deg, #fac421, #D4AF37); border-radius: 5px; position: relative; transition: width 1s ease; }
-.exp-glare { position: absolute; top: 0; left: 0; width: 100%; height: 50%; background: rgba(255,255,255,0.25); }
-
-/* ========== 族譜入口按鈕 ========== */
-.home-action-area {
-  width: 100%;
-  max-width: 620px;
-  margin: 16px 15px 0;
-  box-sizing: border-box;
+/* ── Header ── */
+.header-section { text-align: center; margin-bottom: 36px; }
+.header-deco { color: #D4AF37; font-size: 1.2rem; letter-spacing: 8px; margin-bottom: 8px; opacity: 0.6; }
+.page-title {
+  font-size: 2.6rem; font-weight: 900; margin: 0 0 6px;
+  color: #D4AF37;
+  text-shadow: 0 0 30px rgba(212,175,55,0.35), 0 2px 8px rgba(0,0,0,0.8);
+  letter-spacing: 3px;
 }
+.page-subtitle { color: #666; font-size: 0.95rem; margin: 0 0 28px; letter-spacing: 1px; }
 
-.tree-entry-btn {
-  width: 100%;
+/* 進度框 */
+.progress-box {
+  background: rgba(20,20,20,0.7);
+  border: 1px solid rgba(212,175,55,0.2);
+  border-radius: 16px;
+  padding: 18px 22px;
+  backdrop-filter: blur(12px);
   position: relative;
-  background: rgba(20, 20, 20, 0.65);
-  backdrop-filter: blur(15px);
-  -webkit-backdrop-filter: blur(15px);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 20px;
-  padding: 0;
-  cursor: pointer;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
-  transition: transform 0.3s cubic-bezier(0.2, 0.8, 0.2, 1), box-shadow 0.3s;
   overflow: hidden;
-  text-align: left;
 }
-.tree-entry-btn:hover {
-  transform: translateY(-3px);
-  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.5), 0 0 20px rgba(212, 175, 55, 0.1);
-}
-.tree-entry-btn:active { transform: scale(0.98); }
-
-.tree-btn-deco-top {
-  position: absolute;
-  top: 0; left: 15%; right: 15%;
-  height: 1px;
+.progress-box::before {
+  content: '';
+  position: absolute; top: 0; left: 15%; right: 15%; height: 1px;
   background: linear-gradient(90deg, transparent, #D4AF37, transparent);
 }
-.tree-btn-deco-bottom {
-  position: absolute;
-  bottom: 0; left: 30%; right: 30%;
-  height: 1px;
-  background: linear-gradient(90deg, transparent, #444, transparent);
+.progress-top {
+  display: flex; justify-content: space-between; align-items: baseline;
+  margin-bottom: 12px;
 }
-.tree-btn-inner {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 18px 22px;
+.progress-label { color: #777; font-size: 0.82rem; letter-spacing: 1.5px; text-transform: uppercase; }
+.progress-fraction { display: flex; align-items: baseline; gap: 2px; }
+.fraction-current { color: #D4AF37; font-size: 1.6rem; font-weight: 800; line-height: 1; }
+.fraction-sep { color: #444; font-size: 1rem; }
+.fraction-total { color: #888; font-size: 1rem; }
+.progress-bar-bg {
+  width: 100%; height: 8px; background: #1a1a1a;
+  border-radius: 4px; overflow: hidden;
+  box-shadow: inset 0 1px 4px rgba(0,0,0,0.6);
 }
-.tree-btn-left { display: flex; align-items: center; gap: 14px; }
-.tree-btn-icon { font-size: 1.8rem; line-height: 1; }
-.tree-btn-text { display: flex; flex-direction: column; gap: 4px; }
-.tree-btn-title { color: #D4AF37; font-size: 1.05rem; font-weight: 700; letter-spacing: 1px; }
-.tree-btn-sub { color: #666; font-size: 0.78rem; letter-spacing: 0.3px; }
-.tree-btn-right {
-  display: flex;
-  align-items: center;
-  opacity: 0.5;
-  transition: opacity 0.2s, transform 0.2s;
+.progress-bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #9e761c, #D4AF37, #f5d77a, #D4AF37);
+  background-size: 200% 100%;
+  border-radius: 4px;
+  transition: width 1.2s cubic-bezier(0.2, 0.8, 0.2, 1);
+  position: relative;
+  animation: bar-shimmer 3s linear infinite;
 }
-.tree-entry-btn:hover .tree-btn-right { opacity: 1; transform: translateX(3px); }
+@keyframes bar-shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+.bar-glare {
+  position: absolute; top: 0; left: 0; right: 0; height: 50%;
+  background: rgba(255,255,255,0.2); border-radius: 4px 4px 0 0;
+}
+.progress-percent-label { text-align: right; color: #555; font-size: 0.78rem; margin-top: 8px; letter-spacing: 0.5px; }
 
-/* 稱號 Modal */
-.modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); z-index: 3000; display: flex; justify-content: center; align-items: flex-end; backdrop-filter: blur(5px); }
-.title-modal { height: 60vh; background: #161616; width: 100%; max-width: 600px; border-radius: 24px 24px 0 0; border-top: 1px solid #D4AF37; display: flex; flex-direction: column; }
-.modal-top-bar { display: flex; justify-content: space-between; align-items: center; padding: 20px 25px; border-bottom: 1px solid #222; }
-.modal-top-bar h3 { margin: 0; color: #D4AF37; font-size: 1.2rem; }
-.close-btn-icon { background: rgba(255,255,255,0.1); border: none; color: white; width: 32px; height: 32px; border-radius: 50%; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 1rem; }
-.modal-body { padding: 25px; overflow-y: auto; flex: 1; -webkit-overflow-scrolling: touch; }
-.title-list { display: flex; flex-direction: column; gap: 12px; }
-.title-option-btn { background: #1a1a1a; border: 1px solid #333; color: #ccc; padding: 18px; border-radius: 12px; font-size: 1.05rem; text-align: left; cursor: pointer; transition: 0.2s; display: flex; align-items: center; gap: 10px; }
-.title-option-btn:hover { background: #222; border-color: #555; }
-.title-option-btn.active { background: rgba(212, 175, 55, 0.15); border: 1px solid #D4AF37; color: #D4AF37; font-weight: bold; box-shadow: inset 0 0 10px rgba(212,175,55,0.1); }
-.loading-text { text-align: center; color: #888; padding: 40px; display: flex; flex-direction: column; align-items: center; gap: 15px; }
-.spinner { width: 30px; height: 30px; border: 3px solid rgba(212, 175, 55, 0.2); border-top-color: #D4AF37; border-radius: 50%; animation: spin 1s linear infinite; }
+/* ── 成就卡片 ── */
+.achievements-list { display: flex; flex-direction: column; gap: 10px; }
+
+.ach-card {
+  display: flex; align-items: center; gap: 0;
+  background: rgba(22,22,22,0.85);
+  border: 1px solid rgba(255,255,255,0.07);
+  border-radius: 14px;
+  overflow: hidden;
+  cursor: pointer;
+  transition: transform 0.2s cubic-bezier(0.2,0.8,0.2,1), border-color 0.2s, box-shadow 0.2s;
+  position: relative;
+}
+.ach-card:hover {
+  transform: translateY(-2px);
+  border-color: rgba(212,175,55,0.25);
+  box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+}
+.ach-card:active { transform: scale(0.98); }
+
+/* 已解鎖 */
+.ach-card.is-unlocked {
+  background: linear-gradient(135deg, rgba(28,24,10,0.9), rgba(20,20,20,0.9));
+  border-color: rgba(212,175,55,0.25);
+}
+.ach-card.is-unlocked:hover { border-color: rgba(212,175,55,0.5); box-shadow: 0 8px 24px rgba(212,175,55,0.1); }
+
+/* 可領取 */
+.ach-card.is-ready {
+  border-color: rgba(212,175,55,0.6);
+  background: rgba(35,30,10,0.9);
+  box-shadow: 0 0 20px rgba(212,175,55,0.15);
+  animation: ready-pulse 2s ease-in-out infinite;
+}
+@keyframes ready-pulse {
+  0%, 100% { box-shadow: 0 0 20px rgba(212,175,55,0.15); }
+  50%       { box-shadow: 0 0 30px rgba(212,175,55,0.3); }
+}
+
+/* 絕版 */
+.ach-card.is-missed { opacity: 0.45; filter: grayscale(80%); }
+.ach-card.is-missed:hover { opacity: 0.65; filter: grayscale(50%); }
+
+/* 左側色條 */
+.ach-side-bar {
+  width: 4px; align-self: stretch; flex-shrink: 0;
+  background: #2a2a2a;
+  transition: background 0.2s;
+}
+.is-unlocked .ach-side-bar { background: linear-gradient(to bottom, #D4AF37, #9e761c); }
+.is-ready    .ach-side-bar { background: linear-gradient(to bottom, #f5d77a, #D4AF37); box-shadow: 0 0 8px #D4AF37; }
+.is-missed   .ach-side-bar { background: #333; }
+
+/* 圖示盒 */
+.ach-icon-box {
+  position: relative; flex-shrink: 0;
+  width: 62px; height: 62px;
+  display: flex; justify-content: center; align-items: center;
+  margin: 0 4px;
+}
+.ach-icon { font-size: 2rem; line-height: 1; }
+.unlocked-check {
+  position: absolute; bottom: 4px; right: 4px;
+  background: #2ecc71; color: #000;
+  width: 18px; height: 18px; border-radius: 50%;
+  display: flex; justify-content: center; align-items: center;
+  font-size: 0.65rem; font-weight: 900;
+  border: 2px solid #161616;
+}
+.vintage-tag {
+  position: absolute; top: 4px; right: -2px;
+  background: rgba(212,175,55,0.2); color: #D4AF37;
+  border: 1px solid rgba(212,175,55,0.4);
+  font-size: 0.55rem; padding: 1px 4px; border-radius: 3px;
+  font-weight: bold; letter-spacing: 0.5px;
+}
+.missed-badge {
+  position: absolute; bottom: 4px; right: 0;
+  background: rgba(100,100,100,0.3); color: #666;
+  border: 1px solid #444;
+  font-size: 0.55rem; padding: 1px 4px; border-radius: 3px;
+  font-weight: bold;
+}
+
+/* 文字內容 */
+.ach-content { flex: 1; padding: 14px 10px; min-width: 0; }
+.ach-title-row { display: flex; align-items: center; gap: 8px; margin-bottom: 5px; }
+.ach-title {
+  margin: 0; font-size: 1.05rem; font-weight: 700; color: #e8e8e8;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.is-unlocked .ach-title { color: #D4AF37; }
+.is-missed   .ach-title { color: #888; }
+
+.ready-chip {
+  background: rgba(212,175,55,0.2); color: #D4AF37;
+  border: 1px solid rgba(212,175,55,0.5);
+  font-size: 0.7rem; padding: 2px 7px; border-radius: 10px;
+  font-weight: bold; flex-shrink: 0;
+  animation: pulse-chip 1.5s infinite;
+}
+@keyframes pulse-chip { 0%,100% { opacity: 1; } 50% { opacity: 0.6; } }
+
+.claim-hint { color: #f1c40f; font-size: 0.82rem; font-weight: bold; }
+.unlocked-date { color: #555; font-size: 0.78rem; }
+.missed-hint { color: #555; font-size: 0.78rem; }
+
+/* 進度條 mini */
+.progress-mini-wrap { display: flex; align-items: center; gap: 8px; }
+.progress-mini-bar-bg {
+  flex: 1; height: 4px; background: #1e1e1e;
+  border-radius: 2px; overflow: hidden;
+}
+.progress-mini-fill {
+  height: 100%; background: linear-gradient(90deg, #555, #888);
+  border-radius: 2px; transition: width 0.8s ease;
+}
+.progress-mini-text { color: #555; font-size: 0.75rem; white-space: nowrap; flex-shrink: 0; }
+
+/* 箭頭 */
+.ach-arrow { color: #333; padding: 0 16px; flex-shrink: 0; transition: color 0.2s, transform 0.2s; }
+.ach-card:hover .ach-arrow { color: #888; transform: translateX(2px); }
+
+/* ── 絕版區 ── */
+.missed-section { margin-top: 20px; }
+.divider-header {
+  display: flex; align-items: center; gap: 12px;
+  cursor: pointer; padding: 10px 0;
+  opacity: 0.6; transition: opacity 0.2s;
+}
+.divider-header:hover { opacity: 1; }
+.divider-line { flex: 1; height: 1px; background: #2a2a2a; }
+.divider-text { color: #666; font-size: 0.82rem; font-weight: bold; white-space: nowrap; }
+.missed-list { display: flex; flex-direction: column; gap: 10px; margin-top: 12px; }
+
+/* ── 彈窗 ── */
+.modal-overlay {
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,0.88);
+  z-index: 9999;
+  display: flex; justify-content: center; align-items: flex-end;
+  backdrop-filter: blur(8px);
+}
+.detail-modal {
+  background: #111;
+  width: 100%; max-width: 600px;
+  max-height: 88vh;
+  border-radius: 24px 24px 0 0;
+  border-top: 2px solid rgba(212,175,55,0.4);
+  display: flex; flex-direction: column;
+  overflow: hidden;
+  box-shadow: 0 -10px 40px rgba(0,0,0,0.8);
+  position: relative;
+}
+.unlocked-glow { border-top-color: #D4AF37; box-shadow: 0 -10px 40px rgba(212,175,55,0.15); }
+.ready-glow    { border-top-color: #f5d77a; box-shadow: 0 -10px 40px rgba(212,175,55,0.3); animation: ready-pulse 2s infinite; }
+
+.modal-close-btn {
+  position: absolute; top: 16px; right: 16px; z-index: 10;
+  background: rgba(255,255,255,0.08); border: none; color: #888;
+  width: 32px; height: 32px; border-radius: 50%;
+  cursor: pointer; font-size: 1rem;
+  display: flex; align-items: center; justify-content: center;
+  transition: 0.2s;
+}
+.modal-close-btn:hover { background: rgba(255,255,255,0.15); color: #fff; }
+
+/* 彈窗 header */
+.modal-header {
+  padding: 40px 24px 24px;
+  text-align: center;
+  background: linear-gradient(180deg, #1a1a1a 0%, #111 100%);
+  border-bottom: 1px solid #1e1e1e;
+  flex-shrink: 0;
+}
+.modal-header.is-missed { filter: grayscale(100%); }
+.modal-icon {
+  font-size: 4rem; margin-bottom: 14px; display: block;
+  animation: float-icon 3s ease-in-out infinite;
+}
+@keyframes float-icon { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-8px); } }
+.modal-title {
+  margin: 0 0 14px; font-size: 1.7rem; font-weight: 900;
+  color: #D4AF37; letter-spacing: 1.5px;
+}
+.modal-status-row { display: flex; justify-content: center; }
+
+.status-badge {
+  padding: 6px 18px; border-radius: 20px;
+  font-size: 0.88rem; font-weight: bold; letter-spacing: 0.5px;
+}
+.badge-unlocked { background: rgba(46,204,113,0.12); color: #2ecc71; border: 1px solid rgba(46,204,113,0.3); }
+.badge-locked   { background: rgba(255,255,255,0.07); color: #888; border: 1px solid #333; }
+.badge-missed   { background: rgba(231,76,60,0.1); color: #e74c3c; border: 1px solid rgba(231,76,60,0.3); }
+.badge-ready    { background: rgba(212,175,55,0.15); color: #f1c40f; border: 1px solid rgba(212,175,55,0.4); }
+.pulsing        { animation: pulse-chip 1.5s infinite; }
+
+/* 彈窗 body */
+.modal-body {
+  flex: 1; overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 22px 24px 36px;
+  display: flex; flex-direction: column; gap: 20px;
+}
+.info-block {}
+.block-label { color: #666; font-size: 0.82rem; letter-spacing: 1.5px; margin-bottom: 10px; text-transform: uppercase; }
+.desc-text { color: #ccc; font-size: 0.95rem; line-height: 1.7; margin: 0; }
+
+.condition-box {
+  background: #0d0d0d; border: 1px solid #222;
+  border-radius: 12px; padding: 16px;
+  display: flex; flex-direction: column; gap: 10px;
+}
+.condition-text { color: #aaa; font-size: 0.9rem; }
+.tag-highlight { color: #3498db; font-weight: bold; font-size: 1rem; }
+
+.mission-bar-wrap { background: #141414; border: 1px solid #222; border-radius: 8px; padding: 12px; }
+.mission-bar-info {
+  display: flex; justify-content: space-between; align-items: center;
+  font-size: 0.85rem; color: #888; margin-bottom: 8px;
+}
+.gold-text { color: #D4AF37; font-weight: bold; font-size: 1.05rem; }
+
+.script-list { display: flex; flex-wrap: wrap; gap: 8px; }
+.script-chip {
+  background: rgba(255,255,255,0.04); border: 1px solid #2a2a2a;
+  color: #888; padding: 7px 13px; border-radius: 8px;
+  font-size: 0.85rem; display: flex; align-items: center; gap: 6px;
+  transition: 0.2s;
+}
+.script-chip.completed {
+  background: rgba(46,204,113,0.08); border-color: rgba(46,204,113,0.3);
+  color: #eee; font-weight: 600;
+}
+
+/* 獎勵預覽 */
+.reward-preview { background: #0d0d0d; border: 1px solid #222; border-radius: 12px; padding: 16px; }
+.reward-row {
+  display: flex; align-items: center; gap: 14px;
+  font-size: 1rem; font-weight: bold; margin-top: 10px;
+}
+.r-icon { font-size: 1.6rem; }
+.reward-title  { color: #ccc; }
+.reward-exp    { color: #3498db; }
+.reward-coupon { color: #D4AF37; }
+.reward-coupon-title { font-weight: bold; font-size: 1rem; }
+.reward-coupon-valid { color: #e67e22; font-size: 0.8rem; margin-top: 3px; }
+
+/* 領取按鈕 */
+.claim-btn {
+  width: 100%;
+  background: linear-gradient(135deg, #9e761c, #D4AF37, #f5d77a, #D4AF37, #9e761c);
+  background-size: 300% 100%;
+  color: #000; border: none;
+  padding: 18px; border-radius: 14px;
+  font-size: 1.15rem; font-weight: 900;
+  cursor: pointer; letter-spacing: 0.5px;
+  box-shadow: 0 6px 24px rgba(212,175,55,0.35);
+  transition: transform 0.2s, box-shadow 0.2s;
+  animation: bar-shimmer 3s linear infinite, pulse-chip 1.5s infinite;
+}
+.claim-btn:hover { transform: translateY(-3px); box-shadow: 0 10px 32px rgba(212,175,55,0.5); }
+.claim-btn:active { transform: scale(0.97); }
+.claim-btn:disabled { background: #2a2a2a; color: #555; cursor: not-allowed; animation: none; box-shadow: none; transform: none; }
+
+/* ── 其他 ── */
+.loading-state { text-align: center; color: #666; padding: 60px 20px; display: flex; flex-direction: column; align-items: center; gap: 16px; }
+.loading-state p { margin: 0; font-size: 0.9rem; letter-spacing: 1px; }
+.empty-state { text-align: center; color: #555; padding: 50px 20px; border: 1px dashed #222; border-radius: 14px; font-size: 0.95rem; }
+.spinner {
+  width: 40px; height: 40px;
+  border: 3px solid rgba(212,175,55,0.15);
+  border-top-color: #D4AF37;
+  border-radius: 50%; animation: spin 1s linear infinite;
+}
 @keyframes spin { 100% { transform: rotate(360deg); } }
-.pop-enter-active, .pop-leave-active { transition: transform 0.3s cubic-bezier(0.2, 0.8, 0.2, 1); }
-.pop-enter-from, .pop-leave-to { transform: translateY(100%); }
 
-/* 晉級動畫 */
-.epic-overlay { position: fixed; inset: 0; background: radial-gradient(circle at center, rgba(20,20,20,0.95) 0%, #000 100%); z-index: 99999; display: flex; justify-content: center; align-items: center; overflow: hidden; perspective: 1000px; }
-.light-beams { position: absolute; top: 50%; left: 50%; width: 250vmax; height: 250vmax; background: repeating-conic-gradient(transparent 0deg 10deg, rgba(212, 175, 55, 0.25) 15deg, transparent 20deg 30deg); transform: translate(-50%, -50%); animation: spin-slow 25s linear infinite; opacity: 0.7; mix-blend-mode: screen; }
-@keyframes spin-slow { 100% { transform: translate(-50%, -50%) rotate(360deg); } }
-.epic-content { position: relative; z-index: 10; text-align: center; }
-.epic-subtitle { color: #888; font-family: 'Arial Black', sans-serif; letter-spacing: 8px; margin: 0 0 10px 0; font-size: 1.1rem; text-transform: uppercase; opacity: 0; animation: fade-slide-down 0.6s ease-out 0.2s forwards; }
-.epic-title { font-size: 4.5rem; margin: 0; color: #fff; font-weight: 900; line-height: 1.1; text-transform: uppercase; letter-spacing: 2px; opacity: 0; transform: scale(1.5); filter: blur(10px); animation: title-crash 0.6s cubic-bezier(0.215, 0.610, 0.355, 1.000) 0.4s forwards; text-shadow: 0 0 10px rgba(212, 175, 55, 0.8), 0 0 30px rgba(212, 175, 55, 0.4), 0 5px 15px #000; }
-.epic-emblem-box { position: relative; width: 160px; height: 160px; margin: 40px auto; display: flex; justify-content: center; align-items: center; background: url('data:image/svg+xml;charset=UTF-8,%3csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"%3e%3cpolygon points="50,5 95,25 95,75 50,95 5,75 5,25" fill="%23181818" stroke="%23D4AF37" stroke-width="2" vector-effect="non-scaling-stroke"/%3e%3c/svg%3e') no-repeat center center; background-size: contain; opacity: 0; animation: emblem-arrival 1s cubic-bezier(0.175, 0.885, 0.32, 1.275) 0.6s forwards, float-epic 3s ease-in-out 1.6s infinite; }
-.epic-emblem-box::after { content: ''; position: absolute; inset: -50px; border: 2px solid #D4AF37; border-radius: 50%; opacity: 0; scale: 0.5; animation: shockwave 0.8s ease-out 0.7s forwards; }
-.emblem-glow { position: absolute; inset: -30px; background: radial-gradient(circle, rgba(212,175,55,0.8) 0%, rgba(212,175,55,0) 70%); z-index: -1; animation: pulse-glow 2s infinite alternate 0.8s; opacity: 0; }
-.emblem-text { font-size: 3rem; font-weight: 1000; margin-top: 5px; background: linear-gradient(135deg, #ffffff 0%, #fceabb 25%, #D4AF37 50%, #9e761c 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; filter: drop-shadow(0 2px 1px rgba(0,0,0,0.9)) drop-shadow(0 0 10px rgba(212, 175, 55, 0.8)) drop-shadow(0 0 20px rgba(255, 255, 255, 0.4)); position: relative; z-index: 20; }
-.epic-new-title, .epic-coupon-text, .epic-btn { opacity: 0; animation: fade-slide-up 0.8s ease-out 1.2s forwards; }
-.epic-new-title { font-size: 1.1rem; color: #ccc; margin-top: 30px; line-height: 1.6; }
-.gold-text { font-size: 2rem; font-weight: 900; display: block; margin-top: 10px; padding: 5px; background: linear-gradient(to right, #bf953f, #fcf6ba, #b38728, #fbf5b7, #aa771c); background-size: 200% auto; -webkit-background-clip: text; -webkit-text-fill-color: transparent; animation: shine-move 3s linear infinite; }
-.epic-coupon-text { font-size: 0.9rem; color: #2ecc71; margin-top: 15px; margin-bottom: 40px; font-weight: bold; background: rgba(46, 204, 113, 0.15); padding: 10px 20px; border-radius: 30px; display: inline-block; border: 1px solid rgba(46, 204, 113, 0.3); animation-delay: 1.4s; }
-.epic-btn { background: linear-gradient(135deg, #D4AF37, #f1c40f, #D4AF37); background-size: 200% auto; color: #000; font-size: 1.2rem; font-weight: bold; padding: 16px 50px; border: none; border-radius: 50px; cursor: pointer; box-shadow: 0 10px 30px rgba(212, 175, 55, 0.3), inset 0 2px 2px rgba(255,255,255,0.5); transition: 0.3s; width: auto; min-width: 200px; margin-bottom: 20px; animation-delay: 1.6s; }
-.epic-btn:hover { transform: scale(1.05) translateY(-3px); box-shadow: 0 20px 40px rgba(212, 175, 55, 0.5); }
+.mt-4 { margin-top: 20px; }
 
-@keyframes title-crash { 0% { opacity: 0; transform: scale(3); filter: blur(20px); } 80% { transform: scale(0.9); } 100% { opacity: 1; transform: scale(1); filter: blur(0); } }
-@keyframes emblem-arrival { 0% { opacity: 0; transform: translateY(-200px) scale(0.5) rotate(-180deg); } 70% { transform: translateY(20px) scale(1.1) rotate(10deg); } 100% { opacity: 1; transform: translateY(0) scale(1) rotate(0deg); } }
-@keyframes shockwave { 0% { opacity: 1; scale: 0.5; border-width: 10px; } 100% { opacity: 0; scale: 2.5; border-width: 0px; } }
-@keyframes fade-slide-down { from { opacity: 0; transform: translateY(-20px); } to { opacity: 1; transform: translateY(0); } }
-@keyframes fade-slide-up { from { opacity: 0; transform: translateY(30px); } to { opacity: 1; transform: translateY(0); } }
-@keyframes shine-move { to { background-position: 200% center; } }
-@keyframes float-epic { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-15px); } }
-@keyframes pulse-glow { 0% { opacity: 0.4; transform: scale(0.95); } 100% { opacity: 1; transform: scale(1.1); } }
-.epic-pop-enter-active, .epic-pop-leave-active { transition: opacity 0.3s ease; }
-.epic-pop-enter-from, .epic-pop-leave-to { opacity: 0; }
-
-@media (max-width: 480px) {
-  .brand-header { margin-bottom: 60px; }
-  .hero-card-container { width: 95%; padding-bottom: 30px; }
-  .user-name { font-size: 2rem; }
-  .stat-num { font-size: 2.2rem; }
-  .card-body { padding-top: 110px; padding-left: 20px; padding-right: 20px; }
-  .avatar-ring { width: 140px; height: 140px; }
-  .avatar-overlap { top: -70px; }
-  .stat-gap { width: 30px; }
-  .stat-cell:first-child::after { right: -15px; }
-  .home-action-area { margin: 12px 15px 0; }
-}
+/* 動畫 */
+.pop-enter-active, .pop-leave-active { transition: all 0.35s cubic-bezier(0.2, 0.8, 0.2, 1); }
+.pop-enter-from, .pop-leave-to { opacity: 0; transform: translateY(100%); }
+.fade-slide-enter-active, .fade-slide-leave-active { transition: all 0.3s ease; }
+.fade-slide-enter-from, .fade-slide-leave-to { opacity: 0; transform: translateY(-8px); }
 </style>

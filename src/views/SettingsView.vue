@@ -353,8 +353,8 @@ const bindFriendCode = async () => {
 /* ── 基礎 ── */
 .page-container {
   width: 100%;
-  max-width: 800px;
-  margin: 0 auto;
+  display: flex;
+  justify-content: center; /* 🚀 終極置中魔法：強迫內部所有東西站中間 */
   box-sizing: border-box;
   min-height: 100vh;
   padding: 0 0 100px;
@@ -363,9 +363,11 @@ const bindFriendCode = async () => {
 }
 
 .page-inner {
+  width: 100%;
+  max-width: 540px; /* 🚀 鎖死表單最大寬度，不管螢幕多大都不會變形或偏位 */
   padding: 32px 20px 0;
+  box-sizing: border-box;
 }
-
 /* ── Header ── */
 .page-header { text-align: center; margin-bottom: 32px; }
 .header-deco { color: #D4AF37; font-size: 1rem; letter-spacing: 8px; opacity: 0.5; margin-bottom: 8px; }
@@ -674,12 +676,12 @@ const bindFriendCode = async () => {
 
 /* 中型螢幕 (481px ~ 600px)：基本上就是設計稿尺寸，不需大幅修改 */
 @media (min-width: 481px) and (max-width: 600px) {
-  .page-inner { padding: 28px 18px 0; }
+  .page-inner { padding: 28px 20px 0; }
 }
 
-/* 平板 / 桌機 (> 600px)：讓卡片看起來更有質感，加點外邊距 */
+/* 平板 / 桌機 (> 600px)：讓卡片看起來更有質感，移除會導致跑版的超大 padding */
 @media (min-width: 601px) {
-  .page-inner { padding: 40px 120px 0; }
+  .page-inner { padding: 40px 20px 0; max-width: 600px; } /* 稍微加寬一點點即可 */
   .page-title { font-size: 2.4rem; }
   .setting-card { padding: 26px 24px 28px; }
   .field-input { font-size: 1.05rem; }

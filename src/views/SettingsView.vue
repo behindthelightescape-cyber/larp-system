@@ -153,6 +153,8 @@ const bindFriendCode = async () => {
 <template>
   <div class="page-container">
 
+    <div class="inner-wrap">
+
     <!-- Header -->
     <div class="page-header">
       <div class="header-deco">✦</div>
@@ -301,6 +303,8 @@ const bindFriendCode = async () => {
     </div>
 
     <!-- 規則說明 Modal -->
+    </div><!-- /inner-wrap -->
+
     <Teleport to="body">
       <transition name="slide-up">
         <div v-if="showRulesModal" class="modal-overlay" @click.self="showRulesModal = false">
@@ -355,12 +359,10 @@ const bindFriendCode = async () => {
 }
 
 /* 內容區限制在 560px，視覺上置中 */
-.page-header,
-.sections-wrap,
-.loading-state {
+.inner-wrap {
   max-width: 560px;
-  margin-left: auto;
-  margin-right: auto;
+  margin: 0 auto;
+  width: 100%;
 }
 
 /* ── Header ── */
@@ -679,6 +681,6 @@ const bindFriendCode = async () => {
   .field-input { font-size: 1.05rem; }
   .big-code { font-size: 1.7rem; letter-spacing: 4px; }
   .save-btn { font-size: 1.05rem; padding: 15px; }
-} 
+}
 
 </style>

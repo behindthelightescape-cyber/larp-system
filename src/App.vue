@@ -35,7 +35,7 @@ onMounted(() => {
     <div v-else class="page-content">
       <router-view v-slot="{ Component }">
         <transition name="fade" mode="out-in">
-          <component :is="Component" :key="$route.path" />
+          <component :is="Component" />
         </transition>
       </router-view>
     </div>
@@ -173,16 +173,11 @@ body {
 /* === 過場動畫 ===
    只做 opacity，不動 position / transform，
    避免 out-in 期間容器重新計算寬度造成跳動 */
-.fade-enter-active {
-  transition: opacity 0.2s ease;
-}
+/* 純 opacity 過場，不動 position 避免跑版 */
+
+.fade-enter-active,
 .fade-leave-active {
   transition: opacity 0.15s ease;
-  /* 離開時固定寬度，防止塌陷 */
-  position: absolute;
-  width: 100%;
-  top: 0;
-  left: 0;
 }
 .fade-enter-from,
 .fade-leave-to {

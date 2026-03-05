@@ -349,8 +349,18 @@ const bindFriendCode = async () => {
 /* ── 基礎 ── */
 .page-container {
   padding: 32px 20px 100px;
-  max-width: 600px; margin: 0 auto;
+  /* 跟其他頁面保持相同 max-width，避免切換時畫面跳動 */
+  max-width: 800px; margin: 0 auto;
   color: #fff;
+}
+
+/* 內容區限制在 560px，視覺上置中 */
+.page-header,
+.sections-wrap,
+.loading-state {
+  max-width: 560px;
+  margin-left: auto;
+  margin-right: auto;
 }
 
 /* ── Header ── */

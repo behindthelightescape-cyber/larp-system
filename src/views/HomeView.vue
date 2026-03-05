@@ -405,6 +405,8 @@ onMounted(() => {
   box-shadow: 0 4px 15px rgba(212, 175, 55, 0.1);
   text-align: left;
 }
+
+
 .tree-entry-btn:hover {
   transform: translateY(-2px);
   box-shadow: 0 6px 20px rgba(212, 175, 55, 0.2);

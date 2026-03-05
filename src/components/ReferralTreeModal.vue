@@ -6,26 +6,37 @@ import { supabase } from '../supabase'
 const props = defineProps({ show: Boolean })
 const emit = defineEmits(['close'])
 const store = useUserStore()
-const isLoading = ref(true)
 
+// 狀態控制
+const isLoading = ref(true)
+const viewMode = ref('flat') // 'flat': 原版列表 | 'panorama': 全景樹狀圖
+const isFetchingPanorama = ref(false)
+
+// 原版資料
 const master = ref(null) 
-const treeNodes = ref([]) // 🚀 改成動態樹狀節點陣列
+const directDisciples = ref([]) 
+
+// 全景圖資料
+const panoramaNodes = ref([])
 
 // 戰力統計
-const totalDisciples = computed(() => treeNodes.value.filter(n => n.depth === 0).length) // 直系徒弟數
-const activeDisciples = computed(() => treeNodes.value.filter(n => n.depth === 0 && n.total_exp > 0).length)
+const totalDisciples = computed(() => directDisciples.value.length)
+const activeDisciples = computed(() => directDisciples.value.filter(d => d.total_exp > 0).length)
 
 onMounted(async () => {
-  if (store.userData) await fetchInitialTree()
+  if (store.userData) {
+    viewMode.value = 'flat'
+    await fetchDirectFamily()
+  }
 })
 
-const fetchInitialTree = async () => {
+// 🚀 1. 抓取原版資料 (只抓直系)
+const fetchDirectFamily = async () => {
   isLoading.value = true
   try {
     const myCode = store.userData.my_referral_code
     const masterCode = store.userData.referred_by
 
-    // 1. 找師傅
     if (masterCode) {
       const { data: masterData } = await supabase
         .from('users')
@@ -35,82 +46,76 @@ const fetchInitialTree = async () => {
       if (masterData) master.value = masterData
     }
 
-    // 2. 找直系徒弟 (Depth = 0)
     if (myCode) {
       const { data: disciplesData } = await supabase
         .from('users')
-        // 🚀 注意：必須把他們的 my_referral_code 撈出來，才能繼續往下找徒孫！
-        .select('id, display_name, level, total_exp, created_at, picture_url, my_referral_code')
+        .select('id, display_name, level, total_exp, created_at, picture_url')
         .eq('referred_by', myCode)
         .order('created_at', { ascending: false })
       
-      if (disciplesData) {
-        // 幫每個節點加上「樹狀控制狀態」
-        treeNodes.value = disciplesData.map(d => ({
-          ...d,
-          depth: 0,              // 第幾代
-          expanded: false,       // 是否已展開
-          loaded: false,         // 是否已經去資料庫撈過徒孫
-          isLoadingChildren: false,
-          hasNoChildren: false   // 標記是不是沒有徒弟
-        }))
-      }
+      if (disciplesData) directDisciples.value = disciplesData
     }
   } catch (error) {
-    console.error('讀取族譜失敗:', error)
+    console.error('讀取直系族譜失敗:', error)
   } finally {
     isLoading.value = false
   }
 }
 
-// 🚀 核心魔法：展開/收起徒孫 (Lazy Loading)
-const toggleNode = async (node, index) => {
-  // 如果已經展開，就把它「收起」 (把底下的子孫全部隱藏)
-  if (node.expanded) {
-    let removeCount = 0
-    for (let i = index + 1; i < treeNodes.value.length; i++) {
-      if (treeNodes.value[i].depth > node.depth) removeCount++
-      else break // 遇到同輩或長輩就停止
-    }
-    treeNodes.value.splice(index + 1, removeCount)
-    node.expanded = false
-    return
-  }
+// 🚀 2. 抓取全景圖資料 (無限代衍伸演算法)
+const fetchPanoramaTree = async () => {
+  if (!store.userData.my_referral_code) return alert('您還沒有解鎖推坑碼喔！')
+  
+  isFetchingPanorama.value = true
+  viewMode.value = 'panorama' // 切換到全景模式
 
-  // 如果還沒展開過，且沒有他自己的推坑碼 (代表他連第一場都沒玩完，不可能有徒弟)
-  if (!node.my_referral_code) {
-    node.hasNoChildren = true
-    return alert(`【${node.display_name}】還是見習生，還沒解鎖收徒權限喔！`)
-  }
+  try {
+    let currentLevelCodes = [store.userData.my_referral_code]
+    let allDescendants = []
+    let currentGeneration = 1 // 第幾代
 
-  // 展開：去資料庫撈「他的徒弟」
-  if (!node.loaded) {
-    node.isLoadingChildren = true
-    const { data: childrenData } = await supabase
-      .from('users')
-      .select('id, display_name, level, total_exp, created_at, picture_url, my_referral_code')
-      .eq('referred_by', node.my_referral_code)
-      .order('created_at', { ascending: false })
+    // 透過 BFS (廣度優先搜尋) 一代一代往下撈，最多防呆撈 10 代
+    while (currentLevelCodes.length > 0 && currentGeneration <= 10) {
+      const { data } = await supabase
+        .from('users')
+        .select('id, display_name, level, total_exp, created_at, picture_url, my_referral_code, referred_by')
+        .in('referred_by', currentLevelCodes)
+        .order('created_at', { ascending: true })
 
-    node.isLoadingChildren = false
-    node.loaded = true
+      if (!data || data.length === 0) break
 
-    if (!childrenData || childrenData.length === 0) {
-      node.hasNoChildren = true
-      return // 沒徒弟就不展開
+      // 把這代的人加入總表
+      allDescendants.push(...data.map(d => ({ ...d, generation: currentGeneration })))
+      
+      // 收集有推坑碼的人，準備去撈他們的徒弟 (下一代)
+      currentLevelCodes = data.map(d => d.my_referral_code).filter(Boolean)
+      currentGeneration++
     }
 
-    // 把徒孫加工，深度 + 1
-    node.childrenData = childrenData.map(d => ({
-      ...d, depth: node.depth + 1, expanded: false, loaded: false, isLoadingChildren: false, hasNoChildren: false
-    }))
-  }
+    // 將扁平資料轉化為可渲染的「視覺化深度樹」
+    panoramaNodes.value = buildVisualTree(store.userData.my_referral_code, allDescendants, 1)
 
-  // 把徒孫「插隊」塞進陣列裡 (這會讓畫面看起來像樹狀圖展開)
-  if (node.childrenData && node.childrenData.length > 0) {
-    treeNodes.value.splice(index + 1, 0, ...node.childrenData)
-    node.expanded = true
+  } catch (error) {
+    console.error('讀取全景圖失敗:', error)
+  } finally {
+    isFetchingPanorama.value = false
   }
+}
+
+// 遞迴組裝視覺樹 (DFS 深度優先渲染)
+const buildVisualTree = (parentCode, flatList, currentGen) => {
+  let result = []
+  const children = flatList.filter(u => u.referred_by === parentCode)
+  
+  for (const child of children) {
+    result.push({ ...child, visualDepth: currentGen })
+    // 如果他有自己的推坑碼，就去找他的徒弟
+    if (child.my_referral_code) {
+      const grandChildren = buildVisualTree(child.my_referral_code, flatList, currentGen + 1)
+      result.push(...grandChildren)
+    }
+  }
+  return result
 }
 
 const closeModal = () => emit('close')
@@ -123,7 +128,9 @@ const closeModal = () => emit('close')
         <div class="tree-modal-content">
           
           <div class="tree-header">
-            <h2 class="tree-title">🌳 宗門血脈族譜</h2>
+            <h2 class="tree-title">
+              {{ viewMode === 'flat' ? '🌳 宗門直系族譜' : '🌌 宗門全景圖' }}
+            </h2>
             <button class="close-btn" @click="closeModal">✕</button>
           </div>
 
@@ -131,74 +138,105 @@ const closeModal = () => emit('close')
 
           <div v-else class="tree-body">
             
-            <div class="tree-section master-section">
-              <h3 class="section-title">✨ 我的引路人</h3>
-              <div v-if="master" class="user-card master-card">
-                <img :src="master.picture_url || 'https://via.placeholder.com/50'" class="avatar" />
-                <div class="user-info">
-                  <span class="u-name">{{ master.display_name }}</span>
-                  <span class="u-level">LV.{{ master.level }} 尊榮老手</span>
-                </div>
-              </div>
-              <div v-else class="empty-text">您是開山祖師爺，沒有引路人！</div>
-            </div>
-
-            <div class="tree-section self-section">
-              <h3 class="section-title">🛡️ 我的直系戰力</h3>
-              <div class="stats-grid">
-                <div class="stat-box">
-                  <div class="stat-num">{{ totalDisciples }}</div>
-                  <div class="stat-label">直系門徒</div>
-                </div>
-                <div class="stat-box">
-                  <div class="stat-num" style="color: #2ecc71;">{{ activeDisciples }}</div>
-                  <div class="stat-label">已出師</div>
-                </div>
-              </div>
-            </div>
-
-            <div class="tree-section disciples-section">
-              <h3 class="section-title">⚔️ 宗門血脈 (可點擊展開)</h3>
+            <div v-if="viewMode === 'flat'" class="mode-flat">
               
-              <div v-if="treeNodes.length === 0" class="empty-text" style="padding: 30px 0;">
-                <div style="font-size: 2.5rem; margin-bottom: 10px;">🍃</div>
-                目前還沒有門徒...<br>趕快去分享你的推坑碼吧！
+              <div class="tree-section master-section">
+                <h3 class="section-title">✨ 我的引路人</h3>
+                <div v-if="master" class="user-card master-card">
+                  <img :src="master.picture_url || 'https://via.placeholder.com/50'" class="avatar" />
+                  <div class="user-info">
+                    <span class="u-name">{{ master.display_name }}</span>
+                    <span class="u-level">LV.{{ master.level }} 尊榮老手</span>
+                  </div>
+                </div>
+                <div v-else class="empty-text">您是開山祖師爺，沒有引路人！</div>
               </div>
-              
-              <div v-else class="tree-list">
-                <transition-group name="list">
-                  <div v-for="(node, index) in treeNodes" :key="node.id" 
-                       class="tree-node-wrapper" 
-                       :style="{ marginLeft: (node.depth * 25) + 'px' }">
-                    
-                    <div v-if="node.depth > 0" class="tree-branch">↳</div>
 
-                    <div class="user-card disciple-card" :class="{ 'is-sub': node.depth > 0 }">
-                      <img :src="node.picture_url || 'https://via.placeholder.com/50'" class="avatar" />
-                      
-                      <div class="user-info">
-                        <span class="u-name">{{ node.display_name }} <span v-if="node.depth>0" class="gen-tag">{{ node.depth + 1 }}代</span></span>
-                        <span class="u-date">拜師: {{ node.created_at.split('T')[0] }}</span>
-                      </div>
+              <div class="tree-section self-section">
+                <h3 class="section-title">🛡️ 我的直系戰力</h3>
+                <div class="stats-grid">
+                  <div class="stat-box">
+                    <div class="stat-num">{{ totalDisciples }}</div>
+                    <div class="stat-label">直系門徒</div>
+                  </div>
+                  <div class="stat-box">
+                    <div class="stat-num" style="color: #2ecc71;">{{ activeDisciples }}</div>
+                    <div class="stat-label">已出師</div>
+                  </div>
+                </div>
+              </div>
 
-                      <div class="action-area">
-                        <div class="status-dot" :class="node.total_exp > 0 ? 'dot-active' : 'dot-pending'" :title="node.total_exp > 0 ? '已出師' : '見習中'"></div>
-                        
-                        <button 
-                          class="expand-btn" 
-                          :class="{ 'btn-expanded': node.expanded, 'btn-no-child': node.hasNoChildren }"
-                          @click="toggleNode(node, index)"
-                          :disabled="node.isLoadingChildren"
-                        >
-                          <span v-if="node.isLoadingChildren">⏳</span>
-                          <span v-else-if="node.hasNoChildren">無徒</span>
-                          <span v-else>{{ node.expanded ? '▼ 收起' : '▶ 展開' }}</span>
-                        </button>
-                      </div>
+              <div class="tree-section disciples-section">
+                <div class="section-header-flex">
+                  <h3 class="section-title" style="border: none; margin: 0;">⚔️ 直系門徒列表</h3>
+                  <button v-if="directDisciples.length > 0" class="btn-panorama" @click="fetchPanoramaTree">
+                    🌌 查看宗門全景
+                  </button>
+                </div>
+                
+                <div v-if="directDisciples.length === 0" class="empty-text" style="padding: 30px 0;">
+                  <div style="font-size: 2.5rem; margin-bottom: 10px;">🍃</div>
+                  目前還沒有門徒...<br>趕快去分享你的推坑碼吧！
+                </div>
+                
+                <div v-else class="disciples-list mt-3">
+                  <div v-for="disciple in directDisciples" :key="disciple.id" class="user-card disciple-card">
+                    <img :src="disciple.picture_url || 'https://via.placeholder.com/50'" class="avatar" />
+                    <div class="user-info">
+                      <span class="u-name">{{ disciple.display_name }}</span>
+                      <span class="u-date">拜師日: {{ disciple.created_at.split('T')[0] }}</span>
+                    </div>
+                    <div class="status-badge" :class="disciple.total_exp > 0 ? 'status-active' : 'status-pending'">
+                      {{ disciple.total_exp > 0 ? '🟢 已出師' : '⏳ 見習中' }}
                     </div>
                   </div>
-                </transition-group>
+                </div>
               </div>
+            </div>
+
+            <div v-else-if="viewMode === 'panorama'" class="mode-panorama">
+              
+              <button class="btn-back" @click="viewMode = 'flat'">
+                ⬅️ 返回直系列表
+              </button>
+
+              <div v-if="isFetchingPanorama" class="loading-state">
+                <div style="font-size: 2rem; margin-bottom: 10px;">🔮</div>
+                正在推演宗門血脈，請稍候...
+              </div>
+
+              <div v-else class="panorama-container mt-3">
+                <div class="panorama-root">
+                  <img :src="store.userData?.picture_url || 'https://via.placeholder.com/50'" class="avatar root-avatar" />
+                  <div class="root-name">【祖師爺】我</div>
+                </div>
+
+                <div class="panorama-tree-lines">
+                  <div v-for="node in panoramaNodes" :key="node.id" 
+                       class="panorama-node" 
+                       :style="{ paddingLeft: (node.visualDepth * 25) + 'px' }">
+                    
+                    <div class="tree-line-icon" v-if="node.visualDepth > 0">↳</div>
+
+                    <div class="user-card sub-card">
+                      <img :src="node.picture_url || 'https://via.placeholder.com/50'" class="avatar-small" />
+                      <div class="user-info">
+                        <span class="u-name">
+                          {{ node.display_name }}
+                          <span class="gen-tag">{{ node.generation }}代</span>
+                        </span>
+                        <span class="u-level">LV.{{ node.level || 1 }}</span>
+                      </div>
+                    </div>
+
+                  </div>
+                </div>
+
+                <div v-if="panoramaNodes.length === 0" class="empty-text mt-3">
+                  哎呀，宗門似乎還沒有開枝散葉喔！
+                </div>
+              </div>
+
             </div>
 
           </div>
@@ -214,52 +252,60 @@ const closeModal = () => emit('close')
 
 .tree-header { padding: 20px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #222; background: linear-gradient(180deg, #1a1a1a 0%, #111 100%); border-radius: 24px 24px 0 0; }
 .tree-title { margin: 0; color: #D4AF37; font-size: 1.3rem; }
-.close-btn { background: #222; border: none; color: #888; width: 32px; height: 32px; border-radius: 50%; font-size: 1rem; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+.close-btn { background: #222; border: none; color: #888; width: 32px; height: 32px; border-radius: 50%; font-size: 1rem; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: 0.2s;}
+.close-btn:hover { background: #333; color: #fff; }
 
 .tree-body { flex: 1; overflow-y: auto; padding: 20px; }
 .loading-state { text-align: center; color: #888; padding: 50px 0; }
 
 .tree-section { background: #161616; border: 1px solid #222; border-radius: 12px; padding: 15px; margin-bottom: 20px; }
+.section-header-flex { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px dashed #333; padding-bottom: 12px; }
 .section-title { margin: 0 0 15px 0; color: #eee; font-size: 1rem; border-bottom: 1px dashed #333; padding-bottom: 8px; }
 
 /* 卡片與排版 */
-.user-card { display: flex; align-items: center; gap: 12px; background: #0a0a0a; padding: 10px 12px; border-radius: 8px; border: 1px solid #222; position: relative;}
+.user-card { display: flex; align-items: center; gap: 12px; background: #0a0a0a; padding: 12px; border-radius: 8px; border: 1px solid #222; }
 .master-card { border-color: rgba(212, 175, 55, 0.4); background: rgba(212, 175, 55, 0.05); }
-.is-sub { background: #151515; border-color: #333; }
-.avatar { width: 40px; height: 40px; border-radius: 50%; object-fit: cover; border: 1px solid #444; }
+.avatar { width: 44px; height: 44px; border-radius: 50%; object-fit: cover; border: 1px solid #444; }
+.avatar-small { width: 36px; height: 36px; border-radius: 50%; object-fit: cover; border: 1px solid #444; }
 .user-info { display: flex; flex-direction: column; flex: 1; }
-.u-name { color: #fff; font-weight: bold; font-size: 0.95rem; display: flex; align-items: center; gap: 6px;}
+.u-name { color: #fff; font-weight: bold; font-size: 1rem; display: flex; align-items: center; gap: 6px; }
 .u-level { color: #D4AF37; font-size: 0.8rem; font-weight: bold; margin-top: 4px; }
-.u-date { color: #666; font-size: 0.75rem; margin-top: 4px; }
+.u-date { color: #666; font-size: 0.8rem; margin-top: 4px; }
 
 .gen-tag { background: rgba(212, 175, 55, 0.2); color: #D4AF37; padding: 2px 6px; border-radius: 4px; font-size: 0.65rem; border: 1px solid rgba(212, 175, 55, 0.4); }
 
 .empty-text { text-align: center; color: #777; font-size: 0.9rem; padding: 10px 0; }
 
-/* 戰力表 */
 .stats-grid { display: flex; gap: 15px; }
 .stat-box { flex: 1; background: #0a0a0a; border: 1px solid #222; padding: 15px; border-radius: 8px; text-align: center; }
 .stat-num { font-size: 1.8rem; font-weight: bold; color: #D4AF37; margin-bottom: 5px; }
 .stat-label { color: #888; font-size: 0.85rem; }
 
-/* 🚀 樹狀結構專屬 CSS */
-.tree-list { display: flex; flex-direction: column; gap: 8px; position: relative; }
-.tree-node-wrapper { display: flex; align-items: center; transition: all 0.3s ease; position: relative; }
-.tree-branch { color: #555; font-size: 1.2rem; margin-right: 8px; margin-left: -15px; font-weight: bold; }
+.disciples-list { display: flex; flex-direction: column; gap: 10px; }
+.status-badge { padding: 4px 8px; border-radius: 4px; font-size: 0.75rem; font-weight: bold; }
+.status-active { background: rgba(46, 204, 113, 0.1); color: #2ecc71; border: 1px solid rgba(46, 204, 113, 0.3); }
+.status-pending { background: rgba(241, 196, 15, 0.1); color: #f1c40f; border: 1px solid rgba(241, 196, 15, 0.3); }
 
-.action-area { display: flex; align-items: center; gap: 10px; }
-.status-dot { width: 10px; height: 10px; border-radius: 50%; }
-.dot-active { background: #2ecc71; box-shadow: 0 0 8px #2ecc71; }
-.dot-pending { background: #f1c40f; opacity: 0.5; }
+/* ================== 全景圖專區 ================== */
+.btn-panorama { background: linear-gradient(135deg, #2a1b4d 0%, #1a0b2e 100%); color: #b388ff; border: 1px solid #7c4dff; padding: 6px 15px; border-radius: 20px; font-size: 0.85rem; font-weight: bold; cursor: pointer; transition: 0.2s; box-shadow: 0 0 10px rgba(124, 77, 255, 0.2); }
+.btn-panorama:hover { transform: translateY(-2px); box-shadow: 0 0 15px rgba(124, 77, 255, 0.4); border-color: #b388ff; color: #fff;}
 
-.expand-btn { background: #222; border: 1px solid #444; color: #aaa; border-radius: 6px; padding: 4px 8px; font-size: 0.75rem; cursor: pointer; transition: 0.2s; white-space: nowrap; }
-.expand-btn:hover:not(:disabled) { background: #333; color: #fff; border-color: #D4AF37; }
-.btn-expanded { background: rgba(212, 175, 55, 0.1); color: #D4AF37; border-color: #D4AF37; }
-.btn-no-child { background: #111; color: #555; border-color: #222; cursor: not-allowed; }
+.btn-back { background: transparent; border: 1px solid #444; color: #aaa; padding: 8px 15px; border-radius: 8px; cursor: pointer; font-size: 0.9rem; transition: 0.2s; margin-bottom: 15px; }
+.btn-back:hover { background: #222; color: #fff; }
+
+.panorama-container { background: #0a0a0a; border: 1px solid #222; border-radius: 12px; padding: 20px; overflow-x: auto; }
+.panorama-root { display: flex; flex-direction: column; align-items: flex-start; margin-bottom: 15px; padding-bottom: 15px; border-bottom: 1px dashed #333;}
+.root-avatar { border: 2px solid #D4AF37; width: 60px; height: 60px; margin-bottom: 10px; }
+.root-name { color: #D4AF37; font-weight: bold; font-size: 1.1rem; }
+
+.panorama-tree-lines { display: flex; flex-direction: column; gap: 10px; }
+.panorama-node { display: flex; align-items: center; position: relative; }
+.tree-line-icon { color: #555; font-size: 1.2rem; margin-right: 10px; margin-left: -15px; font-weight: bold; }
+.sub-card { background: #111; padding: 8px 12px; flex: 1; max-width: 300px; border-color: #333; }
+
+.mt-3 { margin-top: 15px; }
 
 /* 動畫 */
 .slide-up-enter-active, .slide-up-leave-active { transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1); }
 .slide-up-enter-from, .slide-up-leave-to { opacity: 0; transform: translateY(100%); }
-.list-enter-active, .list-leave-active { transition: all 0.3s ease; }
-.list-enter-from, .list-leave-to { opacity: 0; transform: translateX(-20px); }
 </style>

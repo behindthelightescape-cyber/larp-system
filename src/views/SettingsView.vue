@@ -390,7 +390,7 @@ const bindFriendCode = async () => {
 @keyframes spin { 100% { transform: rotate(360deg); } }
 
 /* ── 卡片 ── */
-.sections-wrap { display: flex; flex-direction: column; gap: 0; width: 100%; box-sizing: border-box; }
+.sections-wrap { display: flex; flex-direction: column; gap: 0; width: 100%; box-sizing: border-box; overflow: hidden; }
 
 .setting-card {
   background: rgba(18,18,18,0.72);
@@ -399,6 +399,7 @@ const bindFriendCode = async () => {
   border-radius: 20px;
   padding: 22px 20px 24px;
   position: relative;
+  box-sizing: border-box;
   box-shadow: 0 12px 32px rgba(0,0,0,0.4);
 }
 .card-deco-top {
@@ -436,7 +437,8 @@ const bindFriendCode = async () => {
   background: rgba(0,0,0,0.3);
   border: 1px solid rgba(255,255,255,0.1);
   border-radius: 10px; color: #fff; font-size: 1rem;
-  box-sizing: border-box; transition: border-color 0.2s, box-shadow 0.2s;
+  box-sizing: border-box;
+  transition: border-color 0.2s, box-shadow 0.2s;
   -webkit-appearance: none;
 }
 .field-input:focus {
@@ -489,7 +491,8 @@ const bindFriendCode = async () => {
   border-radius: 10px; color: #D4AF37;
   font-size: 1.05rem; font-weight: 700;
   text-transform: uppercase; letter-spacing: 1.5px;
-  box-sizing: border-box; transition: 0.2s;
+  box-sizing: border-box;
+  transition: 0.2s;
 }
 .code-input:focus {
   border-color: #D4AF37; border-style: solid; outline: none;

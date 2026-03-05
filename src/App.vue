@@ -164,17 +164,15 @@ body {
   position: relative;
   z-index: 1;
   padding-bottom: 80px;
-
-  /* 關鍵：讓過場動畫期間容器寬度不塌陷 */
   width: 100%;
   box-sizing: border-box;
+  overflow-x: hidden;
 }
 
 /* === 過場動畫 ===
    只做 opacity，不動 position / transform，
    避免 out-in 期間容器重新計算寬度造成跳動 */
 /* 純 opacity 過場，不動 position 避免跑版 */
-
 .fade-enter-active,
 .fade-leave-active {
   transition: opacity 0.15s ease;

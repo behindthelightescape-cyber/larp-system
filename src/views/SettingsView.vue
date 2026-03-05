@@ -5,105 +5,73 @@ import { supabase } from '../supabase'
 
 const store = useUserStore()
 
-// === 個人設定表單 ===
-const form = ref({
-  name: '',
-  phone: '',
-  birthday: ''
-})
+const form = ref({ name: '', phone: '', birthday: '' })
 const isBirthdayLocked = ref(false)
-
-// === 兌換碼專區狀態 ===
 const promoCodeInput = ref('')
 const isRedeeming = ref(false)
-
-// === 🤝 推薦碼專區狀態 ===
 const myReferralCode = ref('')
 const friendCodeInput = ref('')
 const referredBy = ref('')
 const isReferredLocked = ref(false)
 const isGeneratingCode = ref(false)
 const isBindingCode = ref(false)
-
-// 🚀 新增：規則彈窗開關
 const showRulesModal = ref(false)
 
-// 🚀 新增：老手/新手判定引擎 (根據總經驗值)
 const totalExp = computed(() => store.userData?.total_exp || 0)
 const isNewbie = computed(() => totalExp.value === 0)
 
-// 監聽使用者資料
 watch(() => store.userData, (newVal) => {
   if (newVal) {
     form.value.name = newVal.display_name || ''
     form.value.phone = newVal.phone || ''
     form.value.birthday = newVal.birthday || ''
     if (newVal.birthday) isBirthdayLocked.value = true
-
-    // 載入推薦碼資料
     myReferralCode.value = newVal.my_referral_code || ''
     referredBy.value = newVal.referred_by || ''
     if (newVal.referred_by) isReferredLocked.value = true
   }
 }, { immediate: true })
 
-// 💾 儲存個人資料
 const save = async () => {
   if (store.isLoading) return
   if (!form.value.phone || form.value.phone.trim() === '') return alert('⚠️ 請填寫您的手機號碼喔！這是必填欄位。')
   if (form.value.phone.length < 8) return alert('⚠️ 請填寫有效的手機號碼格式喔！')
-
-  const payload = {
-    name: form.value.name,
-    phone: form.value.phone,
-    birthday: form.value.birthday || null 
-  }
-
+  const payload = { name: form.value.name, phone: form.value.phone, birthday: form.value.birthday || null }
   const result = await store.updateProfile(payload)
   if (result.success) {
     alert(result.message)
     if (form.value.birthday) isBirthdayLocked.value = true
-    await store.initLiff() 
+    await store.initLiff()
   } else {
     alert('儲存失敗: ' + result.message)
   }
 }
 
-// 🎁 兌換官方行銷代碼
 const redeemPromoCode = async () => {
   const code = promoCodeInput.value.trim().toUpperCase()
   if (!code) return alert('⚠️ 請輸入兌換碼喔！')
   if (!store.userData) return alert('⚠️ 請先確認登入狀態！')
-  
   if (isRedeeming.value) return
   isRedeeming.value = true
-
   try {
     const { data: promoData, error: promoErr } = await supabase.from('promo_codes').select('*').eq('code', code).single()
     if (promoErr || !promoData) throw new Error('找不到此兌換碼，請確認是否有打錯字喔！')
     if (!promoData.is_active) throw new Error('此兌換碼活動已經結束或暫停囉！')
     if (promoData.max_uses > 0 && promoData.used_count >= promoData.max_uses) throw new Error('這組兌換碼已經被搶光了 😭')
-
     const { count: userUsedCount } = await supabase.from('coupons').select('*', { count: 'exact', head: true })
       .eq('user_id', store.userData.id).eq('source_promo_code', promoData.id)
-
     if (userUsedCount >= promoData.limit_per_user) throw new Error(`這組代碼每人最多領 ${promoData.limit_per_user} 次，你已經領滿囉！`)
-
     const expiryDate = new Date()
     expiryDate.setDate(expiryDate.getDate() + (promoData.valid_days || 30))
-
     const { error: insertErr } = await supabase.from('coupons').insert([{
       user_id: store.userData.id, title: promoData.title, description: promoData.description,
-      status: 'available', expiry_date: expiryDate.toISOString(), source_promo_code: promoData.id 
+      status: 'available', expiry_date: expiryDate.toISOString(), source_promo_code: promoData.id
     }])
     if (insertErr) throw insertErr
-
     await supabase.from('promo_codes').update({ used_count: promoData.used_count + 1 }).eq('id', promoData.id)
-
     alert(`🎉 兌換成功！已將【${promoData.title}】放入您的票券夾！`)
-    promoCodeInput.value = '' 
-    await store.initLiff() 
-
+    promoCodeInput.value = ''
+    await store.initLiff()
   } catch (err) {
     alert('❌ 兌換失敗：' + err.message)
   } finally {
@@ -111,18 +79,14 @@ const redeemPromoCode = async () => {
   }
 }
 
-// 🚀 產生自己的專屬推薦碼 (加上老手防護)
 const generateMyCode = async () => {
   if (isNewbie.value) return alert('🔒 萌新請先完成首場遊戲，獲得經驗值後才能解鎖推坑碼喔！')
-
   if (isGeneratingCode.value) return
   isGeneratingCode.value = true
-  
   try {
     const randomCode = Math.random().toString(36).substring(2, 8).toUpperCase()
     const { error } = await supabase.from('users').update({ my_referral_code: randomCode }).eq('id', store.userData.id)
     if (error) throw error
-    
     myReferralCode.value = randomCode
     alert('✅ 專屬推薦碼生成成功！趕快分享給朋友吧！')
     await store.initLiff()
@@ -133,7 +97,6 @@ const generateMyCode = async () => {
   }
 }
 
-// 🚀 複製自己的推薦碼
 const copyMyCode = () => {
   if (!myReferralCode.value) return
   navigator.clipboard.writeText(myReferralCode.value)
@@ -141,91 +104,44 @@ const copyMyCode = () => {
     .catch(() => alert('複製失敗，請手動選取複製'))
 }
 
-// 🚀 綁定朋友的推薦碼 (加上新手防護)
-// 🚀 綁定朋友的推薦碼 (升級為：動態讀取中央派發規則)
 const bindFriendCode = async () => {
   if (!isNewbie.value) return alert('🚫 老司機別裝萌新啦！推坑碼僅限「首次遊玩前」綁定喔！')
-
   const code = friendCodeInput.value.trim().toUpperCase()
   if (!code) return alert('請輸入朋友的推薦碼！')
   if (code === myReferralCode.value) return alert('你不能輸入自己的推薦碼啦！')
-
   if (isBindingCode.value) return
   isBindingCode.value = true
-
   try {
-    // 1. 尋找推薦人
-    const { data: targetUser, error: searchErr } = await supabase
-      .from('users')
-      .select('id, display_name')
-      .eq('my_referral_code', code)
-      .single()
-
+    const { data: targetUser, error: searchErr } = await supabase.from('users').select('id, display_name').eq('my_referral_code', code).single()
     if (searchErr || !targetUser) throw new Error('找不到這組推薦碼，請確認是否打錯！')
-
-    // 2. 綁定推薦關係
-    const { error: updateErr } = await supabase
-      .from('users')
-      .update({ referred_by: code })
-      .eq('id', store.userData.id)
-
+    const { error: updateErr } = await supabase.from('users').update({ referred_by: code }).eq('id', store.userData.id)
     if (updateErr) throw updateErr
-
-    // ==========================================
-    // 🚀 3. 呼叫中央派發大腦：撈取「推坑新手禮」
-    // ==========================================
-    const { data: rewards, error: rewardErr } = await supabase
-      .from('system_rewards')
-      .select('*')
-      .eq('event_type', 'referral_newbie')
-      .eq('is_active', true)
-
+    const { data: rewards } = await supabase.from('system_rewards').select('*').eq('event_type', 'referral_newbie').eq('is_active', true)
     let grantedTitles = []
-
     if (rewards && rewards.length > 0) {
       const newCoupons = []
       for (const rule of rewards) {
         const qty = rule.reward_qty || 1
         const expiryDate = new Date()
         expiryDate.setDate(expiryDate.getDate() + (rule.valid_days || 30))
-
-        // 小巧思：把文案裡的 {referrer} 自動替換成推薦人的名字
         const finalDesc = (rule.reward_desc || '').replace('{referrer}', targetUser.display_name || '熱心老手')
-
         for (let i = 0; i < qty; i++) {
-          newCoupons.push({
-            user_id: store.userData.id,
-            title: rule.reward_title,
-            description: finalDesc,
-            status: 'available',
-            expiry_date: expiryDate.toISOString()
-          })
+          newCoupons.push({ user_id: store.userData.id, title: rule.reward_title, description: finalDesc, status: 'available', expiry_date: expiryDate.toISOString() })
         }
         grantedTitles.push(`${rule.reward_title}` + (qty > 1 ? ` (x${qty})` : ''))
       }
-
-      // 發送實體票券
       if (newCoupons.length > 0) {
         const { error: insertErr } = await supabase.from('coupons').insert(newCoupons)
         if (insertErr) console.error('發送新手禮失敗:', insertErr)
       }
     }
-    // ==========================================
-
-    // 4. 組合成功訊息
     let alertMsg = `✅ 成功綁定！你是由【${targetUser.display_name || '神秘玩家'}】推薦的！`
-    if (grantedTitles.length > 0) {
-       alertMsg += `\n\n🎉 系統已自動發送迎新大禮包：\n- ` + grantedTitles.join('\n- ') + `\n\n快去票券夾看看吧！`
-    } else {
-       alertMsg += `\n\n(目前官方暫無迎新派發活動，但您的綁定已成功紀錄！)`
-    }
-    
+    if (grantedTitles.length > 0) alertMsg += `\n\n🎉 系統已自動發送迎新大禮包：\n- ` + grantedTitles.join('\n- ') + `\n\n快去票券夾看看吧！`
+    else alertMsg += `\n\n(目前官方暫無迎新派發活動，但您的綁定已成功紀錄！)`
     alert(alertMsg)
-    
     isReferredLocked.value = true
     referredBy.value = code
-    await store.initLiff() 
-
+    await store.initLiff()
   } catch (err) {
     alert('❌ 綁定失敗：' + err.message)
   } finally {
@@ -236,137 +152,191 @@ const bindFriendCode = async () => {
 
 <template>
   <div class="page-container">
-    <h2 class="page-title">個人設定</h2>
-    
-    <div v-if="store.isLoading" style="text-align: center; color: #888;">載入中...</div>
-    
-    <div v-else>
-        <div class="form-group">
-          <label>顯示名稱</label>
-          <input v-model="form.name" type="text" placeholder="怎麼稱呼你？" />
+
+    <!-- Header -->
+    <div class="page-header">
+      <div class="header-deco">✦</div>
+      <h2 class="page-title">個人設定</h2>
+      <p class="page-subtitle">管理你的冒險者資料與推坑計畫</p>
+    </div>
+
+    <div v-if="store.isLoading" class="loading-state">
+      <div class="spinner"></div>
+      <span>載入中...</span>
+    </div>
+
+    <div v-else class="sections-wrap">
+
+      <!-- ── 個人資料 ── -->
+      <div class="setting-card">
+        <div class="card-deco-top"></div>
+        <div class="card-section-label">
+          <span class="section-icon">👤</span>
+          <span>個人資料</span>
         </div>
 
         <div class="form-group">
-          <label>手機號碼 <span style="color: #e74c3c;">*</span></label>
-          <input v-model="form.phone" type="tel" placeholder="0912-345-678" />
+          <label class="field-label">顯示名稱</label>
+          <input v-model="form.name" type="text" placeholder="怎麼稱呼你？" class="field-input" />
         </div>
 
         <div class="form-group">
-          <label>生日 (僅供壽星優惠使用)</label>
-          <input v-if="!isBirthdayLocked" v-model="form.birthday" type="date" />
-          <div v-else class="locked-display">{{ form.birthday }}</div>
-          <p v-if="isBirthdayLocked" class="hint-text">🔒 生日已設定，如需修改請聯繫客服。</p>
-          <p v-else class="hint-text" style="color: #D4AF37;">🎁 首次填寫生日並完善聯絡資訊，將獲得驚喜禮物！</p>
+          <label class="field-label">手機號碼 <span class="required-star">*</span></label>
+          <input v-model="form.phone" type="tel" placeholder="0912-345-678" class="field-input" />
         </div>
 
-        <button class="save-btn" @click="save">確認修改</button>
+        <div class="form-group">
+          <label class="field-label">生日 <span class="field-note">（壽星優惠專用）</span></label>
+          <input v-if="!isBirthdayLocked" v-model="form.birthday" type="date" class="field-input" />
+          <div v-else class="locked-field">
+            <span class="lock-icon">🔒</span>
+            <span>{{ form.birthday }}</span>
+          </div>
+          <p v-if="isBirthdayLocked" class="hint-text">生日已設定，如需修改請聯繫客服。</p>
+          <p v-else class="hint-text hint-gold">🎁 首次填寫生日並完善資料，將獲得驚喜禮物！</p>
+        </div>
 
-        <div class="divider"></div>
+        <button class="save-btn" @click="save">
+          <span>確認修改</span>
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+            <path d="M3 8h10M9 4l4 4-4 4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </button>
+      </div>
 
-        <div class="promo-section">
-          <h3 class="promo-title">🎁 官方活動代碼</h3>
-          <p class="promo-desc">輸入官方發布的專屬活動代碼來獲取折價券！</p>
-          
-          <div class="promo-input-group">
-            <input 
-              v-model="promoCodeInput" 
-              type="text" 
-              placeholder="輸入兌換碼..." 
-              class="promo-input"
-              @keyup.enter="redeemPromoCode"
+      <!-- 分隔 -->
+      <div class="section-divider">
+        <div class="div-line"></div>
+        <span class="div-gem">◆</span>
+        <div class="div-line"></div>
+      </div>
+
+      <!-- ── 官方活動代碼 ── -->
+      <div class="setting-card">
+        <div class="card-deco-top"></div>
+        <div class="card-section-label">
+          <span class="section-icon">🎁</span>
+          <span>官方活動代碼</span>
+        </div>
+        <p class="card-desc">輸入官方發布的專屬活動代碼來獲取折價券！</p>
+
+        <div class="code-input-row">
+          <input
+            v-model="promoCodeInput"
+            type="text"
+            placeholder="輸入兌換碼..."
+            class="code-input"
+            @keyup.enter="redeemPromoCode"
+          />
+          <button class="action-btn" @click="redeemPromoCode" :disabled="isRedeeming">
+            {{ isRedeeming ? '兌換中...' : '兌換' }}
+          </button>
+        </div>
+      </div>
+
+      <!-- ── 好友推坑計畫 ── -->
+      <div class="setting-card referral-card">
+        <div class="card-deco-top gold-deco"></div>
+
+        <div class="referral-card-header">
+          <div class="card-section-label" style="border:none;padding:0;margin:0">
+            <span class="section-icon">🤝</span>
+            <span style="color:#D4AF37">好友推坑計畫</span>
+          </div>
+          <button class="rules-pill-btn" @click="showRulesModal = true">❓ 規則</button>
+        </div>
+
+        <p class="card-desc">分享專屬碼給新手，完成首場遊戲後雙方都能獲得獎勵！</p>
+
+        <!-- 我的推坑碼 -->
+        <div class="sub-block">
+          <div class="sub-label">你的專屬推坑碼</div>
+
+          <div v-if="myReferralCode" class="code-display-box">
+            <div class="code-display-left">
+              <span class="code-deco">◈</span>
+              <span class="big-code">{{ myReferralCode }}</span>
+            </div>
+            <button class="copy-btn" @click="copyMyCode">📋 複製</button>
+          </div>
+
+          <button v-else-if="!isNewbie" class="generate-btn" @click="generateMyCode" :disabled="isGeneratingCode">
+            <span>{{ isGeneratingCode ? '生成中...' : '✨ 點我生成專屬代碼' }}</span>
+          </button>
+
+          <div v-else class="locked-info-box">
+            <span class="lock-icon">🔒</span>
+            <span>需完成首場遊戲後解鎖</span>
+          </div>
+        </div>
+
+        <!-- 綁定朋友碼 -->
+        <div class="sub-block" style="margin-top:16px">
+          <div class="sub-label">是朋友推薦你來的嗎？</div>
+
+          <div v-if="isReferredLocked" class="bound-box">
+            <span>🤝 已綁定推坑老手</span>
+            <span class="bound-code">{{ referredBy }}</span>
+          </div>
+
+          <div v-else-if="!isNewbie" class="locked-info-box locked-red">
+            <span>🚫</span>
+            <span>推坑碼僅限首次遊玩前填寫</span>
+          </div>
+
+          <div v-else class="code-input-row">
+            <input
+              v-model="friendCodeInput"
+              type="text"
+              placeholder="輸入朋友的推坑碼..."
+              class="code-input"
             />
-            <button class="redeem-btn" @click="redeemPromoCode" :disabled="isRedeeming">
-              {{ isRedeeming ? '兌換中...' : '兌換' }}
+            <button class="action-btn gold-btn" @click="bindFriendCode" :disabled="isBindingCode">
+              {{ isBindingCode ? '綁定中...' : '綁定' }}
             </button>
           </div>
         </div>
-
-        <div class="promo-section mt-4" style="border-color: rgba(212, 175, 55, 0.3);">
-          
-          <div class="promo-header-flex">
-            <h3 class="promo-title" style="color: #D4AF37; margin: 0;">🤝 好友推坑計畫</h3>
-            <button class="rules-btn" @click="showRulesModal = true">❓ 規則說明</button>
-          </div>
-          
-          <p class="promo-desc mt-2">分享專屬碼給新手，當他們完成第一場遊戲，雙方都能獲得獎勵！</p>
-          
-          <div class="referral-box">
-            <span class="ref-label">你的專屬推坑碼：</span>
-            <div v-if="myReferralCode" class="ref-display-group">
-              <span class="ref-code">{{ myReferralCode }}</span>
-              <button class="ref-copy-btn" @click="copyMyCode">📋 複製</button>
-            </div>
-            <button v-else-if="!isNewbie" class="btn-generate" @click="generateMyCode" :disabled="isGeneratingCode">
-              {{ isGeneratingCode ? '生成中...' : '✨ 點我生成專屬代碼' }}
-            </button>
-            <div v-else class="locked-display mt-2" style="border-color: #444; color: #888; text-align: center; font-size: 0.85rem; padding: 10px;">
-              🔒 需完成首場遊戲後解鎖專屬碼
-            </div>
-          </div>
-
-          <div style="margin-top: 15px;">
-            <span class="ref-label">是朋友推薦你來的嗎？</span>
-            
-            <div v-if="isReferredLocked" class="locked-display mt-2" style="border-color: #D4AF37; color: #D4AF37; background: rgba(212, 175, 55, 0.05); text-align: center; font-weight: bold;">
-              🤝 已綁定推坑老手：{{ referredBy }}
-            </div>
-            
-            <div v-else-if="!isNewbie" class="locked-display mt-2" style="border-color: rgba(231, 76, 60, 0.3); color: #e74c3c; background: rgba(231, 76, 60, 0.05); text-align: center; font-size: 0.85rem; padding: 10px;">
-              🚫 綁定失敗：推坑碼僅限「首次遊玩前」填寫！
-            </div>
-            
-            <div v-else class="promo-input-group mt-2">
-              <input 
-                v-model="friendCodeInput" 
-                type="text" 
-                placeholder="輸入推坑碼，現領 $50..." 
-                class="promo-input friend-input"
-              />
-              <button class="redeem-btn friend-btn" @click="bindFriendCode" :disabled="isBindingCode">
-                綁定
-              </button>
-            </div>
-          </div>
-        </div>
+      </div>
 
     </div>
 
+    <!-- 規則說明 Modal -->
     <Teleport to="body">
-      <transition name="fade">
+      <transition name="slide-up">
         <div v-if="showRulesModal" class="modal-overlay" @click.self="showRulesModal = false">
-          <div class="rules-modal-content">
-            <div class="rules-header">
-              <h3 style="color: #D4AF37; margin: 0;">🤝 推坑計畫規則說明</h3>
-              <button class="close-btn-icon" @click="showRulesModal = false">✕</button>
+          <div class="rules-modal">
+            <div class="modal-handle"></div>
+            <div class="rules-modal-header">
+              <h3>🤝 推坑計畫規則說明</h3>
+              <button class="modal-close-btn" @click="showRulesModal = false">✕</button>
             </div>
-            
-            <div class="rules-body">
+            <div class="rules-modal-body">
               <div class="rule-item">
-                <div class="rule-icon">🌱</div>
+                <div class="rule-icon-box">🌱</div>
                 <div class="rule-text">
                   <h4>誰可以填寫別人的推坑碼？</h4>
-                  <p>必須是<strong style="color: #e74c3c;">從未遊玩過（經驗值為 0）</strong>的新手才能填寫。綁定後即可立即獲得 $50 迎新折價券！<br><span style="font-size: 0.8rem; color: #888;">(若已完成過首場遊戲，系統將自動關閉綁定功能，無法事後補填喔！)</span></p>
+                  <p>必須是<strong class="text-red">從未遊玩過（經驗值為 0）</strong>的新手才能填寫。綁定後即可立即獲得 $50 迎新折價券！<br>
+                  <span class="text-dim">（若已完成過首場遊戲，系統將自動關閉綁定功能，無法事後補填喔！）</span></p>
                 </div>
               </div>
-
               <div class="rule-item">
-                <div class="rule-icon">👑</div>
+                <div class="rule-icon-box">👑</div>
                 <div class="rule-text">
                   <h4>誰可以產生自己的推坑碼？</h4>
-                  <p>只要您<strong style="color: #D4AF37;">完成過至少一場遊戲</strong>，系統就會為您解鎖專屬的推坑碼，讓您可以分享給親朋好友。</p>
+                  <p>只要您<strong class="text-gold">完成過至少一場遊戲</strong>，系統就會為您解鎖專屬的推坑碼。</p>
                 </div>
               </div>
-
               <div class="rule-item">
-                <div class="rule-icon">🎁</div>
+                <div class="rule-icon-box">🎁</div>
                 <div class="rule-text">
                   <h4>老手要怎麼拿到推坑獎勵？</h4>
-                  <p>當您推薦的新手成功綁定您的代碼，並且來店裡<strong style="color: #D4AF37;">完成他們的第一場遊戲（掃描核銷獲得經驗值）</strong>後，系統就會自動發送一張 $100 折價券到您的票券夾中！</p>
+                  <p>當您推薦的新手成功綁定您的代碼，並且<strong class="text-gold">完成他們的第一場遊戲（掃描核銷獲得經驗值）</strong>後，系統就會自動發送 $100 折價券到您的票券夾！</p>
                 </div>
               </div>
             </div>
-            
-            <button class="rules-close-btn" @click="showRulesModal = false">我知道了</button>
+            <div class="rules-modal-footer">
+              <button class="rules-confirm-btn" @click="showRulesModal = false">我知道了</button>
+            </div>
           </div>
         </div>
       </transition>
@@ -376,80 +346,279 @@ const bindFriendCode = async () => {
 </template>
 
 <style scoped>
-.page-container { padding: 20px 20px 80px 20px; max-width: 600px; margin: 0 auto; }
-.page-title { color: #fff; margin-bottom: 30px; font-size: 1.5rem; text-align: center; }
+/* ── 基礎 ── */
+.page-container {
+  padding: 32px 20px 100px;
+  max-width: 600px; margin: 0 auto;
+  color: #fff;
+}
 
-/* === 個人資料表單樣式 === */
-.form-group { margin-bottom: 20px; }
-.form-group label { display: block; color: #888; margin-bottom: 8px; font-size: 0.9rem; }
-.form-group input { width: 100%; padding: 12px; background: #1a1a1a; border: 1px solid #333; border-radius: 8px; color: #fff; font-size: 1rem; box-sizing: border-box;}
-.form-group input:focus { border-color: #D4AF37; outline: none; }
+/* ── Header ── */
+.page-header { text-align: center; margin-bottom: 32px; }
+.header-deco { color: #D4AF37; font-size: 1rem; letter-spacing: 8px; opacity: 0.5; margin-bottom: 8px; }
+.page-title {
+  color: #D4AF37; margin: 0 0 6px;
+  font-size: 2.2rem; font-weight: 900; letter-spacing: 3px;
+  text-shadow: 0 0 24px rgba(212,175,55,0.3);
+}
+.page-subtitle { color: #555; font-size: 0.88rem; margin: 0; letter-spacing: 0.5px; }
 
-.locked-display { width: 100%; padding: 12px; background: #0a0a0a; border: 1px solid #222; border-radius: 8px; color: #666; font-size: 1rem; box-sizing: border-box; user-select: none; }
-.hint-text { font-size: 0.8rem; color: #888; margin-top: 6px; margin-bottom: 0; }
+/* loading */
+.loading-state {
+  display: flex; flex-direction: column; align-items: center;
+  gap: 14px; padding: 60px 0; color: #666; font-size: 0.9rem;
+}
+.spinner {
+  width: 34px; height: 34px;
+  border: 3px solid rgba(212,175,55,0.15);
+  border-top-color: #D4AF37;
+  border-radius: 50%; animation: spin 1s linear infinite;
+}
+@keyframes spin { 100% { transform: rotate(360deg); } }
 
-.save-btn { width: 100%; padding: 15px; background: #D4AF37; color: #000; border: none; border-radius: 8px; font-weight: bold; font-size: 1rem; margin-top: 10px; cursor: pointer; transition: 0.2s;}
+/* ── 卡片 ── */
+.sections-wrap { display: flex; flex-direction: column; gap: 0; }
+
+.setting-card {
+  background: rgba(18,18,18,0.72);
+  backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255,255,255,0.07);
+  border-radius: 20px;
+  padding: 22px 20px 24px;
+  position: relative;
+  box-shadow: 0 12px 32px rgba(0,0,0,0.4);
+}
+.card-deco-top {
+  position: absolute; top: 0; left: 20%; right: 20%; height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.12), transparent);
+}
+.gold-deco {
+  background: linear-gradient(90deg, transparent, #D4AF37 40%, #f5d77a 50%, #D4AF37 60%, transparent);
+}
+.referral-card { border-color: rgba(212,175,55,0.18); }
+
+/* 卡片 section label */
+.card-section-label {
+  display: flex; align-items: center; gap: 10px;
+  font-size: 1rem; font-weight: 700; color: #ddd;
+  letter-spacing: 0.5px;
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+  padding-bottom: 14px; margin-bottom: 18px;
+}
+.section-icon { font-size: 1.2rem; }
+.card-desc { color: #666; font-size: 0.85rem; line-height: 1.5; margin: 0 0 16px; }
+
+/* ── 表單 ── */
+.form-group { margin-bottom: 18px; }
+.field-label {
+  display: block; color: #777; font-size: 0.8rem;
+  font-weight: 600; letter-spacing: 1px; text-transform: uppercase;
+  margin-bottom: 8px;
+}
+.required-star { color: #e74c3c; }
+.field-note { color: #555; font-size: 0.75rem; text-transform: none; letter-spacing: 0; font-weight: normal; }
+
+.field-input {
+  width: 100%; padding: 13px 16px;
+  background: rgba(0,0,0,0.3);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 10px; color: #fff; font-size: 1rem;
+  box-sizing: border-box; transition: border-color 0.2s, box-shadow 0.2s;
+  -webkit-appearance: none;
+}
+.field-input:focus {
+  border-color: rgba(212,175,55,0.5); outline: none;
+  box-shadow: 0 0 0 3px rgba(212,175,55,0.08);
+}
+.field-input::placeholder { color: #444; }
+
+.locked-field {
+  display: flex; align-items: center; gap: 10px;
+  padding: 13px 16px;
+  background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.05);
+  border-radius: 10px; color: #555; font-size: 1rem;
+}
+.lock-icon { opacity: 0.5; }
+.hint-text { font-size: 0.78rem; color: #555; margin: 6px 0 0; line-height: 1.4; }
+.hint-gold { color: rgba(212,175,55,0.7) !important; }
+
+/* 儲存按鈕 */
+.save-btn {
+  width: 100%; padding: 14px;
+  background: linear-gradient(135deg, #9e761c, #D4AF37, #f5d77a, #D4AF37, #9e761c);
+  background-size: 200% 100%;
+  color: #000; border: none; border-radius: 12px;
+  font-weight: 900; font-size: 1rem; cursor: pointer;
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  box-shadow: 0 4px 16px rgba(212,175,55,0.25);
+  transition: transform 0.2s, box-shadow 0.2s;
+  animation: btn-shimmer 4s linear infinite;
+  margin-top: 4px;
+}
+.save-btn:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(212,175,55,0.35); }
 .save-btn:active { transform: scale(0.98); }
+@keyframes btn-shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
 
-.divider { width: 100%; height: 1px; background: #333; margin: 40px 0; position: relative;}
-.divider::after { content: '✦'; position: absolute; top: -10px; left: 50%; transform: translateX(-50%); background: #050505; padding: 0 10px; color: #555; font-size: 0.8rem;}
+/* 分隔 */
+.section-divider {
+  display: flex; align-items: center; gap: 12px;
+  padding: 24px 0;
+}
+.div-line { flex: 1; height: 1px; background: rgba(255,255,255,0.05); }
+.div-gem  { color: #D4AF37; font-size: 0.55rem; opacity: 0.3; }
 
-/* === 兌換碼/推薦碼專區樣式 === */
-.promo-section { background: linear-gradient(145deg, #151515, #111); border: 1px solid #222; padding: 20px; border-radius: 12px; }
+/* ── 代碼輸入行 ── */
+.code-input-row { display: flex; gap: 10px; }
+.code-input {
+  flex: 1; padding: 13px 16px;
+  background: rgba(0,0,0,0.3);
+  border: 1px dashed rgba(212,175,55,0.3);
+  border-radius: 10px; color: #D4AF37;
+  font-size: 1.05rem; font-weight: 700;
+  text-transform: uppercase; letter-spacing: 1.5px;
+  box-sizing: border-box; transition: 0.2s;
+}
+.code-input:focus {
+  border-color: #D4AF37; border-style: solid; outline: none;
+  box-shadow: 0 0 0 3px rgba(212,175,55,0.08);
+}
+.code-input::placeholder { color: #444; font-weight: normal; text-transform: none; letter-spacing: 0; font-size: 0.92rem; }
 
-/* 🚀 Flexbox 標題列 */
-.promo-header-flex { display: flex; justify-content: space-between; align-items: center; }
+.action-btn {
+  background: rgba(212,175,55,0.08); color: #D4AF37;
+  border: 1px solid rgba(212,175,55,0.4);
+  padding: 0 20px; border-radius: 10px;
+  font-weight: 700; font-size: 0.95rem; cursor: pointer;
+  white-space: nowrap; transition: 0.2s;
+}
+.action-btn:hover { background: rgba(212,175,55,0.18); border-color: #D4AF37; }
+.action-btn:disabled { background: rgba(255,255,255,0.03); color: #444; border-color: #333; cursor: not-allowed; }
+.gold-btn { background: rgba(212,175,55,0.1); }
 
-.promo-title { margin: 0; color: #eee; font-size: 1.1rem; }
-.promo-desc { margin: 0 0 15px 0; font-size: 0.85rem; color: #888; line-height: 1.4;}
+/* ── 推薦碼區塊 ── */
+.referral-card-header {
+  display: flex; align-items: center; justify-content: space-between;
+  border-bottom: 1px solid rgba(212,175,55,0.1);
+  padding-bottom: 14px; margin-bottom: 14px;
+}
+.rules-pill-btn {
+  background: transparent; border: 1px solid #444; color: #888;
+  border-radius: 20px; padding: 4px 12px; font-size: 0.75rem;
+  cursor: pointer; transition: 0.2s; white-space: nowrap;
+}
+.rules-pill-btn:hover { color: #D4AF37; border-color: #D4AF37; }
 
-.promo-input-group { display: flex; gap: 10px; }
-.promo-input { flex: 1; padding: 12px 15px; background: #0a0a0a; border: 1px dashed #444; border-radius: 8px; color: #D4AF37; font-size: 1.1rem; text-transform: uppercase; font-weight: bold; letter-spacing: 1px; transition: 0.3s; width: 100%; box-sizing: border-box;}
-.promo-input:focus { border-color: #D4AF37; outline: none; border-style: solid; box-shadow: 0 0 10px rgba(212,175,55,0.1); }
-.promo-input::placeholder { font-weight: normal; letter-spacing: normal; text-transform: none; color: #555; font-size: 0.95rem; }
+.sub-block {}
+.sub-label {
+  color: #666; font-size: 0.78rem; font-weight: 600;
+  letter-spacing: 0.8px; text-transform: uppercase; margin-bottom: 10px;
+}
 
-.redeem-btn { background: #222; color: #D4AF37; border: 1px solid #D4AF37; padding: 0 20px; border-radius: 8px; font-weight: bold; font-size: 1rem; cursor: pointer; transition: 0.2s; white-space: nowrap; }
-.redeem-btn:hover { background: rgba(212,175,55,0.1); transform: translateY(-2px); }
-.redeem-btn:active { transform: translateY(0); }
-.redeem-btn:disabled { background: #111; color: #555; border-color: #333; cursor: not-allowed; transform: none; }
+/* 推坑碼展示 */
+.code-display-box {
+  display: flex; align-items: center; justify-content: space-between;
+  background: rgba(212,175,55,0.04);
+  border: 1px dashed rgba(212,175,55,0.4);
+  border-radius: 12px; padding: 14px 18px;
+}
+.code-display-left { display: flex; align-items: center; gap: 10px; }
+.code-deco { color: #D4AF37; opacity: 0.4; font-size: 1rem; }
+.big-code { font-size: 1.5rem; font-weight: 900; color: #D4AF37; letter-spacing: 3px; font-family: monospace; text-shadow: 0 0 12px rgba(212,175,55,0.3); }
+.copy-btn {
+  background: rgba(212,175,55,0.1); border: 1px solid rgba(212,175,55,0.4);
+  color: #D4AF37; padding: 7px 14px; border-radius: 8px;
+  font-size: 0.85rem; font-weight: 700; cursor: pointer; transition: 0.2s;
+  white-space: nowrap;
+}
+.copy-btn:hover { background: #D4AF37; color: #000; }
+.copy-btn:active { transform: scale(0.95); }
 
-/* 推薦碼特化樣式 */
-.referral-box { background: #0a0a0a; border: 1px solid #222; padding: 15px; border-radius: 8px; margin-top: 10px;}
-.ref-label { font-size: 0.85rem; color: #888; display: block; margin-bottom: 8px;}
-.ref-display-group { display: flex; justify-content: space-between; align-items: center; background: #1a1a1a; padding: 10px 15px; border-radius: 6px; border: 1px dashed #D4AF37;}
-.ref-code { font-size: 1.3rem; font-weight: 900; color: #D4AF37; letter-spacing: 2px; font-family: monospace;}
-.ref-copy-btn { background: #222; color: #D4AF37; border: 1px solid #D4AF37; padding: 6px 12px; border-radius: 4px; font-size: 0.85rem; cursor: pointer; font-weight: bold; transition: 0.2s;}
-.ref-copy-btn:hover { background: #D4AF37; color: black; }
-.ref-copy-btn:active { transform: scale(0.95); }
+.generate-btn {
+  width: 100%; padding: 13px;
+  background: rgba(212,175,55,0.05); border: 1px solid rgba(212,175,55,0.35);
+  color: #D4AF37; border-radius: 10px; font-weight: 700; font-size: 0.95rem;
+  cursor: pointer; transition: 0.2s;
+}
+.generate-btn:hover { background: rgba(212,175,55,0.12); }
+.generate-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
-.btn-generate { width: 100%; padding: 12px; background: rgba(212, 175, 55, 0.05); border: 1px solid #D4AF37; color: #D4AF37; border-radius: 8px; font-weight: bold; cursor: pointer; transition: 0.2s;}
-.btn-generate:hover { background: rgba(212, 175, 55, 0.15); }
+.locked-info-box {
+  display: flex; align-items: center; gap: 10px;
+  background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.07);
+  border-radius: 10px; padding: 12px 16px;
+  color: #555; font-size: 0.88rem;
+}
+.locked-red {
+  background: rgba(231,76,60,0.04); border-color: rgba(231,76,60,0.2); color: #c0392b;
+}
 
-.friend-input { color: #D4AF37; border-color: #333; }
-.friend-input:focus { border-color: #D4AF37; box-shadow: 0 0 10px rgba(212, 175, 55, 0.1); }
-.friend-btn { color: #D4AF37; border-color: #D4AF37; }
-.friend-btn:hover { background: rgba(212, 175, 55, 0.1); }
+.bound-box {
+  display: flex; align-items: center; justify-content: space-between;
+  background: rgba(212,175,55,0.05); border: 1px solid rgba(212,175,55,0.25);
+  border-radius: 10px; padding: 12px 18px;
+  color: #D4AF37; font-weight: 600; font-size: 0.92rem;
+}
+.bound-code { font-family: monospace; font-size: 1.1rem; font-weight: 900; letter-spacing: 2px; }
 
-/* ❓ 規則按鈕 (已修正，不再用 absolute) */
-.rules-btn { background: transparent; border: 1px solid #555; color: #aaa; border-radius: 20px; padding: 4px 10px; font-size: 0.75rem; cursor: pointer; transition: 0.2s; white-space: nowrap; }
-.rules-btn:hover { color: #D4AF37; border-color: #D4AF37;}
+/* ── 規則 Modal ── */
+.modal-overlay {
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,0.88); z-index: 9999;
+  display: flex; justify-content: center; align-items: flex-end;
+  backdrop-filter: blur(6px);
+}
+.rules-modal {
+  width: 100%; max-width: 600px;
+  background: #111;
+  border-radius: 24px 24px 0 0;
+  border-top: 2px solid rgba(212,175,55,0.5);
+  display: flex; flex-direction: column;
+  max-height: 88vh; overflow: hidden;
+  box-shadow: 0 -10px 40px rgba(0,0,0,0.8);
+}
+.modal-handle {
+  width: 40px; height: 4px; border-radius: 2px;
+  background: #2a2a2a; margin: 12px auto 0; flex-shrink: 0;
+}
+.rules-modal-header {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 16px 24px 14px; border-bottom: 1px solid #1e1e1e; flex-shrink: 0;
+}
+.rules-modal-header h3 { margin: 0; color: #D4AF37; font-size: 1.1rem; letter-spacing: 0.5px; }
+.modal-close-btn {
+  background: rgba(255,255,255,0.07); border: none; color: #888;
+  width: 32px; height: 32px; border-radius: 50%; cursor: pointer;
+  display: flex; align-items: center; justify-content: center; font-size: 1rem;
+  transition: 0.2s;
+}
+.modal-close-btn:hover { background: rgba(255,255,255,0.14); color: #fff; }
+.rules-modal-body { padding: 20px 24px; overflow-y: auto; flex: 1; }
+.rules-modal-footer { padding: 12px 24px 28px; flex-shrink: 0; }
 
-/* === 📖 規則彈窗樣式 === */
-.modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.85); display: flex; justify-content: center; align-items: center; z-index: 9999; backdrop-filter: blur(5px); padding: 20px; }
-.rules-modal-content { background: #161616; width: 100%; max-width: 450px; border-radius: 16px; border: 1px solid #333; box-shadow: 0 10px 40px rgba(0,0,0,0.8); display: flex; flex-direction: column; overflow: hidden; }
-.rules-header { padding: 20px; background: #111; border-bottom: 1px solid #222; display: flex; justify-content: space-between; align-items: center; }
-.close-btn-icon { background: none; border: none; color: #888; font-size: 1.2rem; cursor: pointer; }
-.rules-body { padding: 20px; max-height: 60vh; overflow-y: auto; }
-.rule-item { display: flex; gap: 15px; margin-bottom: 25px; }
-.rule-icon { font-size: 2rem; flex-shrink: 0; }
-.rule-text h4 { margin: 0 0 5px 0; color: #eee; font-size: 1rem; }
-.rule-text p { margin: 0; color: #aaa; font-size: 0.9rem; line-height: 1.5; }
-.rules-close-btn { width: calc(100% - 40px); margin: 0 20px 20px 20px; padding: 12px; background: #222; color: #fff; border: 1px solid #444; border-radius: 8px; font-weight: bold; cursor: pointer; }
-.rules-close-btn:hover { background: #333; }
+.rule-item { display: flex; gap: 16px; margin-bottom: 24px; }
+.rule-item:last-child { margin-bottom: 0; }
+.rule-icon-box {
+  font-size: 1.8rem; flex-shrink: 0;
+  width: 46px; height: 46px;
+  background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 10px; display: flex; align-items: center; justify-content: center;
+}
+.rule-text h4 { margin: 0 0 6px; color: #eee; font-size: 0.98rem; }
+.rule-text p  { margin: 0; color: #888; font-size: 0.88rem; line-height: 1.6; }
+.text-red  { color: #e74c3c; font-weight: 700; }
+.text-gold { color: #D4AF37; font-weight: 700; }
+.text-dim  { color: #555; font-size: 0.8rem; }
 
-.mt-2 { margin-top: 8px; }
-.mt-4 { margin-top: 25px; }
+.rules-confirm-btn {
+  width: 100%; padding: 14px;
+  background: rgba(255,255,255,0.06); color: #aaa;
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 12px; font-weight: 700; font-size: 1rem; cursor: pointer;
+  transition: 0.2s;
+}
+.rules-confirm-btn:hover { background: rgba(255,255,255,0.1); color: #fff; }
 
-.fade-enter-active, .fade-leave-active { transition: opacity 0.3s ease; }
-.fade-enter-from, .fade-leave-to { opacity: 0; }
+/* modal 動畫 */
+.slide-up-enter-active, .slide-up-leave-active { transition: all 0.35s cubic-bezier(0.2,0.8,0.2,1); }
+.slide-up-enter-from, .slide-up-leave-to { opacity: 0; transform: translateY(100%); }
 </style>

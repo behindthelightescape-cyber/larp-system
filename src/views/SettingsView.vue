@@ -153,6 +153,8 @@ const bindFriendCode = async () => {
 <template>
   <div class="page-container">
 
+    <div class="page-inner">
+
     <!-- Header -->
     <div class="page-header">
       <div class="header-deco">✦</div>
@@ -301,6 +303,8 @@ const bindFriendCode = async () => {
     </div>
 
     <!-- 規則說明 Modal -->
+    </div><!-- /page-inner -->
+
     <Teleport to="body">
       <transition name="slide-up">
         <div v-if="showRulesModal" class="modal-overlay" @click.self="showRulesModal = false">
@@ -353,10 +357,13 @@ const bindFriendCode = async () => {
   margin: 0 auto;
   box-sizing: border-box;
   min-height: 100vh;
-  /* 左右 padding 較大，讓內容視覺上置中收窄 */
-  padding: 32px 20px 100px;
+  padding: 0 0 100px;
   background-color: transparent;
   color: #fff;
+}
+
+.page-inner {
+  padding: 32px 20px 0;
 }
 
 /* ── Header ── */
@@ -632,7 +639,7 @@ const bindFriendCode = async () => {
 
 /* 小螢幕手機 (≤ 390px，例如 iPhone SE / 舊款 Android) */
 @media (max-width: 390px) {
-  .page-container { padding: 24px 14px 100px; }
+  .page-inner { padding: 24px 14px 0; }
   .page-title { font-size: 1.7rem; letter-spacing: 2px; }
   .setting-card { padding: 18px 14px 20px; border-radius: 16px; }
 
@@ -664,12 +671,12 @@ const bindFriendCode = async () => {
 
 /* 中型螢幕 (481px ~ 600px)：基本上就是設計稿尺寸，不需大幅修改 */
 @media (min-width: 481px) and (max-width: 600px) {
-  .page-container { padding: 28px 18px 100px; }
+  .page-inner { padding: 28px 18px 0; }
 }
 
 /* 平板 / 桌機 (> 600px)：讓卡片看起來更有質感，加點外邊距 */
 @media (min-width: 601px) {
-  .page-container { padding: 40px 120px 120px; }
+  .page-inner { padding: 40px 120px 0; }
   .page-title { font-size: 2.4rem; }
   .setting-card { padding: 26px 24px 28px; }
   .field-input { font-size: 1.05rem; }

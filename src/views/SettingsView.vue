@@ -679,5 +679,6 @@ const bindFriendCode = async () => {
   .field-input { font-size: 1.05rem; }
   .big-code { font-size: 1.7rem; letter-spacing: 4px; }
   .save-btn { font-size: 1.05rem; padding: 15px; }
-}
+} 
+
 </style>

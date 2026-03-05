@@ -17,6 +17,11 @@ const store = useUserStore()
 const form = ref({ name: '', phone: '', birthday: '' })
 const isBirthdayLocked = ref(false)
 
+// 提前宣告，watch immediate 執行時才能正確賦值
+const myReferralCode   = ref('')
+const referredBy       = ref('')
+const isReferredLocked = ref(false)
+
 watch(
   () => store.userData,
   (val) => {
@@ -118,10 +123,7 @@ const redeemPromoCode = () => withLoading(isRedeeming, async () => {
 // ─────────────────────────────────────────
 //  推坑計畫
 // ─────────────────────────────────────────
-const myReferralCode   = ref('')
 const friendCodeInput  = ref('')
-const referredBy       = ref('')
-const isReferredLocked = ref(false)
 const isGeneratingCode = ref(false)
 const isBindingCode    = ref(false)
 const showRulesModal   = ref(false)

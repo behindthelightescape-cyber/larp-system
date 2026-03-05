@@ -293,7 +293,6 @@ onMounted(() => { setTimeout(() => { isLoaded.value = true }, 100) })
   box-shadow: 0 30px 70px rgba(0,0,0,0.65), inset 0 1px 0 rgba(255,255,255,0.05);
   display: flex; flex-direction: column; align-items: center;
   padding-bottom: 44px;
-  overflow: hidden;
 }
 
 /* 頂部金線 */
@@ -309,11 +308,7 @@ onMounted(() => { setTimeout(() => { isLoaded.value = true }, 100) })
   background: linear-gradient(90deg, transparent, #3a3a3a, transparent);
 }
 /* 卡片光澤 */
-.card-shine {
-  position: absolute; top: 0; left: -60%; width: 40%; height: 100%;
-  background: linear-gradient(105deg, transparent 40%, rgba(255,255,255,0.025) 50%, transparent 60%);
-  pointer-events: none;
-}
+.card-shine { display: none; }
 
 /* ── 頭像 ── */
 .avatar-overlap {

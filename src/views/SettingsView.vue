@@ -351,22 +351,29 @@ const bindFriendCode = async () => {
 
 <style scoped>
 /* ── 基礎 ── */
+/* ── 基礎 ── */
 .page-container {
   width: 100%;
-  display: flex;
-  justify-content: center; /* 🚀 終極置中魔法：強迫內部所有東西站中間 */
-  box-sizing: border-box;
+  max-width: 100vw; /* 避免超出螢幕 */
   min-height: 100vh;
+  box-sizing: border-box;
   padding: 0 0 100px;
   background-color: transparent;
   color: #fff;
+  
+  /* 🚀 暴力雙重置中法 */
+  display: flex;
+  flex-direction: column;
+  align-items: center; /* 讓裡面的東西強制置中 */
+  margin: 0 auto;
 }
 
 .page-inner {
   width: 100%;
-  max-width: 540px; /* 🚀 鎖死表單最大寬度，不管螢幕多大都不會變形或偏位 */
-  padding: 32px 20px 0;
+  max-width: 500px; /* 🚀 鎖死最大寬度 (手機與平板視覺最舒適的寬度) */
   box-sizing: border-box;
+  padding: 32px 20px 0;
+  margin: 0 auto; /* 讓 inner 自己也置中 */
 }
 /* ── Header ── */
 .page-header { text-align: center; margin-bottom: 32px; }

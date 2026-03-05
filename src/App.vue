@@ -160,6 +160,7 @@ body {
 }
 
 /* === 內容層 === */
+/* === 內容層 === */
 .page-content {
   position: relative;
   z-index: 1;
@@ -167,6 +168,17 @@ body {
   width: 100%;
   box-sizing: border-box;
   overflow-x: hidden;
+  
+  /* 🚀 霸王色置中魔法：強制所有子頁面在水平方向置中 */
+  display: flex;
+  flex-direction: column;
+  align-items: center; /* 水平置中 */
+  justify-content: flex-start; /* 靠上對齊 */
+}
+
+/* 確保 router-view 載入的元件可以佔滿這個 flex 容器的寬度 */
+.page-content > * {
+  width: 100%;
 }
 
 /* === 過場動畫 ===

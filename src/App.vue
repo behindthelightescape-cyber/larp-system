@@ -7,13 +7,11 @@ import BottomNav from './components/BottomNav.vue'
 const userStore = useUserStore()
 
 onMounted(() => {
-if (window.location.hash.includes('#/admin')) {
+  if (window.location.hash.includes('#/admin')) {
     console.log('🕵️‍♂️ 偵測到老闆走後台通道，跳過 LINE 看門狗！')
-    userStore.isLoading = false // 直接把 Loading 畫面關掉放行
-    return // 🚀 關鍵：看到 return，後面的程式碼就不會執行，LIFF 就不會被叫起床！
+    userStore.isLoading = false
+    return
   }
-
-  // 如果是一般玩家的網址，才放狗咬人 (執行 LINE 登入)
   userStore.initLiff()
   console.log('App 啟動，小四正在強迫 LINE 交出資料...')
 })
@@ -21,7 +19,7 @@ if (window.location.hash.includes('#/admin')) {
 
 <template>
   <div class="app-layout">
-    
+
     <div class="fixed-background">
       <div class="gradient-layer"></div>
       <div class="pattern-layer"></div>
@@ -37,13 +35,13 @@ if (window.location.hash.includes('#/admin')) {
     <div v-else class="page-content">
       <router-view v-slot="{ Component }">
         <transition name="fade" mode="out-in">
-          <component :is="Component" />
+          <component :is="Component" :key="$route.path" />
         </transition>
       </router-view>
     </div>
 
     <BottomNav v-if="!userStore.isLoading" />
-    
+
   </div>
 </template>
 
@@ -80,9 +78,9 @@ body {
   position: absolute;
   top: 0; left: 0; width: 100%; height: 100%;
   background: radial-gradient(
-    circle at 50% -20%, 
-    #ffd20a36 0%, 
-    #111 40%, 
+    circle at 50% -20%,
+    #ffd20a36 0%,
+    #111 40%,
     #050505 100%
   );
 }
@@ -90,16 +88,16 @@ body {
 .pattern-layer {
   position: absolute;
   top: 0; left: 0; width: 100%; height: 100%;
-  opacity: 0.6; 
-  background-image: 
-    linear-gradient(135deg, #D4AF37 25%, transparent 25%), 
-    linear-gradient(225deg, #D4AF37 25%, transparent 25%), 
-    linear-gradient(45deg, #D4AF37 25%, transparent 25%), 
+  opacity: 0.6;
+  background-image:
+    linear-gradient(135deg, #D4AF37 25%, transparent 25%),
+    linear-gradient(225deg, #D4AF37 25%, transparent 25%),
+    linear-gradient(45deg,  #D4AF37 25%, transparent 25%),
     linear-gradient(315deg, #D4AF37 25%, transparent 25%);
   background-position: 20px 0, 20px 0, 0 0, 0 0;
-  background-size: 40px 40px; 
+  background-size: 40px 40px;
   background-repeat: repeat;
-  mix-blend-mode: overlay; 
+  mix-blend-mode: overlay;
   pointer-events: none;
 }
 
@@ -114,26 +112,26 @@ body {
 .dust-layer {
   position: absolute;
   top: 0; left: 0; width: 100%; height: 100%;
-  background-image: 
+  background-image:
     radial-gradient(rgba(255,255,255,0.2) 1px, transparent 1px),
-    radial-gradient(rgba(212,175,55,0.2) 1px, transparent 1px);
+    radial-gradient(rgba(212,175,55,0.2)  1px, transparent 1px);
   background-size: 60px 60px, 40px 40px;
   background-position: 0 0, 20px 20px;
-  opacity: 0.3; 
+  opacity: 0.3;
   animation: floatDust 40s linear infinite;
   pointer-events: none;
 }
 
 @keyframes floatDust {
   from { transform: translateY(0); }
-  to { transform: translateY(-30px); }
+  to   { transform: translateY(-30px); }
 }
 
-/* === 🚀 小四新增的 Loading 畫面樣式 === */
+/* === Loading 畫面 === */
 .global-loading-screen {
   position: absolute;
   top: 0; left: 0; width: 100%; height: 100vh;
-  display: flex; flex-direction: column; 
+  display: flex; flex-direction: column;
   justify-content: center; align-items: center;
   z-index: 9999;
 }
@@ -147,9 +145,7 @@ body {
   margin-bottom: 20px;
 }
 
-@keyframes spin {
-  to { transform: rotate(360deg); }
-}
+@keyframes spin { to { transform: rotate(360deg); } }
 
 .loading-text {
   color: #D4AF37;
@@ -160,7 +156,7 @@ body {
 
 @keyframes pulse {
   0%, 100% { opacity: 0.6; }
-  50% { opacity: 1; }
+  50%       { opacity: 1; }
 }
 
 /* === 內容層 === */
@@ -168,9 +164,28 @@ body {
   position: relative;
   z-index: 1;
   padding-bottom: 80px;
+
+  /* 關鍵：讓過場動畫期間容器寬度不塌陷 */
+  width: 100%;
+  box-sizing: border-box;
 }
 
-/* === 過場動畫 === */
-.fade-enter-active, .fade-leave-active { transition: opacity 0.3s ease; }
-.fade-enter-from, .fade-leave-to { opacity: 0; }
+/* === 過場動畫 ===
+   只做 opacity，不動 position / transform，
+   避免 out-in 期間容器重新計算寬度造成跳動 */
+.fade-enter-active {
+  transition: opacity 0.2s ease;
+}
+.fade-leave-active {
+  transition: opacity 0.15s ease;
+  /* 離開時固定寬度，防止塌陷 */
+  position: absolute;
+  width: 100%;
+  top: 0;
+  left: 0;
+}
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
+}
 </style>

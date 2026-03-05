@@ -153,8 +153,6 @@ const bindFriendCode = async () => {
 <template>
   <div class="page-container">
 
-    <div class="content-center">
-
     <!-- Header -->
     <div class="page-header">
       <div class="header-deco">✦</div>
@@ -303,8 +301,6 @@ const bindFriendCode = async () => {
     </div>
 
     <!-- 規則說明 Modal -->
-    </div><!-- /content-center -->
-
     <Teleport to="body">
       <transition name="slide-up">
         <div v-if="showRulesModal" class="modal-overlay" @click.self="showRulesModal = false">
@@ -352,15 +348,15 @@ const bindFriendCode = async () => {
 <style scoped>
 /* ── 基礎 ── */
 .page-container {
-  width: 100%; max-width: 800px; margin: 0 auto;
-  box-sizing: border-box; min-height: 100vh;
-  padding: 32px 20px 100px;
-  background-color: transparent; color: #fff;
-}
-
-.content-center {
-  max-width: 560px;
+  width: 100%;
+  max-width: 800px;
   margin: 0 auto;
+  box-sizing: border-box;
+  min-height: 100vh;
+  /* 左右 padding 較大，讓內容視覺上置中收窄 */
+  padding: 32px 20px 100px;
+  background-color: transparent;
+  color: #fff;
 }
 
 /* ── Header ── */
@@ -387,7 +383,7 @@ const bindFriendCode = async () => {
 @keyframes spin { 100% { transform: rotate(360deg); } }
 
 /* ── 卡片 ── */
-.sections-wrap { display: flex; flex-direction: column; gap: 0; }
+.sections-wrap { display: flex; flex-direction: column; gap: 0; width: 100%; box-sizing: border-box; }
 
 .setting-card {
   background: rgba(18,18,18,0.72);
@@ -673,7 +669,7 @@ const bindFriendCode = async () => {
 
 /* 平板 / 桌機 (> 600px)：讓卡片看起來更有質感，加點外邊距 */
 @media (min-width: 601px) {
-  .page-container { padding: 40px 24px 120px; }
+  .page-container { padding: 40px 120px 120px; }
   .page-title { font-size: 2.4rem; }
   .setting-card { padding: 26px 24px 28px; }
   .field-input { font-size: 1.05rem; }

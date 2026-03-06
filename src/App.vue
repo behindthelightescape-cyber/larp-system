@@ -57,7 +57,7 @@ onMounted(() => {
 /* === 全域重置 === */
 :root {
   --bg-dark: #0a0a0a00;
-  --gold-accent: #0f0d05;
+  --gold-accent: #0f0d05ea;
 }
 
 body {
@@ -79,7 +79,7 @@ body {
   position: fixed;
   top: 0; left: 0; width: 100%; height: 100%;
   z-index: -1;
-  background-color: #000;
+  background-color: #000000;
 }
 
 .gradient-layer {
@@ -87,9 +87,9 @@ body {
   top: 0; left: 0; width: 100%; height: 100%;
   background: radial-gradient(
     circle at 50% -20%,
-    #ffd20a36 0%,
-    #111 40%,
-    #050505 100%
+    #ffd20a44 0%,
+    #131212 40%,
+    #0505051f 100%
   );
 }
 
@@ -146,7 +146,7 @@ body {
 
 .spinner {
   width: 50px; height: 50px;
-  border: 4px solid rgba(212, 175, 55, 0.3);
+  border: 4px solid rgba(212, 175, 55, 0.507);
   border-top-color: #D4AF37;
   border-radius: 50%;
   animation: spin 1s linear infinite;

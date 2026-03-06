@@ -396,7 +396,7 @@ const claimReward = async (ach) => {
   min-height: 100vh; padding-bottom: 100px;
   color: #fff; background: transparent;
 }
-.content-layer { padding: 0 20px; }
+.content-layer { padding: 0 24px; }
 
 /* 進場動畫 */
 .fade-in-down { opacity: 0; transform: translateY(-20px); transition: all 0.8s ease; }

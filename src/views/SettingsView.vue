@@ -457,13 +457,13 @@ const bindFriendCode = () => withLoading(isBindingCode, async () => {
 .page-container {
   max-width: 600px;
   margin: 0 auto;
-  padding: 28px 16px 100px;
+  padding: 28px 20px 100px;
   box-sizing: border-box;
   color: var(--text-main);
   font-family: 'Noto Sans TC', 'PingFang TC', sans-serif;
 }
 @media (min-width: 480px) {
-  .page-container { padding-left: 24px; padding-right: 24px; }
+  .page-container { padding-left: 28px; padding-right: 28px; }
 }
 
 /* ══════════════════════════════════════

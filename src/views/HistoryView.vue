@@ -226,7 +226,7 @@ const openDetail = (game) => {
 .page-container {
   width: 100%; max-width: 800px; margin: 0 auto;
   box-sizing: border-box;
-  padding: 0 16px 100px;
+  padding: 0 20px 100px;
   min-height: 100vh;
   background-color: transparent; color: #fff;
 }

@@ -163,20 +163,22 @@ onMounted(() => {
         <!-- 頭貼（左，含等級 badge）懸浮於卡片上方 -->
         <div class="showcase-top-float">
           <div class="avatar-float-wrap">
-            <div class="avatar-small">
-              <img
-                v-if="!avatarError && (store.userData?.picture_url || store.lineProfile?.pictureUrl)"
-                :src="store.userData?.picture_url || store.lineProfile?.pictureUrl"
-                class="avatar-img-small"
-                @error="avatarError = true"
-              />
-              <div v-else class="avatar-placeholder">
-                {{ (store.userData?.display_name || store.lineProfile?.displayName || '?')[0] }}
+            <div class="avatar-pill">
+              <div class="avatar-small">
+                <img
+                  v-if="!avatarError && (store.userData?.picture_url || store.lineProfile?.pictureUrl)"
+                  :src="store.userData?.picture_url || store.lineProfile?.pictureUrl"
+                  class="avatar-img-small"
+                  @error="avatarError = true"
+                />
+                <div v-else class="avatar-placeholder">
+                  {{ (store.userData?.display_name || store.lineProfile?.displayName || '?')[0] }}
+                </div>
               </div>
-            </div>
-            <div class="avatar-lv-badge">
-              <span class="lv-prefix">LV</span>
-              <span class="lv-num">{{ stats.level }}</span>
+              <div class="avatar-lv-section">
+                <span class="lv-prefix">LV</span>
+                <span class="lv-num">{{ stats.level }}</span>
+              </div>
             </div>
           </div>
         </div>
@@ -360,7 +362,7 @@ onMounted(() => {
 }
 .content-layer {
   display: flex; flex-direction: column; align-items: stretch;
-  padding: 74px 16px 80px; gap: 14px;
+  padding: 74px 20px 80px; gap: 14px;
   max-width: 540px; margin: 0 auto;
 }
 
@@ -384,7 +386,7 @@ onMounted(() => {
   box-shadow: 0 4px 24px rgba(0,0,0,0.4);
 }
 .header-logo {
-  height: 52px; object-fit: contain;
+  height: 70px; object-fit: contain;
   filter: drop-shadow(0 0 10px rgba(212,175,55,0.45));
 }
 
@@ -413,20 +415,28 @@ onMounted(() => {
   z-index: 10;
 }
 
-/* 頭貼 + LV badge 群組 */
+/* 頭貼 + LV pill 群組 */
 .avatar-float-wrap {
-  position: relative;
   animation: avatar-float 3.5s ease-in-out infinite;
 }
 @keyframes avatar-float {
   0%, 100% { transform: translateY(0); }
   50%       { transform: translateY(-7px); }
 }
+
+/* 統一膠囊框：頭貼在左，LV 在右 */
+.avatar-pill {
+  display: flex; align-items: center;
+  background: rgba(8,8,8,0.75);
+  border: 1.5px solid rgba(212,175,55,0.55);
+  border-radius: 32px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.65);
+  backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+}
 .avatar-small {
-  width: 50px; height: 50px; border-radius: 50%;
-  border: 2px solid rgba(212,175,55,0.55);
-  overflow: hidden; flex-shrink: 0;
-  box-shadow: 0 4px 14px rgba(0,0,0,0.6), 0 0 0 0 rgba(212,175,55,0.3);
+  width: 50px; height: 50px; flex-shrink: 0;
+  border-radius: 50%; overflow: hidden;
+  margin: 4px;
 }
 .avatar-img-small { width: 100%; height: 100%; object-fit: cover; }
 .avatar-placeholder {
@@ -434,21 +444,15 @@ onMounted(() => {
   display: flex; align-items: center; justify-content: center;
   background: linear-gradient(135deg, #1e1a0e, #2a2210);
   color: #D4AF37; font-size: 1.2rem; font-weight: 800;
-  letter-spacing: 0;
 }
 
-/* LV badge 疊在頭貼右下角 */
-.avatar-lv-badge {
-  position: absolute; bottom: -6px; right: -10px;
+/* LV 區段：在膠囊右側 */
+.avatar-lv-section {
   display: flex; flex-direction: column; align-items: center; justify-content: center;
-  width: 32px; height: 32px; border-radius: 50%;
-  background: linear-gradient(135deg, #ffd84d, #D4AF37);
-  box-shadow: 0 2px 8px rgba(0,0,0,0.6);
-  border: 1.5px solid rgba(0,0,0,0.3);
-  gap: 0; pointer-events: none;
+  padding: 0 14px 0 10px; gap: 1px; pointer-events: none;
 }
-.lv-prefix { color: rgba(0,0,0,0.5); font-size: 0.45rem; font-weight: 900; letter-spacing: 0.5px; line-height: 1; }
-.lv-num    { color: #000; font-size: 0.8rem; font-weight: 900; line-height: 1; }
+.lv-prefix { color: #888; font-size: 0.5rem; font-weight: 900; letter-spacing: 1.5px; line-height: 1; }
+.lv-num    { color: #D4AF37; font-size: 1rem; font-weight: 900; line-height: 1; }
 
 /* 燈燈：絕對定位，頭部露出卡片上方 */
 .showcase-doll-float {
@@ -795,8 +799,8 @@ onMounted(() => {
 
 /* ── RWD ── */
 @media (max-width: 360px) {
-  .content-layer { padding: 74px 12px 80px; gap: 10px; max-width: 100%; }
-  .header-logo { height: 42px; }
+  .content-layer { padding: 74px 14px 80px; gap: 10px; max-width: 100%; }
+  .header-logo { height: 52px; }
   .doll-base { width: 160px; }
   .user-name { font-size: 1.6rem; }
   .stat-num { font-size: 2rem; }
@@ -807,8 +811,8 @@ onMounted(() => {
 }
 
 @media (min-width: 480px) {
-  .content-layer { padding: 74px 20px 80px; }
-  .header-logo { height: 58px; }
+  .content-layer { padding: 74px 24px 80px; }
+  .header-logo { height: 78px; }
   .doll-base { width: 220px; }
   .user-name { font-size: 2.2rem; }
   .stat-num { font-size: 2.6rem; }

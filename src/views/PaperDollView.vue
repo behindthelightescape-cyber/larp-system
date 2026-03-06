@@ -468,7 +468,7 @@ const obtainDesc = (item) => {
 }
 .content-layer {
   display: flex; flex-direction: column; align-items: center;
-  padding: 16px 20px 80px; gap: 16px;
+  padding: 16px 24px 80px; gap: 16px;
 }
 
 /* ── 進場動畫 ── */
@@ -832,7 +832,7 @@ const obtainDesc = (item) => {
 
 /* ── RWD ── */
 @media (max-width: 480px) {
-  .content-layer { padding: 16px 16px 80px; gap: 12px; }
+  .content-layer { padding: 16px 20px 80px; gap: 12px; }
   .page-title { font-size: 1.3rem; }
   .layer-img { width: 160px; }
   .emoji-overlay { font-size: 1.8rem; }

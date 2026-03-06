@@ -3,12 +3,69 @@ import { computed, onMounted, ref } from 'vue'
 import { useUserStore } from '../stores/user'
 import { supabase } from '../supabase'
 import ReferralTreeModal from '../components/ReferralTreeModal.vue'
+import { Users } from 'lucide-vue-next'
 
 const showTreeModal = ref(false)
 const store = useUserStore()
 const isLoaded = ref(false)
+const avatarError = ref(false)
 
 const BRAND_LOGO = 'https://meee.com.tw/VInVFKh.png'
+const FALLBACK_BASE = 'https://meee.com.tw/hLmrwbm.png'
+const baseImgUrl = ref('')
+const equippedBgUrl = ref('')
+const dollLayers = ref({})
+const dollLayerOrder = ['bottom', 'top', 'acc', 'hat', 'expr']
+
+const stageBg = computed(() =>
+  equippedBgUrl.value
+    ? { backgroundImage: `url(${equippedBgUrl.value})`, backgroundSize: 'cover', backgroundPosition: 'center' }
+    : { background: 'linear-gradient(170deg, #0f0c05 0%, #1a1507 40%, #0a0a0a 100%)' }
+)
+
+const loadDollData = async () => {
+  const { data: baseData } = await supabase
+    .from('wardrobe_bases')
+    .select('img_url')
+    .eq('is_default', true)
+    .eq('is_active', true)
+    .single()
+  if (baseData?.img_url) baseImgUrl.value = baseData.img_url
+
+  if (!store.userData?.id) return
+  const { data: eq } = await supabase
+    .from('user_wardrobe_equipped')
+    .select('equipped, background_id')
+    .eq('user_id', store.userData.id)
+    .single()
+  if (!eq) return
+
+  if (eq.background_id) {
+    const { data: bg } = await supabase
+      .from('wardrobe_backgrounds')
+      .select('img_url')
+      .eq('id', eq.background_id)
+      .single()
+    if (bg?.img_url) equippedBgUrl.value = bg.img_url
+  }
+
+  if (!eq.equipped) return
+  const itemIds = Object.values(eq.equipped).filter(Boolean)
+  if (!itemIds.length) return
+
+  const { data: items } = await supabase
+    .from('wardrobe_items')
+    .select('id, category, img_url')
+    .in('id', itemIds)
+  if (!items) return
+
+  const layers = {}
+  for (const [cat, id] of Object.entries(eq.equipped)) {
+    const item = items.find(i => i.id === id)
+    if (item?.img_url) layers[cat] = item.img_url
+  }
+  dollLayers.value = layers
+}
 
 const MOCK_STATS = {
   historyCount: 0, daysJoined: 0, level: 1,
@@ -84,85 +141,124 @@ const changeTitle = async (newTitle) => {
   }
 }
 
-onMounted(() => { setTimeout(() => { isLoaded.value = true }, 100) })
+onMounted(() => {
+  loadDollData()
+  setTimeout(() => { isLoaded.value = true }, 100)
+})
 </script>
 
 <template>
   <div class="page-container">
+
+    <!-- 頂部 Header -->
+    <header class="home-header">
+      <img :src="BRAND_LOGO" class="header-logo" alt="劇光燈 Spotlight" />
+    </header>
+
     <div class="content-layer" :class="{ 'enter-active': isLoaded }">
 
-      <!-- Brand -->
-      <div class="brand-header fade-in-down">
-        <img :src="BRAND_LOGO" class="brand-logo" alt="劇光燈 Spotlight" />
-      </div>
+      <!-- 角色展示區（破框版） -->
+      <div class="showcase-wrap fade-in-up delay-1">
 
-      <!-- Hero Card -->
-      <div class="hero-card-container fade-in-up delay-1">
-        <div class="card-deco-top"></div>
-        <div class="card-shine"></div>
-
-        <div class="avatar-overlap">
-          <div class="avatar-ring floating">
-            <img
-              :src="store.userData?.picture_url || store.lineProfile?.pictureUrl || 'https://meee.com.tw/D45hJIi.PNG'"
-              class="avatar-img"
-            />
-          </div>
-          <div class="lv-badge">
-            <span class="lv-prefix">LV</span>
-            <span class="lv-num">{{ stats.level }}</span>
+        <!-- 頭貼（左，含等級 badge）懸浮於卡片上方 -->
+        <div class="showcase-top-float">
+          <div class="avatar-float-wrap">
+            <div class="avatar-small">
+              <img
+                v-if="!avatarError && (store.userData?.picture_url || store.lineProfile?.pictureUrl)"
+                :src="store.userData?.picture_url || store.lineProfile?.pictureUrl"
+                class="avatar-img-small"
+                @error="avatarError = true"
+              />
+              <div v-else class="avatar-placeholder">
+                {{ (store.userData?.display_name || store.lineProfile?.displayName || '?')[0] }}
+              </div>
+            </div>
+            <div class="avatar-lv-badge">
+              <span class="lv-prefix">LV</span>
+              <span class="lv-num">{{ stats.level }}</span>
+            </div>
           </div>
         </div>
 
-        <div class="card-body">
-          <h1 class="user-name">{{ store.userData?.display_name || '載入中...' }}</h1>
-
-          <div
-            class="user-title-box clickable"
-            :class="{ 'is-hidden': stats.isTitleHidden }"
-            @click="openTitleModal"
-          >
-            <span class="title-icon">✦</span>
-            <span class="title-text">{{ stats.title }}</span>
-            <span class="title-edit">✎</span>
+        <!-- 燈燈破框而出，點擊進入換裝 -->
+        <div class="showcase-doll-float" @click="$router.push('/paperdoll')">
+          <div class="showcase-doll">
+            <img v-if="dollLayers.cape" class="doll-layer doll-clothing" :src="dollLayers.cape" alt="" />
+            <img class="doll-layer doll-base" :src="baseImgUrl || FALLBACK_BASE" alt="燈燈" />
+            <template v-for="slot in dollLayerOrder" :key="slot">
+              <img v-if="dollLayers[slot]" class="doll-layer doll-clothing" :src="dollLayers[slot]" alt="" />
+            </template>
           </div>
+          <div class="doll-edit-badge">換裝</div>
+        </div>
 
-          <p class="user-uid">
-            <span class="uid-label">UID</span>
-            <span class="uid-val">{{ store.userData?.legacy_id || '000000' }}</span>
-          </p>
-
-          <div class="divider-line">
-            <span class="divider-gem">◆</span>
-          </div>
-
-          <div class="stats-matrix">
-            <div class="stat-cell">
-              <span class="stat-num">{{ stats.daysJoined }}</span>
-              <span class="stat-label">DAYS</span>
-            </div>
-            <div class="stat-divider"></div>
-            <div class="stat-cell">
-              <span class="stat-num highlight">{{ stats.historyCount }}</span>
-              <span class="stat-label">GAMES</span>
+        <!-- 縮短版卡片：只留背景 + 名字稱號 -->
+        <div class="showcase-card" :style="stageBg">
+          <div class="card-deco-top"></div>
+          <div class="showcase-spotlight"></div>
+          <div class="showcase-overlay">
+            <h1 class="user-name">{{ store.userData?.display_name || store.lineProfile?.displayName || '未知玩家' }}</h1>
+            <div
+              class="user-title-box"
+              :class="{ 'is-hidden': stats.isTitleHidden }"
+              @click="openTitleModal"
+            >
+              <span class="title-icon">✦</span>
+              <span class="title-text">{{ stats.title }}</span>
+              <span class="title-edit">✎</span>
             </div>
           </div>
+          <div class="card-deco-bottom"></div>
+        </div>
 
-          <div class="exp-section">
-            <div class="exp-header">
-              <span class="exp-label">EXP</span>
-              <span class="exp-fraction">
-                <span class="exp-cur">{{ stats.points }}</span>
-                <span class="exp-sep"> / </span>
-                <span class="exp-max">{{ stats.nextLevel }}</span>
-              </span>
+      </div>
+
+      <!-- UID -->
+      <div class="uid-row fade-in-up delay-2">
+        <span class="uid-label">UID</span>
+        <span class="uid-val">{{ store.userData?.legacy_id || '000000' }}</span>
+      </div>
+
+      <!-- EXP + 數據卡 -->
+      <div class="info-card fade-in-up delay-2">
+        <div class="card-deco-top"></div>
+
+        <div class="exp-section">
+          <div class="exp-top-row">
+            <span class="exp-label">EXPERIENCE</span>
+            <span class="exp-to-next">
+              還差 <strong>{{ Math.max(0, stats.nextLevel - stats.points) }}</strong> pt 升級
+            </span>
+          </div>
+          <div class="exp-main-row">
+            <span class="exp-cur-big">{{ stats.points }}</span>
+            <span class="exp-sep">/</span>
+            <span class="exp-max">{{ stats.nextLevel }} pt</span>
+          </div>
+          <div class="exp-bar-bg">
+            <div class="exp-bar-fill" :style="{ width: expPercentage }">
+              <div class="exp-shimmer"></div>
+              <div class="exp-glare"></div>
             </div>
-            <div class="exp-bar-bg">
-              <div class="exp-bar-fill" :style="{ width: expPercentage }">
-                <div class="exp-shimmer"></div>
-                <div class="exp-glare"></div>
-              </div>
-            </div>
+          </div>
+          <div class="exp-bottom-row">
+            <span class="exp-pct">{{ Math.round(parseFloat(expPercentage)) }}%</span>
+            <span class="exp-lv-hint">LV {{ stats.level }} → LV {{ stats.level + 1 }}</span>
+          </div>
+        </div>
+
+        <div class="divider-line"><span class="divider-gem">◆</span></div>
+
+        <div class="stats-matrix">
+          <div class="stat-cell">
+            <span class="stat-num">{{ stats.daysJoined }}</span>
+            <span class="stat-label">DAYS</span>
+          </div>
+          <div class="stat-divider"></div>
+          <div class="stat-cell">
+            <span class="stat-num highlight">{{ stats.historyCount }}</span>
+            <span class="stat-label">GAMES</span>
           </div>
         </div>
 
@@ -170,13 +266,13 @@ onMounted(() => { setTimeout(() => { isLoaded.value = true }, 100) })
       </div>
 
       <!-- 族譜入口 -->
-      <div class="home-action-area fade-in-up delay-2">
+      <div class="home-action-area fade-in-up delay-3">
         <button @click="showTreeModal = true" class="tree-entry-btn">
-          <div class="tree-btn-deco-top"></div>
+          <div class="card-deco-top"></div>
           <div class="tree-btn-inner">
             <div class="tree-btn-left">
               <div class="tree-btn-icon-wrap">
-                <span class="tree-btn-icon">🌳</span>
+                <Users :size="22" :stroke-width="1.5" class="tree-lucide-icon" />
               </div>
               <div class="tree-btn-text">
                 <span class="tree-btn-title">宗門弟子族譜</span>
@@ -189,7 +285,7 @@ onMounted(() => { setTimeout(() => { isLoaded.value = true }, 100) })
               </svg>
             </div>
           </div>
-          <div class="tree-btn-deco-bottom"></div>
+          <div class="card-deco-bottom"></div>
         </button>
       </div>
 
@@ -258,13 +354,14 @@ onMounted(() => { setTimeout(() => { isLoaded.value = true }, 100) })
 <style scoped>
 /* ── 基礎 ── */
 .page-container {
-  width: 100%; max-width: 800px; margin: 0 auto;
+  width: 100%;
   box-sizing: border-box; min-height: 100vh;
-  background-color: transparent; color: #fff; overflow: hidden;
+  background-color: transparent; color: #fff;
 }
 .content-layer {
-  display: flex; flex-direction: column; align-items: center;
-  padding: 0 20px 60px;
+  display: flex; flex-direction: column; align-items: stretch;
+  padding: 74px 16px 80px; gap: 14px;
+  max-width: 540px; margin: 0 auto;
 }
 
 /* ── 進場動畫 ── */
@@ -272,199 +369,249 @@ onMounted(() => { setTimeout(() => { isLoaded.value = true }, 100) })
 .fade-in-up   { opacity: 0; transform: translateY(30px);  transition: all 0.8s cubic-bezier(0.2, 0.8, 0.2, 1); }
 .enter-active .fade-in-down,
 .enter-active .fade-in-up { opacity: 1; transform: translateY(0); }
-.delay-1 { transition-delay: 0.2s; }
-.delay-2 { transition-delay: 0.4s; }
+.delay-1 { transition-delay: 0.15s; }
+.delay-2 { transition-delay: 0.3s; }
+.delay-3 { transition-delay: 0.45s; }
 
-/* ── Brand ── */
-.brand-header { margin-bottom: 100px; }
-.brand-logo {
-  height: 88px; object-fit: contain;
-  filter: drop-shadow(0 0 16px rgba(212,175,55,0.55));
+/* ── Header ── */
+.home-header {
+  position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+  display: flex; align-items: center; justify-content: center;
+  height: 60px; padding: 0 16px;
+  background: rgba(10, 10, 10, 0.75);
+  backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+  border-bottom: 1px solid rgba(212,175,55,0.2);
+  box-shadow: 0 4px 24px rgba(0,0,0,0.4);
+}
+.header-logo {
+  height: 52px; object-fit: contain;
+  filter: drop-shadow(0 0 10px rgba(212,175,55,0.45));
 }
 
-/* ── Hero Card ── */
-.hero-card-container {
-  width: 100%; max-width: 620px;
-  position: relative;
-  background: rgba(18, 18, 18, 0.72);
-  backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
-  border: 1px solid rgba(255,255,255,0.07);
-  border-radius: 28px;
-  box-shadow: 0 30px 70px rgba(0,0,0,0.65), inset 0 1px 0 rgba(255,255,255,0.05);
-  display: flex; flex-direction: column; align-items: center;
-  padding-bottom: 44px;
-}
-
-/* 頂部金線 */
+/* ── 共用金線裝飾 ── */
 .card-deco-top {
-  position: absolute; top: 0; left: 12%; right: 12%;
-  height: 2px;
+  position: absolute; top: 0; left: 12%; right: 12%; height: 2px;
   background: linear-gradient(90deg, transparent, #D4AF37 40%, #f5d77a 50%, #D4AF37 60%, transparent);
 }
-/* 底部細線 */
 .card-deco-bottom {
-  position: absolute; bottom: 0; left: 28%; right: 28%;
-  height: 1px;
+  position: absolute; bottom: 0; left: 28%; right: 28%; height: 1px;
   background: linear-gradient(90deg, transparent, #3a3a3a, transparent);
 }
-/* 卡片光澤 */
-.card-shine { display: none; }
 
-/* ── 頭像 ── */
-.avatar-overlap {
-  position: absolute; top: -90px;
-  display: flex; flex-direction: column; align-items: center;
+/* ── 角色展示（破框版） ── */
+.showcase-wrap {
+  position: relative;
+  width: 100%;
+}
+
+/* 頭貼 + 等級 badge：懸浮在卡片外，不被 overflow:hidden 截斷 */
+.showcase-top-float {
+  position: absolute;
+  top: 16px; left: 0; right: 0;
+  display: flex; justify-content: flex-start; align-items: center;
+  padding: 0 22px;
   z-index: 10;
 }
-.avatar-ring {
-  width: 176px; height: 176px;
-  border-radius: 50%; padding: 5px;
-  background: conic-gradient(from 0deg, #9e761c, #D4AF37, #f5d77a, #D4AF37, #9e761c 360deg);
-  box-shadow: 0 0 0 1px rgba(0,0,0,0.5), 0 16px 40px rgba(0,0,0,0.7), 0 0 30px rgba(212,175,55,0.2);
+
+/* 頭貼 + LV badge 群組 */
+.avatar-float-wrap {
+  position: relative;
+  animation: avatar-float 3.5s ease-in-out infinite;
 }
-.floating { animation: float 4s ease-in-out infinite; }
-@keyframes float { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-8px); } }
-.avatar-img {
+@keyframes avatar-float {
+  0%, 100% { transform: translateY(0); }
+  50%       { transform: translateY(-7px); }
+}
+.avatar-small {
+  width: 50px; height: 50px; border-radius: 50%;
+  border: 2px solid rgba(212,175,55,0.55);
+  overflow: hidden; flex-shrink: 0;
+  box-shadow: 0 4px 14px rgba(0,0,0,0.6), 0 0 0 0 rgba(212,175,55,0.3);
+}
+.avatar-img-small { width: 100%; height: 100%; object-fit: cover; }
+.avatar-placeholder {
   width: 100%; height: 100%;
-  object-fit: cover; border-radius: 50%;
-  border: 4px solid #111; background: #000;
+  display: flex; align-items: center; justify-content: center;
+  background: linear-gradient(135deg, #1e1a0e, #2a2210);
+  color: #D4AF37; font-size: 1.2rem; font-weight: 800;
+  letter-spacing: 0;
 }
 
-/* LV badge */
-.lv-badge {
-  margin-top: -16px; z-index: 11;
-  display: flex; align-items: baseline; gap: 3px;
+/* LV badge 疊在頭貼右下角 */
+.avatar-lv-badge {
+  position: absolute; bottom: -6px; right: -10px;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  width: 32px; height: 32px; border-radius: 50%;
   background: linear-gradient(135deg, #ffd84d, #D4AF37);
-  padding: 5px 16px 5px 14px; border-radius: 14px;
-  box-shadow: 0 4px 14px rgba(0,0,0,0.5), 0 0 10px rgba(212,175,55,0.3);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.6);
+  border: 1.5px solid rgba(0,0,0,0.3);
+  gap: 0; pointer-events: none;
 }
-.lv-prefix { color: rgba(0,0,0,0.6); font-size: 0.72rem; font-weight: 900; letter-spacing: 1px; }
-.lv-num    { color: #000; font-size: 1.1rem; font-weight: 900; letter-spacing: 0.5px; }
+.lv-prefix { color: rgba(0,0,0,0.5); font-size: 0.45rem; font-weight: 900; letter-spacing: 0.5px; line-height: 1; }
+.lv-num    { color: #000; font-size: 0.8rem; font-weight: 900; line-height: 1; }
 
-/* ── Card Body ── */
-.card-body {
-  width: 100%; box-sizing: border-box;
-  padding: 148px 32px 12px;
-  display: flex; flex-direction: column; align-items: center;
+/* 燈燈：絕對定位，頭部露出卡片上方 */
+.showcase-doll-float {
+  position: absolute;
+  top: 0; left: 50%;
+  transform: translateX(-50%);
+  z-index: 5;
+  cursor: pointer;
+}
+.doll-edit-badge {
+  position: absolute; bottom: 8px; right: 0;
+  background: rgba(0,0,0,0.65);
+  border: 1px solid rgba(212,175,55,0.5);
+  border-radius: 20px; padding: 3px 12px;
+  color: #D4AF37; font-size: 0.62rem; font-weight: 700; letter-spacing: 2px;
+  backdrop-filter: blur(6px);
+  white-space: nowrap;
+  pointer-events: none;
+}
+.showcase-doll {
+  position: relative; display: inline-block;
+  filter: drop-shadow(0 20px 48px rgba(0,0,0,0.9));
+}
+.doll-base { display: block; width: 200px; height: auto; }
+.doll-clothing {
+  position: absolute; top: 0; left: 0;
+  width: 100%; height: 100%;
+  object-fit: contain; pointer-events: none;
 }
 
+/* 縮短版卡片：留出頂部空間讓燈燈的身體進來 */
+.showcase-card {
+  margin-top: 200px;
+  width: 100%; position: relative;
+  border-radius: 24px; overflow: hidden;
+  border: 1px solid rgba(255,255,255,0.08);
+  box-shadow: 0 40px 80px rgba(0,0,0,0.7), inset 0 1px 0 rgba(255,255,255,0.06);
+  background: linear-gradient(170deg, #0f0c05 0%, #1c1507 45%, #0a0a0a 100%);
+  display: flex; flex-direction: column;
+}
+
+.showcase-spotlight {
+  position: absolute; top: -40px; left: 50%; transform: translateX(-50%);
+  width: 130%; height: 100%;
+  background: radial-gradient(ellipse at top, rgba(212,175,55,0.1) 0%, transparent 65%);
+  pointer-events: none;
+}
+
+/* overlay：頂部留空間給燈燈的下半身，名字在下方 */
+.showcase-overlay {
+  flex-shrink: 0; position: relative; z-index: 2;
+  background: linear-gradient(to top, rgba(0,0,0,0.95) 0%, rgba(0,0,0,0.7) 55%, transparent 100%);
+  padding: 140px 24px 28px;
+  display: flex; flex-direction: column; align-items: center; gap: 18px;
+}
 .user-name {
-  font-size: 2.5rem; font-weight: 800; color: #fff;
-  margin: 0 0 14px; text-align: center;
-  text-shadow: 0 2px 12px rgba(0,0,0,0.7);
-  letter-spacing: 1px; line-height: 1.15;
+  margin: 0; font-size: 2.2rem; font-weight: 800; color: #fff;
+  text-align: center; letter-spacing: 1px; line-height: 1.2;
+  text-shadow: 0 2px 16px rgba(0,0,0,0.8);
 }
-
-/* 稱號框 */
 .user-title-box {
   display: inline-flex; align-items: center; gap: 8px;
-  border: 1px solid rgba(212,175,55,0.5);
-  background: rgba(212,175,55,0.06);
+  border: 1px solid rgba(212,175,55,0.45);
+  background: rgba(0,0,0,0.45); backdrop-filter: blur(8px);
   padding: 7px 20px; border-radius: 10px;
-  margin-bottom: 12px;
-  transition: all 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
-  cursor: pointer; min-width: 120px; justify-content: center;
-  position: relative; overflow: hidden;
+  cursor: pointer; transition: all 0.25s ease;
 }
-.user-title-box::before {
-  content: '';
-  position: absolute; inset: 0;
-  background: linear-gradient(90deg, transparent, rgba(212,175,55,0.06), transparent);
-  transform: translateX(-100%);
-  transition: transform 0.5s ease;
-}
-.user-title-box:hover::before { transform: translateX(100%); }
-.user-title-box:hover {
-  background: rgba(212,175,55,0.14);
-  box-shadow: 0 0 18px rgba(212,175,55,0.2);
-  transform: translateY(-1px);
-}
+.user-title-box:hover { background: rgba(212,175,55,0.12); border-color: rgba(212,175,55,0.7); }
 .user-title-box:active { transform: scale(0.97); }
-.title-icon { color: #D4AF37; font-size: 0.65rem; opacity: 0.6; }
+.title-icon { color: #D4AF37; font-size: 0.6rem; opacity: 0.7; }
 .title-text { font-size: 1rem; color: #D4AF37; letter-spacing: 1.5px; }
-.title-edit { color: #D4AF37; font-size: 0.75rem; opacity: 0.4; margin-left: 2px; transition: opacity 0.2s; }
+.title-edit { color: #D4AF37; font-size: 0.7rem; opacity: 0.35; transition: opacity 0.2s; }
 .user-title-box:hover .title-edit { opacity: 0.8; }
-.user-title-box.is-hidden { border-color: rgba(255,255,255,0.1); background: rgba(255,255,255,0.03); }
+.user-title-box.is-hidden { border-color: rgba(255,255,255,0.08); background: rgba(0,0,0,0.3); }
 .user-title-box.is-hidden .title-text,
 .user-title-box.is-hidden .title-icon,
 .user-title-box.is-hidden .title-edit { color: #555; }
 
-/* UID */
-.user-uid {
-  display: inline-flex; align-items: center; gap: 8px;
-  background: rgba(0,0,0,0.35);
-  border: 1px solid rgba(212,175,55,0.25);
-  border-radius: 20px; padding: 6px 18px;
-  margin-top: 10px;
+/* UID row */
+.uid-row {
+  width: 100%; box-sizing: border-box;
+  display: flex; align-items: center; justify-content: center; gap: 10px;
+  background: rgba(0,0,0,0.3);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 24px; padding: 14px 24px;
 }
-.uid-label {
-  color: #666; font-size: 0.7rem; font-weight: 800;
-  letter-spacing: 2px; text-transform: uppercase;
-}
-.uid-val {
-  color: #D4AF37; font-size: 1rem; font-weight: 700;
-  font-family: monospace; letter-spacing: 2px;
-  text-shadow: 0 0 8px rgba(212,175,55,0.4);
+.uid-label { color: #555; font-size: 0.65rem; font-weight: 800; letter-spacing: 2px; }
+.uid-val { color: #D4AF37; font-size: 1rem; font-weight: 700; font-family: monospace; letter-spacing: 3px; }
+
+/* ── EXP + 數據卡 ── */
+.info-card {
+  width: 100%; position: relative;
+  background: rgba(18,18,18,0.75);
+  backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255,255,255,0.07);
+  border-radius: 24px;
+  box-shadow: 0 20px 50px rgba(0,0,0,0.5);
+  padding: 24px 24px 20px; box-sizing: border-box;
 }
 
 /* 分隔線 */
 .divider-line {
-  width: 100%; margin: 28px 0;
-  display: flex; align-items: center; gap: 0;
-  position: relative;
+  width: 100%; margin: 20px 0;
+  display: flex; align-items: center;
 }
 .divider-line::before,
 .divider-line::after {
   content: ''; flex: 1; height: 1px;
-  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.08));
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.06));
 }
-.divider-line::after {
-  background: linear-gradient(90deg, rgba(255,255,255,0.08), transparent);
-}
-.divider-gem { color: #D4AF37; font-size: 0.6rem; opacity: 0.4; margin: 0 12px; }
+.divider-line::after { background: linear-gradient(90deg, rgba(255,255,255,0.06), transparent); }
+.divider-gem { color: #D4AF37; font-size: 0.55rem; opacity: 0.35; margin: 0 12px; }
 
 /* 統計 */
 .stats-matrix {
   display: flex; align-items: center;
   width: 100%; justify-content: center;
-  margin-bottom: 32px; gap: 0;
 }
 .stat-cell {
   flex: 1; display: flex; flex-direction: column;
-  align-items: center; gap: 6px;
+  align-items: center; gap: 5px;
 }
 .stat-divider {
-  width: 1px; height: 50px;
+  width: 1px; height: 44px;
   background: linear-gradient(to bottom, transparent, rgba(255,255,255,0.1), transparent);
   margin: 0 16px;
 }
 .stat-num {
-  font-size: 3rem; font-weight: 800; color: #fff; line-height: 1;
-  letter-spacing: -1px;
+  font-size: 2.6rem; font-weight: 800; color: #fff; line-height: 1; letter-spacing: -1px;
 }
-.stat-num.highlight {
-  color: #D4AF37;
-  text-shadow: 0 0 20px rgba(212,175,55,0.4);
-}
-.stat-label {
-  font-size: 0.75rem; color: #555; font-weight: 700;
-  letter-spacing: 2.5px; text-transform: uppercase;
-}
+.stat-num.highlight { color: #D4AF37; text-shadow: 0 0 20px rgba(212,175,55,0.35); }
+.stat-label { font-size: 0.7rem; color: #555; font-weight: 700; letter-spacing: 2.5px; }
 
 /* 經驗條 */
-.exp-section { width: 100%; padding: 0 4px; box-sizing: border-box; }
-.exp-header {
-  display: flex; justify-content: space-between; align-items: baseline;
-  margin-bottom: 10px;
+.exp-section {
+  width: 100%; padding: 16px 20px; box-sizing: border-box;
+  background: rgba(212,175,55,0.04);
+  border: 1px solid rgba(212,175,55,0.12);
+  border-radius: 16px; margin-top: 4px;
 }
-.exp-label { color: #555; font-size: 0.75rem; font-weight: 700; letter-spacing: 2px; }
-.exp-fraction { display: flex; align-items: baseline; gap: 2px; }
-.exp-cur  { color: #D4AF37; font-size: 1rem; font-weight: 700; }
-.exp-sep  { color: #444; font-size: 0.85rem; }
-.exp-max  { color: #666; font-size: 0.85rem; }
+.exp-top-row {
+  display: flex; justify-content: space-between; align-items: center;
+  margin-bottom: 8px;
+}
+.exp-label { color: #555; font-size: 0.62rem; font-weight: 700; letter-spacing: 3px; }
+.exp-to-next { font-size: 0.72rem; color: #666; }
+.exp-to-next strong { color: #D4AF37; font-weight: 800; }
+.exp-main-row {
+  display: flex; align-items: baseline; gap: 6px; margin-bottom: 12px;
+}
+.exp-cur-big { color: #D4AF37; font-size: 2rem; font-weight: 900; line-height: 1; letter-spacing: -1px; }
+.exp-sep  { color: #333; font-size: 0.85rem; }
+.exp-max  { color: #555; font-size: 0.85rem; }
+.exp-bottom-row {
+  display: flex; justify-content: space-between; align-items: center;
+  margin-top: 8px;
+}
+.exp-pct { color: #D4AF37; font-size: 0.7rem; font-weight: 700; }
+.exp-lv-hint { color: #444; font-size: 0.68rem; letter-spacing: 0.5px; }
+
 .exp-bar-bg {
-  width: 100%; height: 8px;
-  background: #181818; border-radius: 4px; overflow: hidden;
+  width: 100%; height: 10px;
+  background: #181818; border-radius: 5px; overflow: hidden;
   box-shadow: inset 0 1px 4px rgba(0,0,0,0.6);
 }
 .exp-bar-fill {
@@ -492,8 +639,7 @@ onMounted(() => { setTimeout(() => { isLoaded.value = true }, 100) })
 
 /* ── 族譜按鈕 ── */
 .home-action-area {
-  width: 100%; max-width: 620px;
-  margin: 16px 0 0; box-sizing: border-box;
+  width: 100%; margin: 0; box-sizing: border-box;
 }
 .tree-entry-btn {
   width: 100%; position: relative;
@@ -511,14 +657,6 @@ onMounted(() => { setTimeout(() => { isLoaded.value = true }, 100) })
   box-shadow: 0 16px 40px rgba(0,0,0,0.5), 0 0 24px rgba(212,175,55,0.08);
 }
 .tree-entry-btn:active { transform: scale(0.98); }
-.tree-btn-deco-top {
-  position: absolute; top: 0; left: 12%; right: 12%; height: 1px;
-  background: linear-gradient(90deg, transparent, #D4AF37 40%, #f5d77a 50%, #D4AF37 60%, transparent);
-}
-.tree-btn-deco-bottom {
-  position: absolute; bottom: 0; left: 30%; right: 30%; height: 1px;
-  background: linear-gradient(90deg, transparent, #333, transparent);
-}
 .tree-btn-inner {
   display: flex; align-items: center;
   justify-content: space-between; padding: 18px 22px;
@@ -535,7 +673,7 @@ onMounted(() => { setTimeout(() => { isLoaded.value = true }, 100) })
   background: rgba(212,175,55,0.14);
   border-color: rgba(212,175,55,0.35);
 }
-.tree-btn-icon  { font-size: 1.6rem; line-height: 1; }
+.tree-lucide-icon { color: #D4AF37; }
 .tree-btn-text  { display: flex; flex-direction: column; gap: 4px; }
 .tree-btn-title { color: #D4AF37; font-size: 1.05rem; font-weight: 700; letter-spacing: 1px; }
 .tree-btn-sub   { color: #555; font-size: 0.78rem; letter-spacing: 0.3px; }
@@ -655,13 +793,27 @@ onMounted(() => { setTimeout(() => { isLoaded.value = true }, 100) })
 .epic-pop-enter-active, .epic-pop-leave-active { transition: opacity 0.3s ease; }
 .epic-pop-enter-from, .epic-pop-leave-to { opacity: 0; }
 
-@media (max-width: 480px) {
-  .brand-header { margin-bottom: 60px; }
-  .card-body { padding: 120px 20px 12px; }
-  .avatar-ring { width: 148px; height: 148px; }
-  .avatar-overlap { top: -74px; }
-  .user-name { font-size: 2rem; }
-  .stat-num { font-size: 2.4rem; }
-  .home-action-area { margin: 12px 0 0; }
+/* ── RWD ── */
+@media (max-width: 360px) {
+  .content-layer { padding: 74px 12px 80px; gap: 10px; max-width: 100%; }
+  .header-logo { height: 42px; }
+  .doll-base { width: 160px; }
+  .user-name { font-size: 1.6rem; }
+  .stat-num { font-size: 2rem; }
+  .exp-cur-big { font-size: 1.7rem; }
+  .showcase-card { margin-top: 160px; }
+  .showcase-top-float { top: 12px; padding: 0 14px; }
+  .showcase-overlay { padding: 110px 16px 20px; }
+}
+
+@media (min-width: 480px) {
+  .content-layer { padding: 74px 20px 80px; }
+  .header-logo { height: 58px; }
+  .doll-base { width: 220px; }
+  .user-name { font-size: 2.2rem; }
+  .stat-num { font-size: 2.6rem; }
+  .exp-cur-big { font-size: 2.2rem; }
+  .showcase-card { margin-top: 220px; }
+  .showcase-overlay { padding: 150px 28px 32px; }
 }
 </style>

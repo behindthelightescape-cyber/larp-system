@@ -12,6 +12,7 @@ import AdminAchievements from '../components/AdminAchievements.vue'
 import AdminPromoCodes from '../components/AdminPromoCodes.vue' 
 import AdminAutoRewards from '../components/AdminAutoRewards.vue' // 🚀 1. 引入自動派發中控台
 import AdminPushLogs from '../components/AdminPushLogs.vue'
+import AdminPaperDoll from '../components/AdminPaperDoll.vue'
 
 const session = ref(null)
 const isLoading = ref(true)
@@ -105,6 +106,11 @@ const changeTab = (tabName) => {
     isSidebarOpen.value = false
   }
 }
+
+const collapsedGroups = ref({})
+const toggleGroup = (key) => {
+  collapsedGroups.value[key] = !collapsedGroups.value[key]
+}
 </script>
 
 <template>
@@ -135,41 +141,78 @@ const changeTab = (tabName) => {
       </div>
 
       <nav class="side-nav">
-        <button class="nav-btn" :class="{ active: currentTab === 'dashboard' }" @click="changeTab('dashboard')">
-          <span class="icon">📊</span> 戰情大盤
-        </button>
-        <button class="nav-btn" :class="{ active: currentTab === 'analytics' }" @click="changeTab('analytics')">
-          <span class="icon">📈</span> 深度分析
-        </button>
-        <button class="nav-btn" :class="{ active: currentTab === 'game' }" @click="changeTab('game')">
-          <span class="icon">⚡</span> 批次開場
-        </button>
-        <button class="nav-btn" :class="{ active: currentTab === 'session' }" @click="changeTab('session')">
-          <span class="icon">📅</span> 場次大廳
-        </button>
-        <button class="nav-btn" :class="{ active: currentTab === 'member' }" @click="changeTab('member')">
-          <span class="icon">👥</span> 會員查詢
-        </button>
-        <button class="nav-btn" :class="{ active: currentTab === 'coupon' }" @click="changeTab('coupon')">
-          <span class="icon">🎟️</span> 票券發送
-        </button>
-        <button class="nav-btn" :class="{ active: currentTab === 'promo_code' }" @click="changeTab('promo_code')">
-          <span class="icon">🎁</span> 兌換碼設定
-        </button>
-        <button class="nav-btn" :class="{ active: currentTab === 'push_log' }" @click="changeTab('push_log')">
-          <span class="icon">📡</span> 系統推播監控
-        </button>
-        
-        <button class="nav-btn" :class="{ active: currentTab === 'auto_reward' }" @click="changeTab('auto_reward')">
-          <span class="icon">⚙️</span> 自動派發設定
-        </button>
 
-        <button class="nav-btn" :class="{ active: currentTab === 'script' }" @click="changeTab('script')">
-          <span class="icon">📜</span> 劇本管理
+        <button class="nav-group-label" @click="toggleGroup('overview')">
+          <span>總覽</span>
+          <span class="group-arrow" :class="{ collapsed: collapsedGroups['overview'] }">›</span>
         </button>
-        <button class="nav-btn" :class="{ active: currentTab === 'achievement' }" @click="changeTab('achievement')">
-          <span class="icon">🏆</span> 成就鑄造
+        <template v-if="!collapsedGroups['overview']">
+          <button class="nav-btn" :class="{ active: currentTab === 'dashboard' }" @click="changeTab('dashboard')">
+            <span class="icon">📊</span> 戰情大盤
+          </button>
+          <button class="nav-btn" :class="{ active: currentTab === 'analytics' }" @click="changeTab('analytics')">
+            <span class="icon">📈</span> 深度分析
+          </button>
+        </template>
+
+        <button class="nav-group-label" @click="toggleGroup('session')">
+          <span>場次管理</span>
+          <span class="group-arrow" :class="{ collapsed: collapsedGroups['session'] }">›</span>
         </button>
+        <template v-if="!collapsedGroups['session']">
+          <button class="nav-btn" :class="{ active: currentTab === 'game' }" @click="changeTab('game')">
+            <span class="icon">⚡</span> 批次開場
+          </button>
+          <button class="nav-btn" :class="{ active: currentTab === 'session' }" @click="changeTab('session')">
+            <span class="icon">📅</span> 場次大廳
+          </button>
+        </template>
+
+        <button class="nav-group-label" @click="toggleGroup('player')">
+          <span>玩家管理</span>
+          <span class="group-arrow" :class="{ collapsed: collapsedGroups['player'] }">›</span>
+        </button>
+        <template v-if="!collapsedGroups['player']">
+          <button class="nav-btn" :class="{ active: currentTab === 'member' }" @click="changeTab('member')">
+            <span class="icon">👥</span> 會員查詢
+          </button>
+          <button class="nav-btn" :class="{ active: currentTab === 'coupon' }" @click="changeTab('coupon')">
+            <span class="icon">🎟️</span> 票券發送
+          </button>
+          <button class="nav-btn" :class="{ active: currentTab === 'promo_code' }" @click="changeTab('promo_code')">
+            <span class="icon">🎁</span> 兌換碼設定
+          </button>
+        </template>
+
+        <button class="nav-group-label" @click="toggleGroup('auto')">
+          <span>自動化</span>
+          <span class="group-arrow" :class="{ collapsed: collapsedGroups['auto'] }">›</span>
+        </button>
+        <template v-if="!collapsedGroups['auto']">
+          <button class="nav-btn" :class="{ active: currentTab === 'auto_reward' }" @click="changeTab('auto_reward')">
+            <span class="icon">⚙️</span> 自動派發設定
+          </button>
+          <button class="nav-btn" :class="{ active: currentTab === 'push_log' }" @click="changeTab('push_log')">
+            <span class="icon">📡</span> 推播監控
+          </button>
+        </template>
+
+        <button class="nav-group-label" @click="toggleGroup('content')">
+          <span>內容管理</span>
+          <span class="group-arrow" :class="{ collapsed: collapsedGroups['content'] }">›</span>
+        </button>
+        <template v-if="!collapsedGroups['content']">
+          <button class="nav-btn" :class="{ active: currentTab === 'script' }" @click="changeTab('script')">
+            <span class="icon">📜</span> 劇本管理
+          </button>
+          <button class="nav-btn" :class="{ active: currentTab === 'achievement' }" @click="changeTab('achievement')">
+            <span class="icon">🏆</span> 成就鑄造
+          </button>
+          <button class="nav-btn" :class="{ active: currentTab === 'paperdoll' }" @click="changeTab('paperdoll')">
+            <span class="icon">👗</span> 燈燈造型室
+          </button>
+        </template>
+
       </nav>
 
       <div class="sidebar-footer">
@@ -204,7 +247,8 @@ const changeTab = (tabName) => {
               currentTab === 'coupon' ? '發送票券 (導彈系統)' : 
               currentTab === 'promo_code' ? '萬用兌換碼印鈔機' :
               currentTab === 'auto_reward' ? '全自動派發中控台' : 
-              currentTab === 'achievement' ? '成就鑄造廠' : '劇本管理' 
+              currentTab === 'achievement' ? '成就鑄造廠' :
+              currentTab === 'paperdoll' ? '燈燈造型室' : '劇本管理'
             }}
           </h2>
         </div>
@@ -260,6 +304,10 @@ const changeTab = (tabName) => {
         <AdminAchievements />
       </div>
 
+      <div v-if="currentTab === 'paperdoll'" class="panel active">
+        <AdminPaperDoll />
+      </div>
+
     </main>
   </div>
 </template>
@@ -277,7 +325,22 @@ const changeTab = (tabName) => {
 .sidebar-header { padding: 25px 20px; border-bottom: 1px solid #222; display: flex; align-items: center; justify-content: space-between; }
 .brand-title { color: #D4AF37; margin: 0; font-size: 1.2rem; font-weight: 800; letter-spacing: 1px; }
 .mobile-close-btn { display: none; background: transparent; border: none; color: #888; font-size: 1.5rem; cursor: pointer; }
-.side-nav { flex: 1; padding: 20px 15px; display: flex; flex-direction: column; gap: 8px; overflow-y: auto; }
+.side-nav { flex: 1; padding: 16px 15px; display: flex; flex-direction: column; gap: 2px; overflow-y: auto; }
+.nav-group-label {
+  display: flex; justify-content: space-between; align-items: center;
+  font-size: 0.62rem; font-weight: 700; letter-spacing: 2px;
+  color: #444; text-transform: uppercase;
+  padding: 14px 8px 4px;
+  background: none; border: none; cursor: pointer; width: 100%;
+  transition: color 0.2s;
+}
+.nav-group-label:hover { color: #666; }
+.group-arrow {
+  font-size: 1rem; color: #444; line-height: 1;
+  transform: rotate(90deg); transition: transform 0.2s ease;
+  display: inline-block;
+}
+.group-arrow.collapsed { transform: rotate(0deg); }
 .nav-btn { background: transparent; border: none; color: #888; text-align: left; padding: 12px 15px; border-radius: 8px; font-size: 1rem; cursor: pointer; transition: all 0.2s; display: flex; align-items: center; }
 .nav-btn .icon { margin-right: 12px; font-size: 1.1rem; }
 .nav-btn:hover { background: #1a1a1a; color: #ddd; }

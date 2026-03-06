@@ -7,8 +7,13 @@ import BottomNav from './components/BottomNav.vue'
 const userStore = useUserStore()
 
 onMounted(() => {
-  if (window.location.hash.includes('#/admin')) {
+  if (window.location.hash.includes('#/admin') || window.location.hash.includes('#/paperdoll')) {
     console.log('🕵️‍♂️ 偵測到老闆走後台通道，跳過 LINE 看門狗！')
+    userStore.isLoading = false
+    return
+  }
+  if (import.meta.env.DEV) {
+    console.log('🛠️ 本地開發模式，跳過 LIFF 初始化')
     userStore.isLoading = false
     return
   }

@@ -79,7 +79,10 @@ const confirmRedeem = async () => {
 <template>
   <div class="page-container">
     <div class="header-area">
-      <h2 class="page-title">我的票券</h2>
+      <div class="title-wrap">
+        <span class="title-sub">SPOTLIGHT</span>
+        <h2 class="page-title">票券匣</h2>
+      </div>
       <span class="count-badge">
         {{ displayCoupons.filter(c => c.uiStatus === 'active').length }} 張可用
       </span>
@@ -186,25 +189,36 @@ const confirmRedeem = async () => {
 
 <style scoped>
 .page-container {
-  width: 100%;
-  max-width: 800px;
-  margin: 0 auto;
+  width: 100%; max-width: 800px; margin: 0 auto;
   box-sizing: border-box;
-  padding: 16px;
-  padding-bottom: 100px;
+  padding: 0 16px 100px;
   min-height: 100vh;
-  background-color: transparent;
-  color: #fff;
+  background-color: transparent; color: #fff;
 }
 
 .header-area {
-  display: flex; justify-content: space-between; align-items: center;
-  margin-bottom: 20px; padding: 0 4px;
-  border-bottom: 1px solid rgba(255,255,255,0.1);
-  padding-bottom: 12px;
+  display: flex; justify-content: space-between; align-items: flex-end;
+  padding: 28px 4px 14px;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+  margin-bottom: 20px;
 }
-.page-title { font-size: 1.5rem; font-weight: 700; color: #D4AF37; margin: 0; }
-.count-badge { font-size: 0.9rem; color: #888; background: rgba(0,0,0,0.5); padding: 4px 10px; border-radius: 20px; }
+.title-wrap { display: flex; flex-direction: column; gap: 2px; }
+.title-sub {
+  font-size: 0.62rem; font-weight: 700;
+  letter-spacing: 4px; color: #D4AF37; opacity: 0.7;
+}
+.page-title {
+  margin: 0; font-size: 1.8rem; font-weight: 900; letter-spacing: 3px;
+  background: linear-gradient(135deg, #fff 0%, #fceabb 40%, #D4AF37 100%);
+  -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+}
+.count-badge {
+  color: #888; font-size: 0.85rem;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.08);
+  padding: 3px 12px; border-radius: 20px;
+  margin-bottom: 4px;
+}
 
 .loading-state { display: flex; justify-content: center; padding: 40px 0; }
 .spinner { width: 30px; height: 30px; border: 3px solid rgba(212, 175, 55, 0.2); border-top-color: #D4AF37; border-radius: 50%; animation: spin 1s linear infinite; }

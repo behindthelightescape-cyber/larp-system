@@ -1,11 +1,14 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import { useUserStore } from '../stores/user'
-import { supabase } from '../supabase' 
+import { supabase } from '../supabase'
+import { Loader2, BookOpen, ScrollText } from 'lucide-vue-next'
 
 const store = useUserStore()
 const showModal = ref(false)
 const selectedGame = ref({})
+const isLoading = ref(true)
+const hasError = ref(false)
 
 const DEFAULT_COVER = 'https://images.unsplash.com/photo-1514467953502-5a7820e3efb4?w=600'
 
@@ -14,6 +17,7 @@ onMounted(async () => {
   
   if (!currentUserId) {
     console.error('小四警告：抓不到玩家 ID！你確定你登入了嗎？還是 store.userData 裡面沒有 id 欄位？')
+    isLoading.value = false
     return
   }
 
@@ -89,6 +93,9 @@ try {
     }
   } catch (e) {
     console.error('小四警告：撈取歷史紀錄炸了！', e)
+    hasError.value = true
+  } finally {
+    isLoading.value = false
   }
 })
 
@@ -105,15 +112,36 @@ const openDetail = (game) => {
 <template>
   <div class="page-container">
     <div class="header-area">
-      <h2 class="page-title">冒險回憶</h2>
-      <span class="count-badge">{{ displayList.length }} 場</span>
+      <div class="title-wrap">
+        <span class="title-sub">SPOTLIGHT</span>
+        <h2 class="page-title">冒險回憶</h2>
+      </div>
+      <span v-if="!isLoading && !hasError" class="count-badge">{{ displayList.length }} 場</span>
     </div>
-    
-    <div class="history-list">
-      <div 
-        v-for="item in displayList" 
-        :key="item.id" 
-        class="game-card" 
+
+    <!-- Loading -->
+    <div v-if="isLoading" class="state-block">
+      <Loader2 :size="28" :stroke-width="1.5" class="spin-icon" />
+      <span>讀取冒險紀錄中...</span>
+    </div>
+
+    <!-- Error -->
+    <div v-else-if="hasError" class="state-block">
+      <BookOpen :size="36" :stroke-width="1.2" class="state-icon" />
+      <span>紀錄讀取失敗，請稍後再試</span>
+    </div>
+
+    <!-- Empty -->
+    <div v-else-if="displayList.length === 0" class="state-block">
+      <BookOpen :size="36" :stroke-width="1.2" class="state-icon" />
+      <span>還沒有冒險紀錄，快去參加遊戲吧！</span>
+    </div>
+
+    <div v-else class="history-list">
+      <div
+        v-for="item in displayList"
+        :key="item.id"
+        class="game-card"
         @click="openDetail(item)"
       >
         <div class="cover-wrapper">
@@ -174,7 +202,7 @@ const openDetail = (game) => {
 
                 <div v-if="selectedGame.story_memory" class="story-section">
                   <div class="section-header">
-                    <span class="section-icon">📜</span>
+                    <ScrollText :size="16" :stroke-width="1.8" class="section-icon" />
                     <span class="section-title">劇本手札</span>
                   </div>
                   <div class="story-card">
@@ -195,25 +223,47 @@ const openDetail = (game) => {
 
 <style scoped>
 /* === 頁面基礎 === */
-.page-container { 
-  width: 100%;
-  max-width: 800px; 
-  margin: 0 auto;
+.page-container {
+  width: 100%; max-width: 800px; margin: 0 auto;
   box-sizing: border-box;
-  padding: 16px; 
-  padding-bottom: 100px; 
+  padding: 0 16px 100px;
   min-height: 100vh;
-  background-color: transparent; 
-  color: #fff;
+  background-color: transparent; color: #fff;
 }
 
+/* === Header === */
 .header-area {
-  display: flex; align-items: center; justify-content: space-between;
-  margin-bottom: 20px; padding: 0 4px;
-  border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 12px;
+  display: flex; align-items: flex-end; justify-content: space-between;
+  padding: 28px 4px 14px;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+  margin-bottom: 20px;
 }
-.page-title { font-size: 1.5rem; font-weight: 700; color: #D4AF37; margin: 0; }
-.count-badge { color: #888; font-size: 0.9rem; background: rgba(0,0,0,0.5); padding: 2px 10px; border-radius: 12px; }
+.title-wrap { display: flex; flex-direction: column; gap: 2px; }
+.title-sub {
+  font-size: 0.62rem; font-weight: 700;
+  letter-spacing: 4px; color: #D4AF37; opacity: 0.7;
+}
+.page-title {
+  margin: 0; font-size: 1.8rem; font-weight: 900; letter-spacing: 3px;
+  background: linear-gradient(135deg, #fff 0%, #fceabb 40%, #D4AF37 100%);
+  -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+}
+.count-badge {
+  color: #888; font-size: 0.85rem;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.08);
+  padding: 3px 12px; border-radius: 20px;
+  margin-bottom: 4px;
+}
+
+/* === 狀態畫面 === */
+.state-block {
+  display: flex; flex-direction: column; align-items: center;
+  gap: 14px; padding: 80px 20px; color: #555; font-size: 0.9rem;
+}
+.state-icon { color: #333; }
+@keyframes spin { 100% { transform: rotate(360deg); } }
+.spin-icon { color: #D4AF37; animation: spin 1.2s linear infinite; }
 
 /* === 列表卡片 === */
 .game-card {
@@ -295,8 +345,8 @@ const openDetail = (game) => {
 .info-item .value { font-size: 0.95rem; color: #eee; font-weight: 500; line-height: 1.4; }
 .info-item.highlight .value { color: #D4AF37; font-weight: bold; }
 .story-section { margin-top: 10px; }
-.section-header { display: flex; align-items: center; margin-bottom: 10px; }
-.section-icon { font-size: 1.1rem; margin-right: 6px; }
+.section-header { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+.section-icon { color: #D4AF37; flex-shrink: 0; }
 .section-title { font-size: 1rem; color: #D4AF37; font-weight: bold; }
 .story-card {
   background: linear-gradient(145deg, #1f1f1f, #181818);

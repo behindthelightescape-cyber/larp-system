@@ -1,5 +1,6 @@
 <script setup>
 import { ref, computed } from 'vue'
+import { Crown } from 'lucide-vue-next'
 
 const props = defineProps({ node: Object })
 
@@ -35,8 +36,8 @@ const genColor = computed(() => {
 
           <!-- 標籤行 -->
           <div class="t-meta">
-            <span v-if="node.isRoot" class="t-badge" style="background:rgba(212,175,55,0.2);color:#D4AF37;border-color:rgba(212,175,55,0.4)">
-              👑 宗主
+            <span v-if="node.isRoot" class="t-badge t-badge-root">
+              <Crown :size="9" :stroke-width="2" /> 宗主
             </span>
             <template v-else>
               <span class="t-badge" :style="{ color: genColor, borderColor: genColor + '55', background: genColor + '18' }">
@@ -133,6 +134,7 @@ const genColor = computed(() => {
 }
 
 .t-badge {
+  display: inline-flex; align-items: center; gap: 2px;
   padding: 1px 5px;
   border-radius: 4px;
   font-size: 9px;
@@ -140,6 +142,7 @@ const genColor = computed(() => {
   border: 1px solid;
   white-space: nowrap;
 }
+.t-badge-root { background: rgba(212,175,55,0.2); color: #D4AF37; border-color: rgba(212,175,55,0.4); }
 
 .t-status {
   font-size: 9px;

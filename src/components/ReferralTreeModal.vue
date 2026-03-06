@@ -3,12 +3,14 @@ import { ref, onMounted, computed } from 'vue'
 import { useUserStore } from '../stores/user'
 import { supabase } from '../supabase'
 import TreeNode from './TreeNode.vue'
+import { GitBranch, Network, Sparkles, Shield, Swords, ArrowLeft, Loader2, Leaf, CheckCircle2, Clock, ScrollText } from 'lucide-vue-next'
 
 const props = defineProps({ show: Boolean })
 const emit = defineEmits(['close'])
 const store = useUserStore()
 
 const isLoading = ref(true)
+const hasError = ref(false)
 const viewMode = ref('flat')
 const isFetchingPanorama = ref(false)
 
@@ -25,6 +27,8 @@ onMounted(async () => {
   if (store.userData) {
     viewMode.value = 'flat'
     await fetchDirectFamily()
+  } else {
+    isLoading.value = false
   }
 })
 
@@ -53,6 +57,7 @@ const fetchDirectFamily = async () => {
     }
   } catch (error) {
     console.error('讀取直系族譜失敗:', error)
+    hasError.value = true
   } finally {
     isLoading.value = false
   }
@@ -133,18 +138,29 @@ const closeModal = () => emit('close')
           <!-- Header（固定不捲動） -->
           <div class="tree-header">
             <h2 class="tree-title">
-              {{ viewMode === 'flat' ? '🌳 宗門直系族譜' : '🌌 宗門全景圖' }}
+              <GitBranch v-if="viewMode === 'flat'" :size="18" :stroke-width="1.8" class="title-icon" />
+              <Network v-else :size="18" :stroke-width="1.8" class="title-icon" />
+              {{ viewMode === 'flat' ? '宗門直系族譜' : '宗門全景圖' }}
             </h2>
             <button class="close-btn" @click="closeModal">✕</button>
           </div>
 
           <!-- 全局 loading -->
-          <div v-if="isLoading" class="loading-state">讀取宗門卷宗中...</div>
+          <div v-if="isLoading" class="loading-state">
+            <Loader2 :size="28" :stroke-width="1.5" class="spin-icon" />
+            <div style="margin-top:10px">讀取宗門卷宗中...</div>
+          </div>
+
+          <!-- 無資料 / 錯誤狀態 -->
+          <div v-else-if="!store.userData || hasError" class="empty-full-state">
+            <ScrollText :size="36" :stroke-width="1.2" class="empty-full-icon" />
+            <div class="empty-full-text">{{ hasError ? '卷宗讀取失敗，請稍後再試' : '尚未登入，無法查閱族譜' }}</div>
+          </div>
 
           <!-- 直系列表：可捲動 -->
           <div v-else-if="viewMode === 'flat'" class="tree-body">
             <div class="tree-section">
-              <h3 class="section-title">✨ 我的引路人</h3>
+              <h3 class="section-title"><Sparkles :size="14" :stroke-width="1.8" class="sec-icon" /> 我的引路人</h3>
               <div v-if="master" class="user-card master-card">
                 <img :src="master.picture_url || defaultAvatar" class="avatar" />
                 <div class="user-info">
@@ -156,7 +172,7 @@ const closeModal = () => emit('close')
             </div>
 
             <div class="tree-section">
-              <h3 class="section-title">🛡️ 我的直系弟子</h3>
+              <h3 class="section-title"><Shield :size="14" :stroke-width="1.8" class="sec-icon" /> 我的直系弟子</h3>
               <div class="stats-grid">
                 <div class="stat-box">
                   <div class="stat-num">{{ totalDisciples }}</div>
@@ -171,14 +187,14 @@ const closeModal = () => emit('close')
 
             <div class="tree-section">
               <div class="section-header-flex">
-                <h3 class="section-title" style="border:none;margin:0">⚔️ 直系弟子列表</h3>
+                <h3 class="section-title" style="border:none;margin:0"><Swords :size="14" :stroke-width="1.8" class="sec-icon" /> 直系弟子列表</h3>
                 <button v-if="directDisciples.length > 0" class="btn-panorama" @click="fetchPanoramaTree">
-                  🌌 宗門全景
+                  <Network :size="13" :stroke-width="1.8" class="btn-icon" /> 宗門全景
                 </button>
               </div>
               <div v-if="directDisciples.length === 0" class="empty-text" style="padding:30px 0">
-                <div style="font-size:2.5rem;margin-bottom:10px">🍃</div>
-                目前還沒有門徒...<br>趕快去分享你的推坑碼吧！
+                <Leaf :size="36" :stroke-width="1.2" class="empty-icon" />
+                <div style="margin-top:10px">目前還沒有門徒...<br>趕快去分享你的推坑碼吧！</div>
               </div>
               <div v-else class="disciples-list mt-3">
                 <div v-for="d in directDisciples" :key="d.id" class="user-card">
@@ -188,7 +204,9 @@ const closeModal = () => emit('close')
                     <span class="u-date">拜師日: {{ d.created_at.split('T')[0] }}</span>
                   </div>
                   <div class="status-badge" :class="d.total_exp > 0 ? 'status-active' : 'status-pending'">
-                    {{ d.total_exp > 0 ? '🟢 已出師' : '⏳ 見習' }}
+                    <CheckCircle2 v-if="d.total_exp > 0" :size="11" :stroke-width="2" />
+                    <Clock v-else :size="11" :stroke-width="2" />
+                    {{ d.total_exp > 0 ? '已出師' : '見習' }}
                   </div>
                 </div>
               </div>
@@ -200,14 +218,14 @@ const closeModal = () => emit('close')
 
             <!-- 全景 sub-header（固定） -->
             <div class="panorama-header">
-              <button class="btn-back" @click="viewMode = 'flat'">⬅ 返回列表</button>
+              <button class="btn-back" @click="viewMode = 'flat'"><ArrowLeft :size="14" :stroke-width="2" class="btn-icon" /> 返回列表</button>
               <span class="panorama-hint">可上下左右滑動</span>
             </div>
 
             <!-- loading -->
             <div v-if="isFetchingPanorama" class="loading-state">
-              <div style="font-size:2rem;margin-bottom:10px">🔮</div>
-              正在推演宗門血脈，請稍候...
+              <Loader2 :size="32" :stroke-width="1.5" class="spin-icon" />
+              <div style="margin-top:10px">正在推演宗門血脈，請稍候...</div>
             </div>
 
             <!-- 雙向捲動畫布 -->
@@ -256,7 +274,14 @@ const closeModal = () => emit('close')
   border-radius: 24px 24px 0 0;
   flex-shrink: 0; /* 不壓縮 */
 }
-.tree-title { margin: 0; color: #D4AF37; font-size: 1.2rem; }
+.tree-title { margin: 0; color: #D4AF37; font-size: 1.2rem; display: flex; align-items: center; gap: 8px; }
+.title-icon { flex-shrink: 0; }
+.sec-icon { vertical-align: middle; margin-right: 2px; opacity: 0.85; }
+.btn-icon { vertical-align: middle; }
+.empty-icon { color: #444; display: block; margin: 0 auto; }
+.status-badge { display: flex; align-items: center; gap: 4px; }
+@keyframes spin { 100% { transform: rotate(360deg); } }
+.spin-icon { color: #D4AF37; animation: spin 1.2s linear infinite; }
 .close-btn {
   background: #222; border: none; color: #888;
   width: 32px; height: 32px; border-radius: 50%;
@@ -272,7 +297,17 @@ const closeModal = () => emit('close')
   padding: 16px;
   min-height: 0; /* flex 子元素必須加，否則不會縮小 */
 }
-.loading-state { text-align: center; color: #888; padding: 50px 0; flex-shrink: 0; }
+.loading-state {
+  text-align: center; color: #888; padding: 50px 0; flex-shrink: 0;
+  display: flex; flex-direction: column; align-items: center;
+}
+.empty-full-state {
+  flex: 1; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 14px;
+  padding: 40px 24px;
+}
+.empty-full-icon { color: #333; }
+.empty-full-text { color: #555; font-size: 0.9rem; text-align: center; line-height: 1.6; }
 
 /* ── 全景模式：佔滿剩餘高度，內部再分兩層 ── */
 .panorama-mode {

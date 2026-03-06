@@ -5,6 +5,7 @@
 import { ref, watch, computed } from 'vue'
 import { useUserStore } from '../stores/user'
 import { supabase } from '../supabase'
+import { User, Gift, Lock, Ticket, UserPlus, UserCheck, HelpCircle, Copy, Sparkles, Ban, Sprout, Crown, Loader2 } from 'lucide-vue-next'
 
 // ─────────────────────────────────────────
 //  Store
@@ -210,18 +211,15 @@ const bindFriendCode = () => withLoading(isBindingCode, async () => {
 
     <!-- ── 頁首 ── -->
     <header class="page-header">
-      <div class="header-eyebrow">
-        <span class="eyebrow-line"></span>
-        <span class="eyebrow-text">PROFILE</span>
-        <span class="eyebrow-line"></span>
+      <div class="title-wrap">
+        <span class="title-sub">SPOTLIGHT</span>
+        <h1 class="page-title">個人設定</h1>
       </div>
-      <h1 class="page-title">個人設定</h1>
-      <p class="page-subtitle">管理你的冒險者資料與推坑計畫</p>
     </header>
 
     <!-- ── 載入中 ── -->
     <div v-if="store.isLoading" class="loading-state">
-      <div class="spinner"></div>
+      <Loader2 :size="36" :stroke-width="1.5" class="spin-icon" />
       <span>載入中…</span>
     </div>
 
@@ -232,7 +230,7 @@ const bindFriendCode = () => withLoading(isBindingCode, async () => {
       <section class="card">
         <div class="card-shimmer"></div>
         <div class="section-head">
-          <span class="section-icon">👤</span>
+          <User :size="17" :stroke-width="1.8" class="section-icon" />
           <span>個人資料</span>
         </div>
 
@@ -258,11 +256,11 @@ const bindFriendCode = () => withLoading(isBindingCode, async () => {
             </label>
             <template v-if="!isBirthdayLocked">
               <input v-model="form.birthday" type="date" class="field-input field-input--date" />
-              <p class="field-hint field-hint--gold">🎁 首次填寫生日並完善資料，將獲得驚喜禮物！</p>
+              <p class="field-hint field-hint--gold"><Gift :size="13" :stroke-width="1.8" class="hint-icon" /> 首次填寫生日並完善資料，將獲得驚喜禮物！</p>
             </template>
             <template v-else>
               <div class="locked-field">
-                <span class="lock-icon">🔒</span>
+                <Lock :size="15" :stroke-width="1.8" class="lock-icon" />
                 <span>{{ form.birthday }}</span>
               </div>
               <p class="field-hint">生日已設定，如需修改請聯繫客服。</p>
@@ -290,7 +288,7 @@ const bindFriendCode = () => withLoading(isBindingCode, async () => {
       <section class="card">
         <div class="card-shimmer"></div>
         <div class="section-head">
-          <span class="section-icon">🎁</span>
+          <Ticket :size="17" :stroke-width="1.8" class="section-icon" />
           <span>官方活動代碼</span>
         </div>
         <p class="card-desc">輸入官方發布的專屬活動代碼來獲取折價券！</p>
@@ -315,10 +313,12 @@ const bindFriendCode = () => withLoading(isBindingCode, async () => {
 
         <div class="referral-head">
           <div class="section-head section-head--gold">
-            <span class="section-icon">🤝</span>
+            <UserPlus :size="17" :stroke-width="1.8" class="section-icon" />
             <span>好友推坑計畫</span>
           </div>
-          <button class="rules-btn" @click="showRulesModal = true">❓ 規則</button>
+          <button class="rules-btn" @click="showRulesModal = true">
+            <HelpCircle :size="13" :stroke-width="1.8" /> 規則
+          </button>
         </div>
 
         <p class="card-desc">分享專屬碼給新手，完成首場遊戲後雙方都能獲得獎勵！</p>
@@ -332,16 +332,17 @@ const bindFriendCode = () => withLoading(isBindingCode, async () => {
               <span class="code-dot"></span>
               <span class="code-text">{{ myReferralCode }}</span>
             </div>
-            <button class="copy-btn" @click="copyMyCode">📋 複製</button>
+            <button class="copy-btn" @click="copyMyCode"><Copy :size="13" :stroke-width="1.8" /> 複製</button>
           </div>
 
           <button v-else-if="!isNewbie" class="generate-btn"
                   @click="generateMyCode" :disabled="isGeneratingCode">
-            {{ isGeneratingCode ? '生成中…' : '✨ 點我生成專屬代碼' }}
+            <template v-if="isGeneratingCode">生成中…</template>
+            <template v-else><Sparkles :size="14" :stroke-width="1.8" /> 點我生成專屬代碼</template>
           </button>
 
           <div v-else class="status-badge">
-            <span>🔒</span>
+            <Lock :size="14" :stroke-width="1.8" />
             <span>需完成首場遊戲後解鎖</span>
           </div>
         </div>
@@ -351,12 +352,12 @@ const bindFriendCode = () => withLoading(isBindingCode, async () => {
           <div class="sub-label">是朋友推薦你來的嗎？</div>
 
           <div v-if="isReferredLocked" class="bound-box">
-            <span>🤝 已綁定推坑老手</span>
+            <span style="display:flex;align-items:center;gap:6px"><UserCheck :size="15" :stroke-width="1.8" /> 已綁定推坑老手</span>
             <span class="bound-code">{{ referredBy }}</span>
           </div>
 
           <div v-else-if="!isNewbie" class="status-badge status-badge--red">
-            <span>🚫</span>
+            <Ban :size="14" :stroke-width="1.8" />
             <span>推坑碼僅限首次遊玩前填寫</span>
           </div>
 
@@ -386,13 +387,13 @@ const bindFriendCode = () => withLoading(isBindingCode, async () => {
             <div class="modal-handle" aria-hidden="true"></div>
 
             <div class="modal-header">
-              <h2 class="modal-title">🤝 推坑計畫規則說明</h2>
+              <h2 class="modal-title"><UserPlus :size="16" :stroke-width="1.8" class="title-icon" /> 推坑計畫規則說明</h2>
               <button class="modal-close" @click="showRulesModal = false" aria-label="關閉">✕</button>
             </div>
 
             <div class="modal-body">
               <div class="rule-item">
-                <div class="rule-icon">🌱</div>
+                <div class="rule-icon"><Sprout :size="22" :stroke-width="1.5" /></div>
                 <div class="rule-content">
                   <h3>誰可以填寫別人的推坑碼？</h3>
                   <p>必須是<strong class="text-red">從未遊玩過（經驗值為 0）</strong>的新手才能填寫。綁定後即可立即獲得 $50 迎新折價券！</p>
@@ -400,14 +401,14 @@ const bindFriendCode = () => withLoading(isBindingCode, async () => {
                 </div>
               </div>
               <div class="rule-item">
-                <div class="rule-icon">👑</div>
+                <div class="rule-icon"><Crown :size="22" :stroke-width="1.5" /></div>
                 <div class="rule-content">
                   <h3>誰可以產生自己的推坑碼？</h3>
                   <p>只要您<strong class="text-gold">完成過至少一場遊戲</strong>，系統就會為您解鎖專屬的推坑碼。</p>
                 </div>
               </div>
               <div class="rule-item">
-                <div class="rule-icon">🎁</div>
+                <div class="rule-icon"><Gift :size="22" :stroke-width="1.5" /></div>
                 <div class="rule-content">
                   <h3>老手要怎麼拿到推坑獎勵？</h3>
                   <p>當您推薦的新手成功綁定您的代碼，並且<strong class="text-gold">完成他們的第一場遊戲（掃描核銷獲得經驗值）</strong>後，系統就會自動發送 $100 折價券到您的票券夾！</p>
@@ -468,27 +469,22 @@ const bindFriendCode = () => withLoading(isBindingCode, async () => {
 /* ══════════════════════════════════════
    頁首
 ══════════════════════════════════════ */
-.page-header { text-align: center; margin-bottom: 28px; }
-
-.header-eyebrow {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 10px;
-  margin-bottom: 10px;
+.page-header {
+  display: flex; align-items: flex-end; justify-content: space-between;
+  padding: 0 0 14px 4px;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+  margin-bottom: 28px;
 }
-.eyebrow-line  { display: block; width: 32px; height: 1px; background: var(--gold-border); }
-.eyebrow-text  { font-size: 0.62rem; font-weight: 700; letter-spacing: 4px; color: var(--gold); opacity: .6; }
-
+.title-wrap { display: flex; flex-direction: column; gap: 2px; }
+.title-sub {
+  font-size: 0.62rem; font-weight: 700;
+  letter-spacing: 4px; color: var(--gold); opacity: 0.7;
+}
 .page-title {
-  font-size: clamp(1.8rem, 6vw, 2.4rem);
-  font-weight: 900;
-  color: var(--gold);
-  letter-spacing: 3px;
-  margin: 0 0 6px;
-  text-shadow: 0 0 24px rgba(212,175,55,0.25);
+  font-size: 1.8rem; font-weight: 900; margin: 0; letter-spacing: 3px;
+  background: linear-gradient(135deg, #fff 0%, #fceabb 40%, #D4AF37 100%);
+  -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
 }
-.page-subtitle { color: var(--text-muted); font-size: .85rem; margin: 0; }
 
 /* ══════════════════════════════════════
    載入中
@@ -502,14 +498,8 @@ const bindFriendCode = () => withLoading(isBindingCode, async () => {
   color: var(--text-muted);
   font-size: .9rem;
 }
-.spinner {
-  width: 36px; height: 36px;
-  border: 2.5px solid rgba(212,175,55,0.15);
-  border-top-color: var(--gold);
-  border-radius: 50%;
-  animation: spin 1s linear infinite;
-}
 @keyframes spin { to { transform: rotate(360deg); } }
+.spin-icon { color: var(--gold); animation: spin 1.2s linear infinite; }
 
 /* ══════════════════════════════════════
    卡片
@@ -559,7 +549,16 @@ const bindFriendCode = () => withLoading(isBindingCode, async () => {
   margin-bottom: 20px;
 }
 .section-head--gold { color: var(--gold-light); }
-.section-icon { font-size: 1.15rem; }
+.section-icon { flex-shrink: 0; color: #aaa; }
+.section-head--gold .section-icon { color: var(--gold-light); }
+.hint-icon { vertical-align: middle; margin-right: 2px; }
+.lock-icon { opacity: .45; flex-shrink: 0; }
+.title-icon { flex-shrink: 0; }
+.modal-title { display: flex; align-items: center; gap: 8px; }
+.rules-btn { display: flex; align-items: center; gap: 5px; }
+.copy-btn { display: flex; align-items: center; gap: 6px; }
+.generate-btn { display: flex; align-items: center; justify-content: center; gap: 6px; }
+.rule-icon { color: var(--gold); }
 
 .card-desc { color: var(--text-muted); font-size: .85rem; line-height: 1.55; margin: 0 0 16px; }
 

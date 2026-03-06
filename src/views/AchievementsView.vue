@@ -2,9 +2,12 @@
 import { ref, computed, onMounted } from 'vue'
 import { supabase } from '../supabase'
 import { useUserStore } from '../stores/user'
+import { Loader2, Trophy } from 'lucide-vue-next'
 
 const store = useUserStore()
 const isLoaded = ref(false)
+const isLoading = ref(true)
+const hasError = ref(false)
 const isClaiming = ref(false)
 const achievements = ref([])
 const scriptsList = ref([]) 
@@ -43,11 +46,18 @@ const loadAchievementData = async () => {
     }
   } catch (error) {
     console.error('成就載入失敗:', error)
+    hasError.value = true
+  } finally {
+    isLoading.value = false
   }
 }
 
 onMounted(async () => {
-  if (!store.userData) return
+  if (!store.userData) {
+    isLoading.value = false
+    isLoaded.value = true
+    return
+  }
   await loadAchievementData()
   isLoaded.value = true
 })
@@ -159,9 +169,12 @@ const claimReward = async (ach) => {
 
       <!-- Header -->
       <div class="header-section fade-in-down">
-        <div class="header-deco">✦</div>
-        <h1 class="page-title">榮耀成就館</h1>
-        <p class="page-subtitle">探索未知，銘刻你的專屬傳奇</p>
+        <div class="header-top">
+          <div class="title-wrap">
+            <span class="title-sub">SPOTLIGHT</span>
+            <h1 class="page-title">榮耀成就館</h1>
+          </div>
+        </div>
 
         <div class="progress-box">
           <div class="progress-top">
@@ -183,13 +196,24 @@ const claimReward = async (ach) => {
 
       <!-- 成就列表 -->
       <div class="achievements-list fade-in-up delay-1">
-        <div v-if="!isLoaded" class="loading-state">
-          <div class="spinner"></div>
+        <div v-if="isLoading" class="loading-state">
+          <Loader2 :size="28" :stroke-width="1.5" class="spin-icon" />
           <p>翻閱榮耀卷宗中...</p>
         </div>
-        <div v-else-if="displayAchievements.length === 0" class="empty-state">
-          館長正在準備全新的挑戰，敬請期待...
-        </div>
+        <template v-else-if="!isLoading">
+          <div v-if="hasError" class="empty-state">
+            <Trophy :size="36" :stroke-width="1.2" class="empty-state-icon" />
+            <p>卷宗讀取失敗，請稍後再試</p>
+          </div>
+          <div v-else-if="!store.userData" class="empty-state">
+            <Trophy :size="36" :stroke-width="1.2" class="empty-state-icon" />
+            <p>尚未登入，無法查閱榮耀紀錄</p>
+          </div>
+          <div v-else-if="displayAchievements.length === 0" class="empty-state">
+            <Trophy :size="36" :stroke-width="1.2" class="empty-state-icon" />
+            <p>館長正在準備全新的挑戰，敬請期待...</p>
+          </div>
+        </template>
 
         <div
           v-for="ach in activeAchievements"
@@ -372,7 +396,7 @@ const claimReward = async (ach) => {
   min-height: 100vh; padding-bottom: 100px;
   color: #fff; background: transparent;
 }
-.content-layer { padding: 36px 20px 0; }
+.content-layer { padding: 0 20px; }
 
 /* 進場動畫 */
 .fade-in-down { opacity: 0; transform: translateY(-20px); transition: all 0.8s ease; }
@@ -382,15 +406,23 @@ const claimReward = async (ach) => {
 .delay-1 { transition-delay: 0.2s; }
 
 /* ── Header ── */
-.header-section { text-align: center; margin-bottom: 36px; }
-.header-deco { color: #D4AF37; font-size: 1.2rem; letter-spacing: 8px; margin-bottom: 8px; opacity: 0.6; }
-.page-title {
-  font-size: 2.6rem; font-weight: 900; margin: 0 0 6px;
-  color: #D4AF37;
-  text-shadow: 0 0 30px rgba(212,175,55,0.35), 0 2px 8px rgba(0,0,0,0.8);
-  letter-spacing: 3px;
+.header-section { margin-bottom: 24px; }
+.header-top {
+  display: flex; align-items: flex-end; justify-content: space-between;
+  padding: 28px 4px 14px;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+  margin-bottom: 20px;
 }
-.page-subtitle { color: #666; font-size: 0.95rem; margin: 0 0 28px; letter-spacing: 1px; }
+.title-wrap { display: flex; flex-direction: column; gap: 2px; }
+.title-sub {
+  font-size: 0.62rem; font-weight: 700;
+  letter-spacing: 4px; color: #D4AF37; opacity: 0.7;
+}
+.page-title {
+  font-size: 1.8rem; font-weight: 900; margin: 0; letter-spacing: 3px;
+  background: linear-gradient(135deg, #fff 0%, #fceabb 40%, #D4AF37 100%);
+  -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+}
 
 /* 進度框 */
 .progress-box {
@@ -703,16 +735,20 @@ const claimReward = async (ach) => {
 .claim-btn:disabled { background: #2a2a2a; color: #555; cursor: not-allowed; animation: none; box-shadow: none; transform: none; }
 
 /* ── 其他 ── */
-.loading-state { text-align: center; color: #666; padding: 60px 20px; display: flex; flex-direction: column; align-items: center; gap: 16px; }
-.loading-state p { margin: 0; font-size: 0.9rem; letter-spacing: 1px; }
-.empty-state { text-align: center; color: #555; padding: 50px 20px; border: 1px dashed #222; border-radius: 14px; font-size: 0.95rem; }
-.spinner {
-  width: 40px; height: 40px;
-  border: 3px solid rgba(212,175,55,0.15);
-  border-top-color: #D4AF37;
-  border-radius: 50%; animation: spin 1s linear infinite;
+.loading-state {
+  text-align: center; color: #666; padding: 60px 20px;
+  display: flex; flex-direction: column; align-items: center; gap: 16px;
 }
+.loading-state p { margin: 0; font-size: 0.9rem; letter-spacing: 1px; }
 @keyframes spin { 100% { transform: rotate(360deg); } }
+.spin-icon { color: #D4AF37; animation: spin 1.2s linear infinite; }
+.empty-state {
+  text-align: center; color: #555; padding: 50px 20px;
+  border: 1px dashed #222; border-radius: 14px;
+  display: flex; flex-direction: column; align-items: center; gap: 14px;
+}
+.empty-state p { margin: 0; font-size: 0.95rem; }
+.empty-state-icon { color: #2a2a2a; }
 
 .mt-4 { margin-top: 20px; }
 

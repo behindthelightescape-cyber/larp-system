@@ -74,7 +74,7 @@ const subscribeSession = () => {
   sessionChannel = supabase.channel('display-session-watch')
     .on(
       'postgres_changes',
-      { event: 'INSERT', schema: 'public', table: 'display_sessions' },
+      { event: '*', schema: 'public', table: 'display_sessions' },
       (payload) => {
         const row = payload.new
         if (row.session_id === sessionId.value && row.player_data) {
@@ -894,7 +894,7 @@ const displayExpPct = computed(() =>
 
 /* ── PAGE 5：結尾總覽 ── */
 .page-finale {
-  flex-direction: row; gap: 60px; padding: 0; justify-content: center; align-items: flex-end;
+  flex-direction: row; gap: 60px; padding: 0; justify-content: center; align-items: center;
 }
 .finale-bg-overlay {
   position: absolute; inset: 0; z-index: 0;
@@ -921,7 +921,7 @@ const displayExpPct = computed(() =>
 .finale-card {
   position: relative; z-index: 1; flex-shrink: 0; max-width: 380px;
   background: rgba(10,10,10,0.8); border: 1px solid rgba(212,175,55,0.25);
-  border-radius: 20px; padding: 32px 36px; margin-bottom: 40px;
+  border-radius: 20px; padding: 32px 36px;
   backdrop-filter: blur(20px);
   box-shadow: 0 20px 60px rgba(0,0,0,0.7), inset 0 1px 0 rgba(255,255,255,0.04);
   animation: card-appear 0.8s cubic-bezier(0.2, 0.8, 0.2, 1) 0.4s both;

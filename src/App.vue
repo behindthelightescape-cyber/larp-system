@@ -1,13 +1,16 @@
 <script setup>
-import { onMounted } from 'vue'
-import { RouterView } from 'vue-router'
+import { onMounted, computed } from 'vue'
+import { RouterView, useRoute } from 'vue-router'
 import { useUserStore } from './stores/user'
 import BottomNav from './components/BottomNav.vue'
 
 const userStore = useUserStore()
+const route = useRoute()
+
+const showNav = computed(() => !userStore.isLoading && !route.meta.hideNav)
 
 onMounted(() => {
-  if (window.location.hash.includes('#/admin') || window.location.hash.includes('#/paperdoll')) {
+  if (window.location.hash.includes('#/admin') || window.location.hash.includes('#/paperdoll') || window.location.hash.includes('#/display')) {
     console.log('🕵️‍♂️ 偵測到老闆走後台通道，跳過 LINE 看門狗！')
     userStore.isLoading = false
     return
@@ -45,7 +48,7 @@ onMounted(() => {
       </router-view>
     </div>
 
-    <BottomNav v-if="!userStore.isLoading" />
+    <BottomNav v-if="showNav" />
 
   </div>
 </template>

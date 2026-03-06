@@ -13,6 +13,7 @@ import AdminPromoCodes from '../components/AdminPromoCodes.vue'
 import AdminAutoRewards from '../components/AdminAutoRewards.vue' // 🚀 1. 引入自動派發中控台
 import AdminPushLogs from '../components/AdminPushLogs.vue'
 import AdminPaperDoll from '../components/AdminPaperDoll.vue'
+import AdminDisplayAds from '../components/AdminDisplayAds.vue'
 
 const session = ref(null)
 const isLoading = ref(true)
@@ -197,6 +198,16 @@ const toggleGroup = (key) => {
           </button>
         </template>
 
+        <button class="nav-group-label" @click="toggleGroup('display')">
+          <span>互動裝置</span>
+          <span class="group-arrow" :class="{ collapsed: collapsedGroups['display'] }">›</span>
+        </button>
+        <template v-if="!collapsedGroups['display']">
+          <button class="nav-btn" :class="{ active: currentTab === 'display_ads' }" @click="changeTab('display_ads')">
+            <span class="icon">📺</span> 電視廣告管理
+          </button>
+        </template>
+
         <button class="nav-group-label" @click="toggleGroup('content')">
           <span>內容管理</span>
           <span class="group-arrow" :class="{ collapsed: collapsedGroups['content'] }">›</span>
@@ -248,7 +259,8 @@ const toggleGroup = (key) => {
               currentTab === 'promo_code' ? '萬用兌換碼印鈔機' :
               currentTab === 'auto_reward' ? '全自動派發中控台' : 
               currentTab === 'achievement' ? '成就鑄造廠' :
-              currentTab === 'paperdoll' ? '燈燈造型室' : '劇本管理'
+              currentTab === 'paperdoll' ? '燈燈造型室' :
+              currentTab === 'display_ads' ? '電視廣告管理' : '劇本管理'
             }}
           </h2>
         </div>
@@ -306,6 +318,10 @@ const toggleGroup = (key) => {
 
       <div v-if="currentTab === 'paperdoll'" class="panel active">
         <AdminPaperDoll />
+      </div>
+
+      <div v-if="currentTab === 'display_ads'" class="panel active">
+        <AdminDisplayAds />
       </div>
 
     </main>

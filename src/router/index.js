@@ -23,6 +23,10 @@ const router = createRouter({
     { path: '/admin', component: AdminView },
     { path: '/paperdoll', component: PaperDollView },
     
+    // === 互動裝置 ===
+    { path: '/display', component: () => import('../views/display/DisplayView.vue'), meta: { hideNav: true } },
+    { path: '/scan',    component: () => import('../views/display/ScanView.vue'),    meta: { hideNav: true } },
+
     // 🚀 四哥除錯神丹：攔截所有 LINE 帶來的奇怪網址，強制把玩家踢回首頁！
     { path: '/:pathMatch(.*)*', redirect: '/' }
   ]

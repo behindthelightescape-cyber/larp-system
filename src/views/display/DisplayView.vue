@@ -206,7 +206,8 @@ const startShow = async (playerData) => {
 // ── QR Code ──
 const generateSession = async () => {
   sessionId.value = crypto.randomUUID()
-  const url = `${window.location.origin}/#/scan?s=${sessionId.value}`
+  const liffState = encodeURIComponent(`#/scan?s=${sessionId.value}`)
+  const url = `https://liff.line.me/2009161687-icfQU9r6?liff.state=${liffState}`
   try {
     const QRCode = (await import('qrcode')).default
     qrDataUrl.value = await QRCode.toDataURL(url, {

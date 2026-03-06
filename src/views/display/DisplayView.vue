@@ -2,6 +2,93 @@
 import { ref, computed, nextTick, onMounted, onUnmounted, watch } from 'vue'
 import { supabase } from '../../supabase'
 
+// ── OLED 防烙印：隨機像素位移 ──
+let _lastSX = 0, _lastSY = 0
+const nextShift = () => {
+  let x, y
+  do {
+    x = parseFloat((Math.random() * 4 - 2).toFixed(1))
+    y = parseFloat((Math.random() * 4 - 2).toFixed(1))
+  } while (Math.abs(x - _lastSX) < 0.8 && Math.abs(y - _lastSY) < 0.8)
+  _lastSX = x; _lastSY = y
+  return `translate(${x}px,${y}px)`
+}
+const pixelShift = ref('translate(0px,0px)')
+let burnTimer = null
+
+// ── 音效（Web Audio API 合成）──
+let audioCtx = null
+const getCtx = () => {
+  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)()
+  if (audioCtx.state === 'suspended') audioCtx.resume()
+  return audioCtx
+}
+
+const playArrival = () => {
+  try {
+    const ctx = getCtx()
+    const t = ctx.currentTime
+
+    // 低頻衝擊
+    const bass = ctx.createOscillator()
+    const bassG = ctx.createGain()
+    bass.connect(bassG); bassG.connect(ctx.destination)
+    bass.type = 'sine'
+    bass.frequency.setValueAtTime(65, t)
+    bass.frequency.exponentialRampToValueAtTime(28, t + 1.4)
+    bassG.gain.setValueAtTime(0.55, t)
+    bassG.gain.exponentialRampToValueAtTime(0.001, t + 1.6)
+    bass.start(t); bass.stop(t + 1.6)
+
+    // 上揚掃頻（魔法感）
+    const sweep = ctx.createOscillator()
+    const sweepG = ctx.createGain()
+    const sweepF = ctx.createBiquadFilter()
+    sweep.connect(sweepF); sweepF.connect(sweepG); sweepG.connect(ctx.destination)
+    sweep.type = 'sawtooth'
+    sweepF.type = 'lowpass'
+    sweepF.frequency.setValueAtTime(180, t + 0.1)
+    sweepF.frequency.exponentialRampToValueAtTime(3200, t + 1.1)
+    sweep.frequency.setValueAtTime(210, t + 0.1)
+    sweep.frequency.exponentialRampToValueAtTime(680, t + 1.3)
+    sweepG.gain.setValueAtTime(0, t)
+    sweepG.gain.linearRampToValueAtTime(0.13, t + 0.35)
+    sweepG.gain.linearRampToValueAtTime(0, t + 2.0)
+    sweep.start(t + 0.1); sweep.stop(t + 2.0)
+
+    // 高頻閃光
+    const spark = ctx.createOscillator()
+    const sparkG = ctx.createGain()
+    spark.connect(sparkG); sparkG.connect(ctx.destination)
+    spark.type = 'sine'
+    spark.frequency.setValueAtTime(1100, t + 0.9)
+    spark.frequency.exponentialRampToValueAtTime(2600, t + 1.5)
+    sparkG.gain.setValueAtTime(0, t + 0.9)
+    sparkG.gain.linearRampToValueAtTime(0.07, t + 1.1)
+    sparkG.gain.linearRampToValueAtTime(0, t + 2.0)
+    spark.start(t + 0.9); spark.stop(t + 2.0)
+  } catch (e) { console.warn('音效失敗', e) }
+}
+
+const playPage = () => {
+  try {
+    const ctx = getCtx()
+    const t = ctx.currentTime
+    const osc = ctx.createOscillator()
+    const gain = ctx.createGain()
+    const filter = ctx.createBiquadFilter()
+    osc.connect(filter); filter.connect(gain); gain.connect(ctx.destination)
+    osc.type = 'sine'
+    filter.type = 'bandpass'
+    filter.frequency.value = 900
+    osc.frequency.setValueAtTime(550, t)
+    osc.frequency.exponentialRampToValueAtTime(1100, t + 0.22)
+    gain.gain.setValueAtTime(0.055, t)
+    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.45)
+    osc.start(t); osc.stop(t + 0.45)
+  } catch (e) { console.warn('音效失敗', e) }
+}
+
 const BRAND_LOGO    = 'https://meee.com.tw/VInVFKh.png'
 const FALLBACK_BASE = 'https://meee.com.tw/hLmrwbm.png'
 const DOLL_LAYER_ORDER = ['bottom', 'top', 'acc', 'hat', 'expr']
@@ -9,6 +96,7 @@ const DOLL_LAYER_ORDER = ['bottom', 'top', 'acc', 'hat', 'expr']
 // 每頁停留毫秒數  0:登場 1:天數 2:場數 3:等級 4:EXP 5:弟子 6:總覽
 const PAGE_DURATIONS = [3800, 3200, 4500, 3600, 3200, 3800, 8000]
 
+const started     = ref(false)
 const phase       = ref('waiting')  // 'waiting' | 'show'
 const currentPage = ref(0)
 
@@ -162,6 +250,7 @@ const clearPageTimers = () => { pageTimers.forEach(clearTimeout); pageTimers = [
 
 const goToPage = (nextPage) => {
   currentPage.value = nextPage
+  if (nextPage > 0) playPage()
   triggerPageAnimations(nextPage)
   schedulePage(nextPage)
 }
@@ -170,6 +259,7 @@ const schedulePage = (page) => {
   if (page >= PAGE_DURATIONS.length) {
     // 全部播完，回到 waiting 並換新 session
     pageTimers.push(setTimeout(async () => {
+      bgmFadeOut()
       phase.value = 'waiting'
       player.value = null
       currentPage.value = 0
@@ -192,6 +282,37 @@ const triggerPageAnimations = (page) => {
   if (page === 5) countUp(player.value.discipleCount,   displayDisciples, 1400)
 }
 
+// ── BGM ──
+const bgm = new Audio('https://spotlightlarp.com/wp-content/uploads/2026/03/Neon_Bloom.mp3')
+bgm.loop = true
+bgm.volume = 0
+
+const bgmFadeIn = () => {
+  bgm.currentTime = 0
+  bgm.play().catch(() => {})
+  let v = 0
+  const t = setInterval(() => {
+    v = Math.min(v + 0.05, 0.75)
+    bgm.volume = v
+    if (v >= 0.75) clearInterval(t)
+  }, 80)
+}
+
+const bgmFadeOut = () => {
+  let v = bgm.volume
+  const t = setInterval(() => {
+    v = Math.max(v - 0.05, 0)
+    bgm.volume = v
+    if (v <= 0) { clearInterval(t); bgm.pause() }
+  }, 80)
+}
+
+// ── 點擊啟動 ──
+const handleStart = () => {
+  started.value = true
+  getCtx()
+}
+
 // ── 啟動展示 ──
 const startShow = async (playerData) => {
   player.value = playerData
@@ -199,6 +320,8 @@ const startShow = async (playerData) => {
   displayLevel.value = displayGames.value = displayDays.value = displayExp.value = 0
   currentPage.value = 0
   phase.value = 'show'
+  playArrival()
+  bgmFadeIn()
   schedulePage(0)
 }
 
@@ -221,6 +344,10 @@ const now = ref(new Date())
 let clockTimer = null
 
 onMounted(async () => {
+  // audio unlock 改由 handleStart 處理
+  burnTimer = setInterval(() => {
+    pixelShift.value = nextShift()
+  }, 60000)
   await loadAds()
   subscribeAds()
   await generateSession()
@@ -233,6 +360,9 @@ onUnmounted(() => {
   adsChannel?.unsubscribe()
   sessionChannel?.unsubscribe()
   clearInterval(clockTimer)
+  clearInterval(burnTimer)
+  audioCtx?.close()
+  bgm.pause()
 })
 
 const timeStr = computed(() =>
@@ -251,6 +381,7 @@ const displayExpPct = computed(() =>
 
 <template>
   <div class="tv-root">
+  <div class="tv-shift" :style="{ transform: pixelShift, transition: 'transform 2s ease' }">
 
     <!-- 粒子 -->
     <div class="particles" aria-hidden="true">
@@ -274,12 +405,20 @@ const displayExpPct = computed(() =>
       </div>
     </header>
 
+    <!-- ════════════ 啟動畫面 ════════════ -->
+    <transition name="phase-fade">
+      <div v-if="!started" class="start-overlay" @click="handleStart" key="start">
+        <img :src="BRAND_LOGO" class="start-logo" alt="劇光燈" />
+        <p class="start-prompt">點擊任意處開始</p>
+      </div>
+    </transition>
+
     <!-- ════════════ WAITING ════════════ -->
     <transition name="phase-fade">
       <div v-if="phase === 'waiting'" class="phase-wrap waiting-phase" key="waiting">
 
         <!-- 廣告內容（依類型渲染）-->
-        <transition name="video-fade" mode="out-in">
+        <transition v-if="started" name="video-fade" mode="out-in">
 
           <!-- 🎬 影片 -->
           <video
@@ -287,7 +426,7 @@ const displayExpPct = computed(() =>
             :key="'v-' + currentAdData.id"
             ref="videoEl"
             class="ad-video"
-            autoplay muted playsinline
+            autoplay playsinline
             :src="currentAdData.resolvedUrl"
             @ended="nextAd"
           ></video>
@@ -354,7 +493,7 @@ const displayExpPct = computed(() =>
         </transition>
 
         <!-- 影片資訊疊層 -->
-        <div v-if="currentAdData && ads.length > 1" class="ad-progress-overlay">
+        <div v-if="started && currentAdData && ads.length > 1" class="ad-progress-overlay">
           <div
             v-for="(ad, i) in ads" :key="ad.id"
             class="ad-prog-bar"
@@ -365,7 +504,7 @@ const displayExpPct = computed(() =>
         </div>
 
         <!-- QR Code 浮層（右下角，QR 全版廣告時隱藏）-->
-        <div v-if="currentAdData?.type !== 'qr'" class="qr-float">
+        <div v-if="started && currentAdData?.type !== 'qr'" class="qr-float">
           <div class="qr-float-inner">
             <div class="qr-float-frame">
               <div class="qr-scan-line"></div>
@@ -548,16 +687,45 @@ const displayExpPct = computed(() =>
     </footer>
 
   </div>
+  </div>
 </template>
 
 <style scoped>
 /* ── 根 ── */
 .tv-root {
   width: 100vw; height: 100vh; overflow: hidden;
+  background: #000000;
+  padding: 2px; box-sizing: border-box;
+}
+.tv-shift {
+  width: 100%; height: 100%;
   background: #060606; color: #fff;
   display: flex; flex-direction: column;
   font-family: 'Helvetica Neue', 'Noto Sans TC', sans-serif;
   position: relative; user-select: none;
+}
+
+/* ── 啟動畫面 ── */
+.start-overlay {
+  position: absolute; inset: 0; z-index: 100;
+  background: #000;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 40px;
+  cursor: pointer;
+}
+.start-logo {
+  height: 80px; object-fit: contain;
+  filter: drop-shadow(0 0 24px rgba(212,175,55,0.5));
+  animation: fade-up 0.8s ease both;
+}
+.start-prompt {
+  font-size: 1rem; letter-spacing: 6px; color: #D4AF37;
+  margin: 0; opacity: 0.6;
+  animation: start-blink 2s ease-in-out infinite, fade-up 0.8s ease 0.3s both;
+}
+@keyframes start-blink {
+  0%, 100% { opacity: 0.3; }
+  50%       { opacity: 0.8; }
 }
 
 /* ── 粒子 ── */
@@ -585,7 +753,7 @@ const displayExpPct = computed(() =>
   background: rgba(6,6,6,0.6); backdrop-filter: blur(20px);
 }
 .tv-logo {
-  height: 50px; object-fit: contain;
+  height: 76px; object-fit: contain;
   filter: drop-shadow(0 0 14px rgba(212,175,55,0.5));
 }
 .tv-clock { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; }

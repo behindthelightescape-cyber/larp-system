@@ -24,7 +24,7 @@
 
         <!-- 換背景按鈕 -->
         <button class="bg-change-btn" @click="showBgModal = true">
-          <span>🖼</span> 換背景
+          <ImageIcon :size="14" :stroke-width="1.8" /> 換背景
         </button>
 
         <div class="doll-stage">
@@ -64,7 +64,7 @@
             :class="{ active: activeCategory === cat.key }"
             @click="activeCategory = cat.key"
           >
-            <component :is="cat.icon" class="cat-icon" :size="20" :stroke-width="1.5" />
+            <component :is="cat.icon" class="cat-icon" :size="22" :stroke-width="1.5" />
             <span class="cat-label">{{ cat.label }}</span>
             <span v-if="activeCategory === cat.key" class="cat-underline"></span>
           </button>
@@ -110,10 +110,10 @@
             </div>
             <div class="bg-grid">
               <button
-                v-for="bg in backgrounds"
+                v-for="bg in [noneBg, ...backgrounds]"
                 :key="bg.id"
                 class="bg-card"
-                :class="{ active: activeBgId === bg.id, locked: getBgState(bg) === 'locked' }"
+                :class="{ active: bg.is_none ? activeBgId === null : activeBgId === bg.id, locked: getBgState(bg) === 'locked' }"
                 @click="selectBg(bg)"
               >
                 <div
@@ -171,7 +171,7 @@
 
 <script setup>
 import { ref, reactive, computed, onMounted, watch } from 'vue'
-import { Smile, Crown, Shirt, Wind, Layers, Gem } from 'lucide-vue-next'
+import { Smile, Crown, Shirt, Wind, Layers, Gem, Image as ImageIcon } from 'lucide-vue-next'
 import { supabase } from '../supabase'
 import { useUserStore } from '../stores/user'
 
@@ -222,6 +222,7 @@ const userAchIds    = ref(new Set())  // 達成的 achievement id
 // ── 背景 ──
 const showBgModal = ref(false)
 const activeBgId  = ref(null)
+const noneBg = { id: '__none__', name: '無', img_url: null, is_none: true, unlock_type: 'free' }
 const currentBg   = computed(() => {
   const bg = backgrounds.value.find(b => b.id === activeBgId.value)
   return bg ? `url(${bg.img_url}) center/cover no-repeat` : 'linear-gradient(160deg,#0a0a0a,#1a1a1a)'
@@ -249,6 +250,7 @@ const getItemState = (item) => {
 }
 
 const getBgState = (bg) => {
+  if (bg.is_none) return 'owned'
   if (ownedBgIds.value.has(bg.id)) return 'owned'
   if (bg.unlock_type === 'free') return 'claimable'
   if (bg.unlock_type === 'points') return userExp.value >= bg.unlock_cost ? 'purchasable' : 'locked'
@@ -444,6 +446,7 @@ const isSelected = (item) => equipped[activeCategory.value]?.id === item.id
 
 // ── 選擇背景 ──
 const selectBg = async (bg) => {
+  if (bg.is_none) { activeBgId.value = null; await saveEquipped(); return }
   const state = getBgState(bg)
   if (state === 'owned') { activeBgId.value = bg.id; await saveEquipped() }
   else if (state === 'claimable') await claimBg(bg)
@@ -462,13 +465,14 @@ const obtainDesc = (item) => {
 <style scoped>
 /* ── 基礎 ── */
 .page-container {
-  width: 100%; max-width: 800px; margin: 0 auto;
-  box-sizing: border-box; min-height: 100vh;
-  color: #fff;
+  width: 100%; box-sizing: border-box; min-height: 100vh; color: #fff;
+  display: grid;
+  grid-template-columns: minmax(20px, 1fr) minmax(0, 480px) minmax(20px, 1fr);
 }
 .content-layer {
+  grid-column: 2;
   display: flex; flex-direction: column; align-items: center;
-  padding: 16px 24px 80px; gap: 16px;
+  padding: 16px 0 80px; gap: 16px;
 }
 
 /* ── 進場動畫 ── */
@@ -578,22 +582,21 @@ const obtainDesc = (item) => {
 
 /* ── 分類 Tab ── */
 .category-tabs {
-  display: flex; gap: 4px;
-  overflow-x: auto; padding-bottom: 2px;
+  display: flex;
   scrollbar-width: none;
 }
 .category-tabs::-webkit-scrollbar { display: none; }
 
 .cat-tab {
-  flex-shrink: 0; position: relative;
+  flex: 1; position: relative;
   display: flex; flex-direction: column; align-items: center;
-  gap: 3px; padding: 8px 12px;
+  gap: 4px; padding: 10px 4px;
   border-radius: 12px; border: none;
   background: transparent; color: #555;
   cursor: pointer; transition: color 0.2s;
 }
 .cat-tab.active { color: #D4AF37; }
-.cat-icon  { display: block; }
+.cat-icon  { display: block; width: 22px; height: 22px; flex-shrink: 0; }
 .cat-label { font-size: 0.68rem; letter-spacing: 0.5px; }
 .cat-underline {
   position: absolute; bottom: 0; left: 20%; right: 20%; height: 2px;
@@ -648,9 +651,8 @@ const obtainDesc = (item) => {
 }
 .item-emoji { font-size: 2.2rem; }
 .item-thumb-img {
-  width: 100%; height: 100%;
+  width: 72%; height: 72%;
   object-fit: contain;
-  border-radius: 16px 16px 0 0;
 }
 
 .lock-veil {
@@ -830,9 +832,10 @@ const obtainDesc = (item) => {
 .fade-pop-enter-active, .fade-pop-leave-active { transition: all 0.2s ease; }
 .fade-pop-enter-from, .fade-pop-leave-to { opacity: 0; transform: scale(0.92); }
 
+
 /* ── RWD ── */
 @media (max-width: 480px) {
-  .content-layer { padding: 16px 20px 80px; gap: 12px; }
+  .content-layer { padding: 16px 16px 80px; gap: 12px; }
   .page-title { font-size: 1.3rem; }
   .layer-img { width: 160px; }
   .emoji-overlay { font-size: 1.8rem; }
@@ -852,7 +855,8 @@ const obtainDesc = (item) => {
 }
 
 @media (min-width: 768px) {
-  .content-layer { flex-direction: row; align-items: flex-start; flex-wrap: wrap; padding: 24px 32px 80px; }
+  .page-container { grid-template-columns: minmax(20px, 1fr) minmax(0, 860px) minmax(20px, 1fr); }
+  .content-layer { flex-direction: row; align-items: flex-start; flex-wrap: wrap; padding: 24px 0 80px; }
   .page-header { width: 100%; }
   .stage-card { width: 48%; flex-shrink: 0; position: sticky; top: 20px; }
   .wardrobe-card { width: 48%; }

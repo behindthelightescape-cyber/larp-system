@@ -166,8 +166,6 @@ const subscribeSession = () => {
       (payload) => {
         const row = payload.new
         if (row?.session_id === sessionId.value && row?.player_data) {
-          stopPolling()
-          clearSlideTimer()
           startShow(row.player_data)
         }
       }
@@ -188,8 +186,6 @@ const startPolling = () => {
       .not('player_data', 'is', null)
       .maybeSingle()
     if (data?.player_data) {
-      stopPolling()
-      clearSlideTimer()
       startShow(data.player_data)
     }
   }, 2500)
@@ -337,16 +333,29 @@ const handleStart = () => {
 }
 
 // ── 啟動展示 ──
+let _showLock = false
 const startShow = async (playerData) => {
+  if (_showLock || phase.value === 'show') return
+  _showLock = true
   stopPolling()
-  player.value = playerData
-  await loadDollForUser(playerData.userId ?? null)
-  displayLevel.value = displayGames.value = displayDays.value = displayExp.value = 0
-  currentPage.value = 0
-  phase.value = 'show'
-  playArrival()
-  bgmFadeIn()
-  schedulePage(0)
+  clearPageTimers()
+  clearSlideTimer()
+  try {
+    player.value = playerData
+    await loadDollForUser(playerData.userId ?? null)
+    displayLevel.value = displayGames.value = displayDays.value = displayExp.value = 0
+    currentPage.value = 0
+    phase.value = 'show'
+    playArrival()
+    bgmFadeIn()
+    schedulePage(0)
+  } catch (err) {
+    console.error('startShow 失敗:', err)
+    phase.value = 'waiting'
+    if (ads.value.length) startSlideTimer(8000)
+  } finally {
+    _showLock = false
+  }
 }
 
 

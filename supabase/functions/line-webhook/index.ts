@@ -286,9 +286,10 @@ const handleEvents = async (events: Record<string, unknown>[]) => {
 
     // ── 召喚吉祥物 ────────────────────────────────────────────────────────
     if (isMascot) {
-      const [basesData, equippedData] = await Promise.all([
+      const [basesData, equippedData, noneDefaultsData] = await Promise.all([
         dbGet('wardrobe_bases?is_default=eq.true&is_active=eq.true&limit=1'),
         dbGet(`user_wardrobe_equipped?user_id=eq.${lineUserId}&limit=1`),
+        dbGet('wardrobe_none_defaults?select=category,img_url'),
       ])
 
       const baseUrl = basesData?.[0]?.img_url || 'https://meee.com.tw/hLmrwbm.png'
@@ -306,6 +307,13 @@ const handleEvents = async (events: Record<string, unknown>[]) => {
             slot: i.category as string,
             url:  i.img_url  as string,
           }))
+      }
+
+      // 補上「不裝備」預設圖層（該分類沒有裝備任何道具時）
+      for (const nd of (noneDefaultsData || []) as { category: string; img_url: string }[]) {
+        if (nd.img_url && !equippedMap[nd.category]) {
+          layers.push({ slot: nd.category, url: nd.img_url })
+        }
       }
 
       const name     = (user.display_name as string) || '冒險者'

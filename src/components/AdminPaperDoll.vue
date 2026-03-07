@@ -3,7 +3,37 @@ import { ref, computed, onMounted } from 'vue'
 import { supabase } from '../supabase'
 
 // ── 主 Tab ──
-const mainTab = ref('items') // 'items' | 'backgrounds' | 'base'
+const mainTab = ref('items') // 'items' | 'backgrounds' | 'base' | 'none_defaults'
+
+// ── 預設圖 ──
+const noneDefaultCategories = [
+  { key: 'expr',   label: '表情' },
+  { key: 'hat',    label: '帽子' },
+  { key: 'top',    label: '上衣' },
+  { key: 'cape',   label: '披風' },
+  { key: 'bottom', label: '下身' },
+  { key: 'acc',    label: '配件' },
+]
+const noneDefaults = ref({}) // { hat: 'https://...', ... }
+const isNoneDefaultsSaving = ref(false)
+
+const fetchNoneDefaults = async () => {
+  const { data } = await supabase.from('wardrobe_none_defaults').select('*')
+  if (data) {
+    noneDefaults.value = Object.fromEntries(data.map(r => [r.category, r.img_url || '']))
+  }
+}
+
+const saveNoneDefault = async (category) => {
+  isNoneDefaultsSaving.value = true
+  const img_url = noneDefaults.value[category] || null
+  const { error } = await supabase
+    .from('wardrobe_none_defaults')
+    .upsert({ category, img_url }, { onConflict: 'category' })
+  isNoneDefaultsSaving.value = false
+  if (error) alert('儲存失敗：' + error.message)
+  else alert('✅ 已儲存！')
+}
 
 // ── 道具 ──
 const items = ref([])
@@ -166,7 +196,7 @@ const deleteBase = async (base) => {
 }
 
 onMounted(async () => {
-  await Promise.all([fetchItems(), fetchScripts(), fetchAchievements(), fetchBackgrounds(), fetchBases()])
+  await Promise.all([fetchItems(), fetchScripts(), fetchAchievements(), fetchBackgrounds(), fetchBases(), fetchNoneDefaults()])
   isLoading.value = false
 })
 
@@ -396,6 +426,7 @@ const deleteItem = async (item) => {
       <button class="main-tab" :class="{ active: mainTab === 'items' }" @click="mainTab = 'items'">👗 服裝道具</button>
       <button class="main-tab" :class="{ active: mainTab === 'backgrounds' }" @click="mainTab = 'backgrounds'">🖼 場景背景</button>
       <button class="main-tab" :class="{ active: mainTab === 'base' }" @click="mainTab = 'base'">🧍 角色底圖</button>
+      <button class="main-tab" :class="{ active: mainTab === 'none_defaults' }" @click="mainTab = 'none_defaults'">🎭 預設圖</button>
     </div>
 
     <!-- ════ 服裝道具 ════ -->
@@ -774,6 +805,34 @@ const deleteItem = async (item) => {
     </template>
     <!-- ════ 角色底圖 end ════ -->
 
+    <!-- ════ 預設圖 ════ -->
+    <template v-if="mainTab === 'none_defaults'">
+      <div class="manager-header">
+        <h3 style="color: #eee; margin: 0;">各分類「不裝備」預設圖</h3>
+      </div>
+      <p style="color:#888; font-size:0.85rem; margin: 0 0 20px;">設定各分類選擇「不裝備」時，舞台上疊加的圖片（留空則不顯示）。</p>
+
+      <div class="none-default-list">
+        <div v-for="cat in noneDefaultCategories" :key="cat.key" class="none-default-row">
+          <div class="none-default-label">{{ cat.label }}</div>
+          <div class="none-default-preview">
+            <img v-if="noneDefaults[cat.key]" :src="noneDefaults[cat.key]" :alt="cat.label" />
+            <div v-else class="no-image-text">未設定</div>
+          </div>
+          <input
+            v-model="noneDefaults[cat.key]"
+            class="admin-input"
+            placeholder="圖片 URL（留空表示不顯示）"
+            style="flex:1;"
+          />
+          <button class="btn btn-gold btn-small" :disabled="isNoneDefaultsSaving" @click="saveNoneDefault(cat.key)">
+            儲存
+          </button>
+        </div>
+      </div>
+    </template>
+    <!-- ════ 預設圖 end ════ -->
+
   </div>
 </template>
 
@@ -960,4 +1019,18 @@ const deleteItem = async (item) => {
   font-size: 0.65rem; font-weight: 800;
   padding: 2px 8px; border-radius: 8px; letter-spacing: 1px;
 }
+
+/* ── 預設圖 ── */
+.none-default-list { display: flex; flex-direction: column; gap: 12px; }
+.none-default-row {
+  display: flex; align-items: center; gap: 12px;
+  background: #111; border: 1px solid #222; border-radius: 10px; padding: 12px;
+}
+.none-default-label { width: 36px; font-size: 0.85rem; color: #aaa; flex-shrink: 0; }
+.none-default-preview {
+  width: 52px; height: 52px; border-radius: 8px; overflow: hidden;
+  background: #1a1a1a; border: 1px solid #333; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+}
+.none-default-preview img { width: 100%; height: 100%; object-fit: contain; }
 </style>

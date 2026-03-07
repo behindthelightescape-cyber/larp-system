@@ -37,7 +37,7 @@
           <img class="layer-img" :src="baseImgUrl || 'https://meee.com.tw/hLmrwbm.png'" alt="角色底圖" />
           <!-- 其餘服裝圖層 -->
           <template v-for="slot in layerOrder.filter(s => s !== 'cape')" :key="slot">
-            <img v-if="equipped[slot] && !equipped[slot].is_none && equipped[slot].img_url"
+            <img v-if="equipped[slot] && equipped[slot].img_url"
               class="layer-img layer-clothing"
               :src="equipped[slot].img_url"
               :alt="equipped[slot].name"
@@ -82,7 +82,7 @@
             @click="selectItem(item)"
           >
             <div class="item-thumb">
-              <img v-if="item.img_url" :src="item.img_url" :alt="item.name" class="item-thumb-img" />
+              <img v-if="item.img_url && !item.is_none" :src="item.img_url" :alt="item.name" class="item-thumb-img" />
               <span v-else class="item-emoji">{{ getItemState(item) === 'locked' ? '🔒' : (item.emoji || '✦') }}</span>
               <div v-if="getItemState(item) === 'locked'" class="lock-veil"></div>
             </div>
@@ -194,19 +194,19 @@ const categories = [
 const activeCategory = ref('hat')
 const layerOrder = ['bottom', 'cape', 'top', 'acc', 'hat', 'expr']
 
-// 各分類固定的「不裝備」選項（不來自 DB）
-const noneItem = (category, label) => ({
-  id: `none_${category}`, name: label, img_url: null,
+// 各分類固定的「不裝備」選項（img_url 由 DB 的 wardrobe_none_defaults 決定）
+const noneItem = (category, label, img_url = null) => ({
+  id: `none_${category}`, name: label, img_url,
   category, is_none: true, unlock_type: 'free',
 })
-const noneItems = {
+const noneItems = reactive({
   expr:   noneItem('expr',   '預設'),
   hat:    noneItem('hat',    '不戴'),
   top:    noneItem('top',    '不穿'),
   cape:   noneItem('cape',   '無'),
   bottom: noneItem('bottom', '不穿'),
   acc:    noneItem('acc',    '無'),
-}
+})
 
 // ── 角色底圖 ──
 const baseImgUrl = ref('')
@@ -279,8 +279,23 @@ const loadAll = async () => {
     loadBackgrounds(),
     loadUserData(),
     loadBaseImage(),
+    loadNoneDefaults(),
   ])
   isPageLoading.value = false
+}
+
+const loadNoneDefaults = async () => {
+  const { data } = await supabase.from('wardrobe_none_defaults').select('*')
+  if (!data) return
+  for (const row of data) {
+    if (noneItems[row.category]) {
+      noneItems[row.category].img_url = row.img_url || null
+      // 同步更新已裝備的 none item（若該 slot 目前是 none 狀態）
+      if (equipped[row.category]?.is_none) {
+        equipped[row.category].img_url = row.img_url || null
+      }
+    }
+  }
 }
 
 const loadBaseImage = async () => {

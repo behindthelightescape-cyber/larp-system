@@ -165,7 +165,8 @@ const subscribeSession = () => {
       { event: '*', schema: 'public', table: 'display_sessions' },
       (payload) => {
         const row = payload.new
-        if (row.session_id === sessionId.value && row.player_data) {
+        if (row?.session_id === sessionId.value && row?.player_data) {
+          stopPolling()
           clearSlideTimer()
           startShow(row.player_data)
         }
@@ -173,6 +174,27 @@ const subscribeSession = () => {
     )
     .subscribe()
 }
+
+// 輪詢保底（以防 Realtime 未啟用或 RLS 擋住事件）
+let pollTimer = null
+const startPolling = () => {
+  stopPolling()
+  pollTimer = setInterval(async () => {
+    if (phase.value !== 'waiting') { stopPolling(); return }
+    const { data } = await supabase
+      .from('display_sessions')
+      .select('player_data')
+      .eq('session_id', sessionId.value)
+      .not('player_data', 'is', null)
+      .maybeSingle()
+    if (data?.player_data) {
+      stopPolling()
+      clearSlideTimer()
+      startShow(data.player_data)
+    }
+  }, 2500)
+}
+const stopPolling = () => { if (pollTimer) { clearInterval(pollTimer); pollTimer = null } }
 
 
 
@@ -266,6 +288,7 @@ const schedulePage = (page) => {
       sessionChannel?.unsubscribe()
       await generateSession()
       subscribeSession()
+      startPolling()
     }, 1000))
     return
   }
@@ -315,6 +338,7 @@ const handleStart = () => {
 
 // ── 啟動展示 ──
 const startShow = async (playerData) => {
+  stopPolling()
   player.value = playerData
   await loadDollForUser(playerData.userId ?? null)
   displayLevel.value = displayGames.value = displayDays.value = displayExp.value = 0
@@ -352,11 +376,13 @@ onMounted(async () => {
   subscribeAds()
   await generateSession()
   subscribeSession()
+  startPolling()
   clockTimer = setInterval(() => { now.value = new Date() }, 1000)
 })
 onUnmounted(() => {
   clearPageTimers()
   clearSlideTimer()
+  stopPolling()
   adsChannel?.unsubscribe()
   sessionChannel?.unsubscribe()
   clearInterval(clockTimer)

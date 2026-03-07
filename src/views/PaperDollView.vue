@@ -29,20 +29,20 @@
 
         <div class="doll-stage">
           <!-- 披風在角色後面 -->
-          <template v-if="equipped.cape && !equipped.cape.empty">
-            <img v-if="equipped.cape.img" class="layer-img layer-clothing" :src="equipped.cape.img" :alt="equipped.cape.name" />
+          <template v-if="equipped.cape && !equipped.cape.is_none">
+            <img v-if="equipped.cape.img_url" class="layer-img layer-clothing" :src="equipped.cape.img_url" :alt="equipped.cape.name" />
             <span v-else class="emoji-overlay cape">{{ equipped.cape.emoji }}</span>
           </template>
           <!-- 底圖 -->
           <img class="layer-img" :src="baseImgUrl || 'https://meee.com.tw/hLmrwbm.png'" alt="角色底圖" />
           <!-- 其餘服裝圖層 -->
           <template v-for="slot in layerOrder.filter(s => s !== 'cape')" :key="slot">
-            <img v-if="equipped[slot] && !equipped[slot].empty && equipped[slot].img"
+            <img v-if="equipped[slot] && !equipped[slot].is_none && equipped[slot].img_url"
               class="layer-img layer-clothing"
-              :src="equipped[slot].img"
+              :src="equipped[slot].img_url"
               :alt="equipped[slot].name"
             />
-            <span v-else-if="equipped[slot] && !equipped[slot].empty"
+            <span v-else-if="equipped[slot] && !equipped[slot].is_none && equipped[slot].emoji"
               class="emoji-overlay" :class="slot"
             >{{ equipped[slot].emoji }}</span>
           </template>

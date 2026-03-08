@@ -64,6 +64,15 @@ const loadDollData = async () => {
     const item = items.find(i => i.id === id)
     if (item?.img_url) layers[cat] = item.img_url
   }
+
+  // 未裝備的槽位補上預設圖
+  const { data: noneDefaults } = await supabase.from('wardrobe_none_defaults').select('category, img_url')
+  if (noneDefaults) {
+    for (const nd of noneDefaults) {
+      if (nd.img_url && !layers[nd.category]) layers[nd.category] = nd.img_url
+    }
+  }
+
   dollLayers.value = layers
 }
 

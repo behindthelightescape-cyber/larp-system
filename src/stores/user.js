@@ -17,12 +17,12 @@ export const useUserStore = defineStore('user', () => {
 
   // 🚀 精準等級與稱號計算機 
   const getLevelInfo = (exp) => {
-    if (exp >= 2500) return { level: 6, title: '神級玩家', nextExp: 2500 }
-    if (exp >= 1000) return { level: 5, title: '尊榮玩家', nextExp: 2500 }
-    if (exp >= 500)  return { level: 4, title: '頂級玩家', nextExp: 1000 }
-    if (exp >= 250)  return { level: 3, title: '黃金玩家', nextExp: 500 }
-    if (exp >= 100)  return { level: 2, title: '白銀玩家', nextExp: 250 }
-    return { level: 1, title: '青銅玩家', nextExp: 100 }
+    if (exp >= 2500) return { level: 6, title: '陽光開朗小萌新', nextExp: 2500 }
+    if (exp >= 1000) return { level: 5, title: '穿越時空成癮者', nextExp: 2500 }
+    if (exp >= 500)  return { level: 4, title: '平行宇宙開拓家', nextExp: 1000 }
+    if (exp >= 250)  return { level: 3, title: '主角光環的勇者', nextExp: 500 }
+    if (exp >= 100)  return { level: 2, title: '不怕死的探險家', nextExp: 250 }
+    return { level: 1, title: '剛加入的冒險者', nextExp: 100 }
   }
 
   const userTitle = computed(() => {

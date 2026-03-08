@@ -1,31 +1,50 @@
-const LINE_CHANNEL_SECRET  = Deno.env.get('LINE_CHANNEL_SECRET')!
-const LINE_CHANNEL_TOKEN   = Deno.env.get('LINE_CHANNEL_TOKEN')!
-const SUPABASE_URL         = Deno.env.get('SUPABASE_URL')!
-const SUPABASE_SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-const LIFF_URL             = 'https://liff.line.me/2009161687-icfQU9r6'
+// ═══════════════════════════════════════════════════════════════════════════
+// 劇光燈 Spotlight — LINE Webhook（Supabase Edge Function）
+//
+// 觸發時機：玩家在 LINE 官方帳號傳送特定指令
+//   !我的名片 ／ ！我的名片  →  回傳冒險者名片 Flex Message
+//   !召喚     ／ ！召喚      →  回傳燈燈吉祥物造型 Flex Message
+//
+// 部署指令：
+//   npx supabase functions deploy line-webhook --no-verify-jwt --project-ref <project-ref>
+// ═══════════════════════════════════════════════════════════════════════════
 
-// ── Supabase REST（不 import SDK，冷啟動更快）─────────────────────────────
+// ── 環境變數（在 Supabase Dashboard > Edge Functions > Secrets 設定）──────
+const LINE_CHANNEL_SECRET  = Deno.env.get('LINE_CHANNEL_SECRET')!        // LINE Bot Channel Secret，用於驗證簽名
+const LINE_CHANNEL_TOKEN   = Deno.env.get('LINE_CHANNEL_TOKEN')!         // LINE Bot Channel Access Token，用於回覆訊息
+const SUPABASE_URL         = Deno.env.get('SUPABASE_URL')!               // Supabase 專案 URL
+const SUPABASE_SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!  // Service Role Key，有完整 DB 讀寫權限（跳過 RLS）
+const LIFF_URL             = 'https://liff.line.me/2009161687-icfQU9r6'  // LIFF 入口，用於名片與吉祥物卡的「加入冒險」按鈕
+
+// ── Supabase REST 輔助（不 import SDK，冷啟動更快）────────────────────────
+// 所有 DB 請求共用的 Header
 const dbHeaders = {
   'apikey': SUPABASE_SERVICE_KEY,
   'Authorization': `Bearer ${SUPABASE_SERVICE_KEY}`,
   'Content-Type': 'application/json',
 }
 
+// 通用 GET：傳入 PostgREST 路徑（含 query string），回傳 JSON 陣列
 const dbGet = async (path: string) => {
   const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, { headers: dbHeaders })
   return res.json()
 }
 
+// 計數查詢：利用 content-range header 取得符合條件的總筆數
+// 範例：dbCount('game_participants', 'user_id=eq.U123') → 回傳該玩家的遊戲次數
 const dbCount = async (table: string, filter: string): Promise<number> => {
   const res = await fetch(
     `${SUPABASE_URL}/rest/v1/${table}?${filter}`,
     { headers: { ...dbHeaders, 'Prefer': 'count=exact', 'Range-Unit': 'items' } }
   )
   const range = res.headers.get('content-range') || ''
+  // content-range 格式為 "0-9/42"，取斜線後的總數
   return parseInt(range.split('/')[1] || '0', 10)
 }
 
 // ── LINE 簽名驗證 ──────────────────────────────────────────────────────────
+// LINE 每次 Webhook 都會附上 x-line-signature header
+// 用 HMAC-SHA256 + Channel Secret 對 body 簽名，確認請求來自 LINE 官方，防止偽造
 const verifySignature = async (body: string, signature: string): Promise<boolean> => {
   const enc = new TextEncoder()
   const key = await crypto.subtle.importKey(
@@ -33,32 +52,37 @@ const verifySignature = async (body: string, signature: string): Promise<boolean
     { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']
   )
   const sig      = await crypto.subtle.sign('HMAC', key, enc.encode(body))
-  const expected = btoa(String.fromCharCode(...new Uint8Array(sig)))
+  const expected = btoa(String.fromCharCode(...new Uint8Array(sig))) // 轉成 Base64 與 header 比對
   return expected === signature
 }
 
 // ── 等級計算 ───────────────────────────────────────────────────────────────
+// 根據累積 EXP 回傳等級資訊（level、稱號、下一級所需 EXP）
+// nextExp 用於計算 EXP 進度百分比
 const getLevelInfo = (exp: number) => {
-  if (exp >= 2500) return { level: 6, title: '神級玩家', nextExp: 2500 }
-  if (exp >= 1000) return { level: 5, title: '尊榮玩家', nextExp: 2500 }
-  if (exp >= 500)  return { level: 4, title: '頂級玩家', nextExp: 1000 }
-  if (exp >= 250)  return { level: 3, title: '黃金玩家', nextExp: 500  }
-  if (exp >= 100)  return { level: 2, title: '白銀玩家', nextExp: 250  }
-  return               { level: 1, title: '青銅玩家', nextExp: 100  }
+  if (exp >= 2500) return { level: 6, title: '陽光開朗小萌新', nextExp: 2500 }
+  if (exp >= 1000) return { level: 5, title: '穿越時空成癮者', nextExp: 2500 }
+  if (exp >= 500)  return { level: 4, title: '平行宇宙開拓家', nextExp: 1000 }
+  if (exp >= 250)  return { level: 3, title: '主角光環的勇者', nextExp: 500  }
+  if (exp >= 100)  return { level: 2, title: '不怕死的探險家', nextExp: 250  }
+  return               { level: 1, title: '剛加入的冒險者', nextExp: 100  }
 }
 
+// 品牌主色（金色）
 const GOLD = '#D4AF37'
 
-// ── 組裝名片 Flex Message ─────────────────────────────────────────────────
+// ── 組裝「冒險者名片」Flex Message ────────────────────────────────────────
+// 觸發指令：!我的名片
+// 顯示玩家名稱、等級稱號、EXP、參加場數、資歷天數、推坑人數、推薦碼
 const buildCard = (user: Record<string, unknown>, stats: { games: number; days: number; disciples: number }) => {
   const exp      = (user.total_exp as number) || 0
   const info     = getLevelInfo(exp)
-  const level    = (user.level as number) || info.level
-  const title    = (user.current_title as string) || info.title
+  const level    = (user.level as number) || info.level          // 優先用 DB 儲存的 level，沒有才用計算值
+  const title    = (user.current_title as string) || info.title  // 優先用玩家選擇的稱號
   const accent   = GOLD
-  const expPct   = Math.min(Math.round((exp / info.nextExp) * 100), 100)
-  const filled   = Math.max(expPct, 1)
-  const empty    = Math.max(100 - expPct, 1)
+  const expPct   = Math.min(Math.round((exp / info.nextExp) * 100), 100) // EXP 進度百分比（上限 100%）
+  const filled   = Math.max(expPct, 1)       // 進度條已填滿寬度（最小 1，避免 flex 為 0 報錯）
+  const empty    = Math.max(100 - expPct, 1) // 進度條空白寬度
   const name     = (user.display_name as string) || '冒險者'
   const referral = user.my_referral_code as string | undefined
 
@@ -88,7 +112,7 @@ const buildCard = (user: Record<string, unknown>, stats: { games: number; days: 
               { type: 'text', text: `EXP ${exp.toLocaleString()}`, size: 'sm', color: accent, weight: 'bold', align: 'end' },
             ],
           },
-          // LV + 稱號 badge
+          // LV + 稱號 badge（金色膠囊）
           {
             type: 'box', layout: 'horizontal', backgroundColor: accent,
             paddingAll: '4px', paddingStart: '10px', paddingEnd: '10px', cornerRadius: '20px',
@@ -102,7 +126,7 @@ const buildCard = (user: Record<string, unknown>, stats: { games: number; days: 
       body: {
         type: 'box', layout: 'vertical', paddingAll: '14px', paddingTop: '8px', spacing: 'md',
         contents: [
-          // 三欄數據
+          // 三欄數據：場冒險 / 天資歷 / 推坑人數
           {
             type: 'box', layout: 'horizontal',
             contents: [
@@ -131,7 +155,7 @@ const buildCard = (user: Record<string, unknown>, stats: { games: number; days: 
               },
             ],
           },
-          // 推薦碼 + 按鈕
+          // 推薦碼 + 「加入冒險」按鈕（點擊開啟 LIFF）
           {
             type: 'box', layout: 'horizontal', backgroundColor: '#141414',
             cornerRadius: '8px', paddingAll: '10px', alignItems: 'center', spacing: 'md',
@@ -158,19 +182,24 @@ const buildCard = (user: Record<string, unknown>, stats: { games: number; days: 
   }
 }
 
-// ── 組裝吉祥物 Flex Message ───────────────────────────────────────────────
+// ── 組裝「燈燈吉祥物」Flex Message ────────────────────────────────────────
+// 觸發指令：!召喚
+// 顯示角色底圖 + 依裝備順序疊加服裝圖層，底部顯示名稱與等級
 const buildDollCard = (
   name: string,
   baseUrl: string,
-  layers: { slot: string; url: string }[],
+  layers: { slot: string; url: string }[], // 已收集好的服裝圖層清單（含不裝備預設圖）
   level: number,
   title: string,
 ) => {
+  // 服裝疊加順序（從後到前）：披風最底、表情最頂
   const SLOT_ORDER = ['cape', 'bottom', 'top', 'acc', 'hat', 'expr']
   const orderedLayers = SLOT_ORDER
     .map(slot => layers.find(l => l.slot === slot))
     .filter((l): l is { slot: string; url: string } => !!l)
 
+  // 建立絕對定位的圖層 box，覆蓋在底圖上方
+  // 每個服裝圖片都需要跟底圖一樣大小才能正確對齊
   const absLayer = (url: string) => ({
     type: 'box', layout: 'vertical',
     position: 'absolute', offsetTop: '0px', offsetStart: '0px',
@@ -194,6 +223,7 @@ const buildDollCard = (
         alignItems: 'center',
         contents: [
           { type: 'text', text: 'SPOTLIGHT LARP', size: 'xs', color: GOLD, weight: 'bold', flex: 1 },
+          // 右上角「加入冒險」按鈕
           {
             type: 'box', layout: 'vertical', flex: 0,
             backgroundColor: GOLD, cornerRadius: '6px',
@@ -204,18 +234,22 @@ const buildDollCard = (
         ],
       },
       body: {
+        // 角色底圖 + 服裝圖層疊加區
         type: 'box', layout: 'vertical', paddingAll: '0px',
         contents: [
           {
             type: 'box', layout: 'vertical', paddingAll: '0px',
             contents: [
+              // 角色底圖（最底層）
               { type: 'image', url: baseUrl, size: 'full', aspectRatio: '2:3', aspectMode: 'cover' },
+              // 服裝圖層（絕對定位，依序疊加在底圖上方）
               ...orderedLayers.map(l => absLayer(l.url)),
             ],
           },
         ],
       },
       footer: {
+        // 玩家名稱 + 等級稱號
         type: 'box', layout: 'vertical', paddingAll: '10px', spacing: 'xs',
         contents: [
           { type: 'text', text: `✨ ${name} 的燈燈`, size: 'sm', color: '#ffffff', weight: 'bold', align: 'center' },
@@ -226,7 +260,8 @@ const buildDollCard = (
   }
 }
 
-// ── LINE Reply ─────────────────────────────────────────────────────────────
+// ── LINE 回覆訊息 ──────────────────────────────────────────────────────────
+// 使用 replyToken 回覆，每個 token 只能用一次且有時效限制
 const lineReply = (replyToken: string, messages: unknown[]) =>
   fetch('https://api.line.me/v2/bot/message/reply', {
     method: 'POST',
@@ -234,7 +269,10 @@ const lineReply = (replyToken: string, messages: unknown[]) =>
     body: JSON.stringify({ replyToken, messages }),
   })
 
-// ── 事件處理（背景執行）────────────────────────────────────────────────────
+// ── 事件處理 ───────────────────────────────────────────────────────────────
+// 逐一處理 LINE 傳來的 events 陣列
+// 只處理文字訊息（type=message, message.type=text）
+// 非指令文字直接跳過，不做任何回應
 const handleEvents = async (events: Record<string, unknown>[]) => {
   for (const event of events) {
     console.log('event.type:', event.type)
@@ -246,6 +284,7 @@ const handleEvents = async (events: Record<string, unknown>[]) => {
     const text = (msg.text as string).trim()
     console.log('text:', JSON.stringify(text))
 
+    // 支援全形驚嘆號（！）與半形（!）
     const isCard   = text === '!我的名片' || text === '！我的名片'
     const isMascot = text === '!召喚'     || text === '！召喚'
     if (!isCard && !isMascot) continue
@@ -254,10 +293,12 @@ const handleEvents = async (events: Record<string, unknown>[]) => {
     const replyToken = event.replyToken as string
     console.log('lineUserId:', lineUserId)
 
+    // 查詢玩家資料（users 表的 id 就是 LINE userId）
     const users = await dbGet(`users?id=eq.${lineUserId}&limit=1`)
     const user = users?.[0]
     console.log('user found:', !!user)
 
+    // 尚未加入的玩家：給提示訊息 + 快速回覆按鈕引導加入
     if (!user) {
       await lineReply(replyToken, [{
         type: 'text',
@@ -269,14 +310,16 @@ const handleEvents = async (events: Record<string, unknown>[]) => {
       continue
     }
 
-    // ── 名片 ──────────────────────────────────────────────────────────────
+    // ── 名片指令：回傳冒險者名片 ──────────────────────────────────────────
     if (isCard) {
+      // 並行查詢：遊戲次數 + 推薦人數（若無推薦碼則直接給 0）
       const [games, disciples] = await Promise.all([
         dbCount('game_participants', `user_id=eq.${lineUserId}`),
         user.my_referral_code
           ? dbCount('users', `referred_by=eq.${user.my_referral_code}`)
           : Promise.resolve(0),
       ])
+      // 計算加入天數（從 created_at 到現在，無條件進位）
       const days = Math.ceil(
         Math.abs(Date.now() - new Date(user.created_at).getTime()) / 86_400_000
       )
@@ -284,32 +327,39 @@ const handleEvents = async (events: Record<string, unknown>[]) => {
       console.log('lineReply status:', replyRes.status, await replyRes.text())
     }
 
-    // ── 召喚吉祥物 ────────────────────────────────────────────────────────
+    // ── 召喚指令：回傳燈燈吉祥物造型 ─────────────────────────────────────
     if (isMascot) {
+      // 並行查詢：角色底圖、玩家裝備紀錄、各分類「不裝備」預設圖設定
       const [basesData, equippedData, noneDefaultsData] = await Promise.all([
         dbGet('wardrobe_bases?is_default=eq.true&is_active=eq.true&limit=1'),
         dbGet(`user_wardrobe_equipped?user_id=eq.${lineUserId}&limit=1`),
         dbGet('wardrobe_none_defaults?select=category,img_url'),
       ])
 
+      // 找不到底圖時 fallback 到預設角色圖
       const baseUrl = basesData?.[0]?.img_url || 'https://meee.com.tw/hLmrwbm.png'
+      // equippedMap 格式：{ hat: 'item-uuid', top: 'item-uuid', ... }
+      // 未裝備的分類不會出現在 key 中（is_none 時不儲存）
       const equippedMap: Record<string, string> = equippedData?.[0]?.equipped || {}
-      const itemIds = Object.values(equippedMap).filter(Boolean)
+      const itemIds = Object.values(equippedMap).filter(Boolean) // 過濾掉 null 值
 
+      // 查詢已裝備道具的圖片 URL
       let layers: { slot: string; url: string }[] = []
       if (itemIds.length > 0) {
         const itemsData = await dbGet(
           `wardrobe_items?id=in.(${itemIds.join(',')})&select=id,category,img_url&is_active=eq.true`
         )
         layers = (itemsData || [])
-          .filter((i: Record<string, unknown>) => i.img_url)
+          .filter((i: Record<string, unknown>) => i.img_url) // 只保留有圖片的道具
           .map((i: Record<string, unknown>) => ({
             slot: i.category as string,
             url:  i.img_url  as string,
           }))
       }
 
-      // 補上「不裝備」預設圖層（該分類沒有裝備任何道具時）
+      // 補上「不裝備」預設圖層
+      // 若某分類沒有裝備任何道具（不在 equippedMap 中），
+      // 且後台 wardrobe_none_defaults 有設定預設圖，就補一層疊在角色上
       for (const nd of (noneDefaultsData || []) as { category: string; img_url: string }[]) {
         if (nd.img_url && !equippedMap[nd.category]) {
           layers.push({ slot: nd.category, url: nd.img_url })
@@ -328,6 +378,11 @@ const handleEvents = async (events: Record<string, unknown>[]) => {
 }
 
 // ── 主 Handler ─────────────────────────────────────────────────────────────
+// Supabase Edge Function 入口點
+// 1. 只接受 POST（LINE Webhook 固定用 POST）
+// 2. 驗證 LINE 簽名，防止偽造請求
+// 3. 解析 events 並交給 handleEvents 處理
+// 4. 立即回 200 OK（LINE 要求 30 秒內回應）
 Deno.serve(async (req) => {
   if (req.method !== 'POST') return new Response('Method Not Allowed', { status: 405 })
 

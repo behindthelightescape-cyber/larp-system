@@ -204,7 +204,7 @@ const buildDollCard = (
     type: 'box', layout: 'vertical',
     position: 'absolute', offsetTop: '0px', offsetStart: '0px',
     width: '100%', height: '100%',
-    contents: [{ type: 'image', url, size: 'full', aspectRatio: '2:3', aspectMode: 'cover' }],
+    contents: [{ type: 'image', url, size: 'full', aspectRatio: '1:1', aspectMode: 'cover' }],
   })
 
   return {
@@ -241,7 +241,7 @@ const buildDollCard = (
             type: 'box', layout: 'vertical', paddingAll: '0px',
             contents: [
               // 角色底圖（最底層）
-              { type: 'image', url: baseUrl, size: 'full', aspectRatio: '2:3', aspectMode: 'cover' },
+              { type: 'image', url: baseUrl, size: 'full', aspectRatio: '1:1', aspectMode: 'cover' },
               // 服裝圖層（絕對定位，依序疊加在底圖上方）
               ...orderedLayers.map(l => absLayer(l.url)),
             ],

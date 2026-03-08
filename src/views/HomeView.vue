@@ -480,12 +480,18 @@ onMounted(() => {
   pointer-events: none;
 }
 .showcase-doll {
-  position: relative; display: inline-block;
+  display: grid;
+  position: relative;
+  width: 200px; aspect-ratio: 1;
   filter: drop-shadow(0 20px 48px rgba(0,0,0,0.9));
 }
-.doll-base { display: block; width: 200px; height: auto; }
+.doll-base {
+  grid-area: 1 / 1;
+  width: 100%; height: 100%;
+  object-fit: contain;
+}
 .doll-clothing {
-  position: absolute; top: 0; left: 0;
+  grid-area: 1 / 1;
   width: 100%; height: 100%;
   object-fit: contain; pointer-events: none;
 }
@@ -808,7 +814,7 @@ onMounted(() => {
 @media (max-width: 360px) {
   .content-layer { padding: 74px 14px 80px; gap: 10px; max-width: 100%; }
   .header-logo { height: 52px; }
-  .doll-base { width: 160px; }
+  .showcase-doll { width: 160px; }
   .user-name { font-size: 1.6rem; }
   .stat-num { font-size: 2rem; }
   .exp-cur-big { font-size: 1.7rem; }
@@ -820,7 +826,7 @@ onMounted(() => {
 @media (min-width: 480px) {
   .content-layer { padding: 74px 24px 80px; }
   .header-logo { height: 78px; }
-  .doll-base { width: 220px; }
+  .showcase-doll { width: 220px; }
   .user-name { font-size: 2.2rem; }
   .stat-num { font-size: 2.6rem; }
   .exp-cur-big { font-size: 2.2rem; }

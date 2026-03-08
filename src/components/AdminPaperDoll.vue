@@ -16,6 +16,7 @@ const noneDefaultCategories = [
 ]
 const noneDefaults = ref({}) // { hat: 'https://...', ... }
 const isNoneDefaultsSaving = ref(false)
+const noneDefaultUploading = ref({}) // { hat: true, ... }
 
 const fetchNoneDefaults = async () => {
   const { data } = await supabase.from('wardrobe_none_defaults').select('*')
@@ -33,6 +34,26 @@ const saveNoneDefault = async (category) => {
   isNoneDefaultsSaving.value = false
   if (error) alert('儲存失敗：' + error.message)
   else alert('✅ 已儲存！')
+}
+
+const handleNoneDefaultUpload = async (event, category) => {
+  const file = event.target.files[0]
+  if (!file) return
+  noneDefaultUploading.value[category] = true
+  try {
+    const ext = file.name.split('.').pop()
+    const filePath = `none_defaults/${Date.now()}_${category}.${ext}`
+    const { error: uploadError } = await supabase.storage.from('wardrobe').upload(filePath, file)
+    if (uploadError) throw uploadError
+    const { data } = supabase.storage.from('wardrobe').getPublicUrl(filePath)
+    noneDefaults.value[category] = data.publicUrl
+    await saveNoneDefault(category)
+  } catch (err) {
+    alert('上傳失敗：' + err.message)
+  } finally {
+    noneDefaultUploading.value[category] = false
+    event.target.value = ''
+  }
 }
 
 // ── 道具 ──
@@ -523,7 +544,7 @@ const deleteItem = async (item) => {
               <div class="upload-wrapper">
                 <div class="image-preview-box">
                   <img v-if="form.img_url" :src="form.img_url" class="preview-img" />
-                  <div v-else class="no-image-text">尚未上傳<br><span>400 × 600 px 透明底 PNG</span></div>
+                  <div v-else class="no-image-text">尚未上傳<br><span>600 × 600 px 透明底 PNG</span></div>
                 </div>
                 <div class="upload-controls">
                   <input type="file" id="wardrobeUpload" accept="image/*" class="hidden-file-input" @change="handleFileUpload" :disabled="isUploading" />
@@ -768,9 +789,9 @@ const deleteItem = async (item) => {
               </div>
 
               <div class="form-group full">
-                <label>角色底圖（建議 400 × 600 px 透明底 PNG）</label>
+                <label>角色底圖（建議 600 × 600 px 透明底 PNG）</label>
                 <div class="upload-wrapper">
-                  <div class="image-preview-box" style="width:80px; height:120px;">
+                  <div class="image-preview-box" style="width:100px; height:100px;">
                     <img v-if="baseForm.img_url" :src="baseForm.img_url" class="preview-img" />
                     <div v-else class="no-image-text">尚未上傳</div>
                   </div>
@@ -819,15 +840,23 @@ const deleteItem = async (item) => {
             <img v-if="noneDefaults[cat.key]" :src="noneDefaults[cat.key]" :alt="cat.label" />
             <div v-else class="no-image-text">未設定</div>
           </div>
-          <input
-            v-model="noneDefaults[cat.key]"
-            class="admin-input"
-            placeholder="圖片 URL（留空表示不顯示）"
-            style="flex:1;"
-          />
-          <button class="btn btn-gold btn-small" :disabled="isNoneDefaultsSaving" @click="saveNoneDefault(cat.key)">
-            儲存
-          </button>
+          <div class="upload-controls" style="flex:1;">
+            <input
+              :id="`noneDefaultUpload_${cat.key}`"
+              type="file" accept="image/*"
+              class="hidden-file-input"
+              :disabled="noneDefaultUploading[cat.key]"
+              @change="handleNoneDefaultUpload($event, cat.key)"
+            />
+            <label :for="`noneDefaultUpload_${cat.key}`" class="upload-btn" :class="{ disabled: noneDefaultUploading[cat.key] }">
+              <span v-if="noneDefaultUploading[cat.key]">⏳ 上傳中...</span>
+              <span v-else-if="noneDefaults[cat.key]">🔄 更換圖片</span>
+              <span v-else>📁 選擇圖片</span>
+            </label>
+            <button v-if="noneDefaults[cat.key]" class="btn btn-danger btn-small" @click="noneDefaults[cat.key] = ''; saveNoneDefault(cat.key)">
+              清除
+            </button>
+          </div>
         </div>
       </div>
     </template>
@@ -938,7 +967,7 @@ const deleteItem = async (item) => {
   border: 1px dashed #444;
 }
 .image-preview-box {
-  width: 120px; height: 90px; flex-shrink: 0;
+  width: 100px; height: 100px; flex-shrink: 0;
   background: #111; border-radius: 8px; overflow: hidden;
   display: flex; align-items: center; justify-content: center;
   border: 1px solid #333;

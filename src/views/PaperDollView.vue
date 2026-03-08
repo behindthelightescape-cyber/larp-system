@@ -553,14 +553,18 @@ const obtainDesc = (item) => {
   pointer-events: none;
 }
 .doll-stage {
-  position: relative; display: inline-block;
+  display: grid;
+  position: relative;
+  width: 240px; aspect-ratio: 1;
   filter: drop-shadow(0 8px 24px rgba(0,0,0,0.6));
 }
 .layer-img {
-  display: block; width: 200px; height: auto;
+  grid-area: 1 / 1;
+  width: 100%; height: 100%;
+  object-fit: contain;
 }
 .layer-clothing {
-  position: absolute; top: 0; left: 0;
+  grid-area: 1 / 1;
   width: 100%; height: 100%;
   object-fit: contain; pointer-events: none;
 }
@@ -852,7 +856,7 @@ const obtainDesc = (item) => {
 @media (max-width: 480px) {
   .content-layer { padding: 16px 16px 80px; gap: 12px; }
   .page-title { font-size: 1.3rem; }
-  .layer-img { width: 160px; }
+  .doll-stage { width: 180px; }
   .emoji-overlay { font-size: 1.8rem; }
   .item-grid { grid-template-columns: repeat(3, 1fr); gap: 8px; }
   .item-emoji { font-size: 1.8rem; }
@@ -864,7 +868,7 @@ const obtainDesc = (item) => {
 }
 
 @media (min-width: 600px) {
-  .layer-img { width: 240px; }
+  .doll-stage { width: 280px; }
   .item-grid { grid-template-columns: repeat(4, 1fr); }
   .emoji-overlay { font-size: 2.8rem; }
 }

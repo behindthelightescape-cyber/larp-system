@@ -38,9 +38,7 @@ const loadDollData = async () => {
     .select('equipped, background_id')
     .eq('user_id', store.userData.id)
     .single()
-  if (!eq) return
-
-  if (eq.background_id) {
+  if (eq?.background_id) {
     const { data: bg } = await supabase
       .from('wardrobe_backgrounds')
       .select('img_url')
@@ -49,20 +47,20 @@ const loadDollData = async () => {
     if (bg?.img_url) equippedBgUrl.value = bg.img_url
   }
 
-  if (!eq.equipped) return
-  const itemIds = Object.values(eq.equipped).filter(Boolean)
-  if (!itemIds.length) return
-
-  const { data: items } = await supabase
-    .from('wardrobe_items')
-    .select('id, category, img_url')
-    .in('id', itemIds)
-  if (!items) return
-
   const layers = {}
-  for (const [cat, id] of Object.entries(eq.equipped)) {
-    const item = items.find(i => i.id === id)
-    if (item?.img_url) layers[cat] = item.img_url
+
+  const itemIds = eq?.equipped ? Object.values(eq.equipped).filter(Boolean) : []
+  if (itemIds.length) {
+    const { data: items } = await supabase
+      .from('wardrobe_items')
+      .select('id, category, img_url')
+      .in('id', itemIds)
+    if (items) {
+      for (const [cat, id] of Object.entries(eq.equipped)) {
+        const item = items.find(i => i.id === id)
+        if (item?.img_url) layers[cat] = item.img_url
+      }
+    }
   }
 
   // 未裝備的槽位補上預設圖

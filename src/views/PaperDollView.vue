@@ -82,7 +82,7 @@
             @click="selectItem(item)"
           >
             <div class="item-thumb">
-              <img v-if="item.img_url && !item.is_none" :src="item.img_url" :alt="item.name" class="item-thumb-img" />
+              <img v-if="(item.thumb_url || item.img_url) && !item.is_none" :src="item.thumb_url || item.img_url" :alt="item.name" class="item-thumb-img" />
               <span v-else class="item-emoji">{{ getItemState(item) === 'locked' ? '🔒' : (item.emoji || '✦') }}</span>
               <div v-if="getItemState(item) === 'locked'" class="lock-veil"></div>
             </div>

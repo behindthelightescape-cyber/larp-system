@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, nextTick } from 'vue'
 import { supabase } from '../supabase'
 
 // ── 主 Tab ──
@@ -34,6 +34,78 @@ const saveNoneDefault = async (category) => {
   isNoneDefaultsSaving.value = false
   if (error) alert('儲存失敗：' + error.message)
   else alert('✅ 已儲存！')
+}
+
+// ── 預覽圖編輯器 ──
+const THUMB_SIZE = 300
+const thumbEditorOpen = ref(false)
+const thumbEditorImgEl = ref(null)
+const thumbX = ref(0)
+const thumbY = ref(0)
+const thumbScale = ref(0.5)
+const thumbBgColor = ref('#1a1507')
+const thumbIsDragging = ref(false)
+const thumbDragStart = ref({ x: 0, y: 0 })
+const thumbImgStart = ref({ x: 0, y: 0 })
+const isSavingThumb = ref(false)
+
+const openThumbEditor = () => {
+  if (!form.value.img_url) return alert('請先上傳渲染圖')
+  thumbEditorOpen.value = true
+  const img = new Image()
+  img.crossOrigin = 'anonymous'
+  img.onload = () => {
+    thumbEditorImgEl.value = img
+    thumbScale.value = THUMB_SIZE / img.naturalWidth
+    thumbX.value = 0
+    thumbY.value = 0
+    nextTick(() => drawThumbCanvas())
+  }
+  img.src = form.value.img_url
+}
+
+const drawThumbCanvas = () => {
+  const canvas = document.getElementById('thumbEditorCanvas')
+  if (!canvas || !thumbEditorImgEl.value) return
+  const ctx = canvas.getContext('2d')
+  ctx.clearRect(0, 0, THUMB_SIZE, THUMB_SIZE)
+  ctx.fillStyle = thumbBgColor.value
+  ctx.fillRect(0, 0, THUMB_SIZE, THUMB_SIZE)
+  const img = thumbEditorImgEl.value
+  ctx.drawImage(img, thumbX.value, thumbY.value, img.naturalWidth * thumbScale.value, img.naturalHeight * thumbScale.value)
+}
+
+const onThumbMouseDown = (e) => {
+  thumbIsDragging.value = true
+  thumbDragStart.value = { x: e.clientX, y: e.clientY }
+  thumbImgStart.value = { x: thumbX.value, y: thumbY.value }
+}
+const onThumbMouseMove = (e) => {
+  if (!thumbIsDragging.value) return
+  thumbX.value = thumbImgStart.value.x + (e.clientX - thumbDragStart.value.x)
+  thumbY.value = thumbImgStart.value.y + (e.clientY - thumbDragStart.value.y)
+  drawThumbCanvas()
+}
+const onThumbMouseUp = () => { thumbIsDragging.value = false }
+
+const saveThumbImage = async () => {
+  const canvas = document.getElementById('thumbEditorCanvas')
+  if (!canvas) return
+  isSavingThumb.value = true
+  canvas.toBlob(async (blob) => {
+    try {
+      const filePath = `thumbs/${Date.now()}_${Math.random().toString(36).substring(7)}.png`
+      const { error: upErr } = await supabase.storage.from('wardrobe').upload(filePath, blob)
+      if (upErr) throw upErr
+      const { data } = supabase.storage.from('wardrobe').getPublicUrl(filePath)
+      form.value.thumb_url = data.publicUrl
+      thumbEditorOpen.value = false
+    } catch (err) {
+      alert('儲存失敗：' + err.message)
+    } finally {
+      isSavingThumb.value = false
+    }
+  }, 'image/png')
 }
 
 const handleNoneDefaultUpload = async (event, category) => {
@@ -558,6 +630,22 @@ const deleteItem = async (item) => {
               </div>
             </div>
 
+            <div class="form-group full">
+              <label>預覽圖（衣櫃縮圖）</label>
+              <div class="upload-wrapper">
+                <div class="image-preview-box">
+                  <img v-if="form.thumb_url" :src="form.thumb_url" class="preview-img" />
+                  <div v-else class="no-image-text">尚未產生<br><span>從渲染圖裁切</span></div>
+                </div>
+                <div class="upload-controls">
+                  <button class="upload-btn" :disabled="!form.img_url" @click="openThumbEditor">
+                    {{ form.thumb_url ? '🔄 重新編輯' : '✂️ 產生預覽圖' }}
+                  </button>
+                  <button v-if="form.thumb_url" class="btn btn-danger btn-small" @click="form.thumb_url = ''">清除</button>
+                </div>
+              </div>
+            </div>
+
             <div class="form-group">
               <label>排序（數字小的排前面）</label>
               <input v-model="form.sort_order" type="number" class="admin-input" min="0" />
@@ -602,6 +690,51 @@ const deleteItem = async (item) => {
             <button class="btn btn-gold" @click="save">{{ isEditing ? '儲存變更' : '建立道具' }}</button>
           </div>
 
+        </div>
+      </div>
+    </Teleport>
+
+    <!-- 預覽圖編輯器 Modal -->
+    <Teleport to="body">
+      <div v-if="thumbEditorOpen" class="modal-overlay" @mouseup="onThumbMouseUp" @mousemove="onThumbMouseMove">
+        <div class="thumb-editor-modal">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+            <h3 style="margin:0; color:#eee;">✂️ 產生預覽圖</h3>
+            <button class="admin-close-btn" @click="thumbEditorOpen = false">✕</button>
+          </div>
+
+          <div class="thumb-editor-body">
+            <canvas
+              id="thumbEditorCanvas"
+              :width="THUMB_SIZE" :height="THUMB_SIZE"
+              class="thumb-canvas"
+              @mousedown="onThumbMouseDown"
+              @mouseleave="onThumbMouseUp"
+            ></canvas>
+
+            <div class="thumb-controls">
+              <label class="thumb-control-label">底色</label>
+              <input type="color" v-model="thumbBgColor" class="thumb-color-input" @input="drawThumbCanvas" />
+
+              <label class="thumb-control-label">縮放</label>
+              <input
+                type="range" v-model.number="thumbScale"
+                min="0.1" max="3" step="0.02"
+                class="thumb-range"
+                @input="drawThumbCanvas"
+              />
+              <span style="color:#aaa; font-size:0.8rem;">{{ Math.round(thumbScale * 100) }}%</span>
+
+              <p style="color:#666; font-size:0.78rem; margin:12px 0 0;">拖拉畫布移動圖片位置</p>
+            </div>
+          </div>
+
+          <div style="display:flex; gap:10px; justify-content:flex-end; margin-top:20px;">
+            <button class="btn btn-ghost" @click="thumbEditorOpen = false">取消</button>
+            <button class="btn btn-gold" :disabled="isSavingThumb" @click="saveThumbImage">
+              {{ isSavingThumb ? '⏳ 儲存中...' : '✅ 儲存預覽圖' }}
+            </button>
+          </div>
         </div>
       </div>
     </Teleport>
@@ -1062,4 +1195,30 @@ const deleteItem = async (item) => {
   display: flex; align-items: center; justify-content: center;
 }
 .none-default-preview img { width: 100%; height: 100%; object-fit: contain; }
+
+/* ── 預覽圖編輯器 ── */
+.thumb-editor-modal {
+  background: #111; border: 1px solid #333; border-radius: 16px;
+  padding: 24px; width: 520px; max-width: 95vw;
+}
+.thumb-editor-body {
+  display: flex; gap: 20px; align-items: flex-start;
+}
+.thumb-canvas {
+  width: 300px; height: 300px; flex-shrink: 0;
+  border-radius: 8px; border: 1px solid #333;
+  cursor: grab; user-select: none;
+}
+.thumb-canvas:active { cursor: grabbing; }
+.thumb-controls {
+  display: flex; flex-direction: column; gap: 8px; flex: 1;
+}
+.thumb-control-label { font-size: 0.82rem; color: #aaa; }
+.thumb-color-input {
+  width: 100%; height: 36px; border-radius: 6px;
+  border: 1px solid #333; background: #1a1a1a; cursor: pointer;
+}
+.thumb-range {
+  width: 100%; accent-color: #D4AF37;
+}
 </style>

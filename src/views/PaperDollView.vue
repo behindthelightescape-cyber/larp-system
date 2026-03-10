@@ -585,7 +585,7 @@ const obtainDesc = (item) => {
 .emoji-overlay.acc    { top: 48%; left: 72%; transform: none; }
 
 .stage-shadow {
-  width: 120px; height: 12px; margin-top: 12px;
+  width: 120px; height: 12px; margin-top: -15px;
   background: radial-gradient(ellipse, rgba(0,0,0,0.5) 0%, transparent 70%);
   border-radius: 50%;
 }

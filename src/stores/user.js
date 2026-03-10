@@ -341,7 +341,7 @@ export const useUserStore = defineStore('user', () => {
       const isFirstTimeCompletingProfile = !userData.value.birthday && formData.birthday;
 
       const { data, error: updateError } = await supabase
-        .from('users').update({ display_name: formData.name, phone: formData.phone, birthday: formData.birthday }).eq('id', userData.value.id).select().single()
+        .from('users').update({ display_name: formData.name, phone: formData.phone, birthday: formData.birthday, email: formData.email || null }).eq('id', userData.value.id).select().single()
 
       if (updateError) throw updateError
       userData.value = data

@@ -15,7 +15,7 @@ const store = useUserStore()
 // ─────────────────────────────────────────
 //  個人資料
 // ─────────────────────────────────────────
-const form = ref({ name: '', phone: '', birthday: '' })
+const form = ref({ name: '', phone: '', birthday: '', email: '' })
 const isBirthdayLocked = ref(false)
 
 // 提前宣告，watch immediate 執行時才能正確賦值
@@ -30,6 +30,7 @@ watch(
     form.value.name     = val.display_name || ''
     form.value.phone    = val.phone        || ''
     form.value.birthday = val.birthday     || ''
+    form.value.email    = val.email        || ''
     if (val.birthday)         isBirthdayLocked.value  = true
     if (val.my_referral_code) myReferralCode.value    = val.my_referral_code
     if (val.referred_by)    { referredBy.value        = val.referred_by; isReferredLocked.value = true }
@@ -42,11 +43,14 @@ const save = async () => {
   const phone = form.value.phone?.trim()
   if (!phone)           return alert('⚠️ 請填寫您的手機號碼喔！這是必填欄位。')
   if (phone.length < 8) return alert('⚠️ 請填寫有效的手機號碼格式喔！')
+  const email = form.value.email?.trim()
+  if (!email) return alert('⚠️ 請填寫您的電子郵件喔！這是必填欄位。')
 
   const result = await store.updateProfile({
     name:     form.value.name,
     phone,
     birthday: form.value.birthday || null,
+    email:    email,
   })
 
   if (result.success) {
@@ -247,6 +251,15 @@ const bindFriendCode = () => withLoading(isBindingCode, async () => {
             </label>
             <input v-model="form.phone" type="tel" inputmode="tel"
                    placeholder="0912-345-678" class="field-input" />
+          </div>
+
+          <div class="field-group">
+            <label class="field-label">
+              電子郵件
+              <span class="badge-required">必填</span>
+            </label>
+            <input v-model="form.email" type="email" inputmode="email"
+                   placeholder="example@email.com" class="field-input" />
           </div>
 
           <div class="field-group">

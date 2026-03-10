@@ -14,6 +14,7 @@ import AdminAutoRewards from '../components/AdminAutoRewards.vue' // 🚀 1. 引
 import AdminPushLogs from '../components/AdminPushLogs.vue'
 import AdminPaperDoll from '../components/AdminPaperDoll.vue'
 import AdminDisplayAds from '../components/AdminDisplayAds.vue'
+import AdminPoints from '../components/AdminPoints.vue'
 
 const session = ref(null)
 const isLoading = ref(true)
@@ -208,6 +209,16 @@ const toggleGroup = (key) => {
           </button>
         </template>
 
+        <button class="nav-group-label" @click="toggleGroup('points')">
+          <span>點數系統</span>
+          <span class="group-arrow" :class="{ collapsed: collapsedGroups['points'] }">›</span>
+        </button>
+        <template v-if="!collapsedGroups['points']">
+          <button class="nav-btn" :class="{ active: currentTab === 'points' }" @click="changeTab('points')">
+            <span class="icon">🪙</span> 點數管理
+          </button>
+        </template>
+
         <button class="nav-group-label" @click="toggleGroup('content')">
           <span>內容管理</span>
           <span class="group-arrow" :class="{ collapsed: collapsedGroups['content'] }">›</span>
@@ -260,7 +271,8 @@ const toggleGroup = (key) => {
               currentTab === 'auto_reward' ? '全自動派發中控台' : 
               currentTab === 'achievement' ? '成就鑄造廠' :
               currentTab === 'paperdoll' ? '燈燈造型室' :
-              currentTab === 'display_ads' ? '電視廣告管理' : '劇本管理'
+              currentTab === 'display_ads' ? '電視廣告管理' :
+              currentTab === 'points' ? '點數系統管理' : '劇本管理'
             }}
           </h2>
         </div>
@@ -322,6 +334,10 @@ const toggleGroup = (key) => {
 
       <div v-if="currentTab === 'display_ads'" class="panel active">
         <AdminDisplayAds />
+      </div>
+
+      <div v-if="currentTab === 'points'" class="panel active">
+        <AdminPoints />
       </div>
 
     </main>

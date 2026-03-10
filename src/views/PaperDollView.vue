@@ -12,7 +12,7 @@
         </div>
         <div class="point-chip">
           <span class="point-icon">✦</span>
-          <span class="point-val">{{ userExp }}</span>
+          <span class="point-val">{{ userPoints }}</span>
           <span class="point-unit">pt</span>
         </div>
       </div>
@@ -78,16 +78,18 @@
             v-for="item in currentItems"
             :key="item.id"
             class="item-card"
-            :class="{ selected: isSelected(item), locked: getItemState(item) === 'locked' }"
+            :class="{ selected: isSelected(item), locked: getItemState(item) === 'locked', discontinued: getItemState(item) === 'discontinued' }"
             @click="selectItem(item)"
           >
             <div class="item-thumb">
               <img v-if="(item.thumb_url || item.img_url) && !item.is_none" :src="item.thumb_url || item.img_url" :alt="item.name" class="item-thumb-img" />
               <span v-else class="item-emoji">{{ getItemState(item) === 'locked' ? '🔒' : (item.emoji || '✦') }}</span>
               <div v-if="getItemState(item) === 'locked'" class="lock-veil"></div>
+              <div v-if="getItemState(item) === 'discontinued'" class="discontinued-veil"></div>
             </div>
             <span class="item-name">{{ item.name }}</span>
-            <span v-if="getItemState(item) === 'purchasable'" class="item-price">{{ item.unlock_cost }} pt</span>
+            <span v-if="getItemState(item) === 'discontinued'" class="item-badge discontinued-badge">已絕版</span>
+            <span v-else-if="getItemState(item) === 'purchasable'" class="item-price">{{ item.unlock_cost }} pt</span>
             <span v-else-if="getItemState(item) === 'claimable' && !item.is_none" class="item-badge claimable">領取</span>
             <span v-else-if="isSelected(item)" class="item-badge">✔</span>
           </button>
@@ -178,6 +180,7 @@ import { useUserStore } from '../stores/user'
 const userStore = useUserStore()
 const userId = computed(() => userStore.userData?.id ?? null)
 const userExp = computed(() => userStore.userData?.total_exp ?? 0)
+const userPoints = computed(() => userStore.userData?.points ?? 0)
 
 const isLoaded = ref(false)
 const isPageLoading = ref(true)
@@ -242,8 +245,9 @@ const isClaiming  = ref(false)
 const getItemState = (item) => {
   if (item.is_none) return 'owned'
   if (ownedItemIds.value.has(item.id)) return 'owned'
+  if (item.is_discontinued) return 'discontinued'
   if (item.unlock_type === 'free') return 'claimable'
-  if (item.unlock_type === 'points') return userExp.value >= item.unlock_cost ? 'purchasable' : 'locked'
+  if (item.unlock_type === 'points') return userPoints.value >= item.unlock_cost ? 'purchasable' : 'locked'
   if (item.unlock_type === 'script') return userScriptIds.value.has(String(item.unlock_ref_id)) ? 'claimable' : 'locked'
   if (item.unlock_type === 'achievement') return userAchIds.value.has(item.unlock_ref_id) ? 'claimable' : 'locked'
   return 'locked'
@@ -253,7 +257,7 @@ const getBgState = (bg) => {
   if (bg.is_none) return 'owned'
   if (ownedBgIds.value.has(bg.id)) return 'owned'
   if (bg.unlock_type === 'free') return 'claimable'
-  if (bg.unlock_type === 'points') return userExp.value >= bg.unlock_cost ? 'purchasable' : 'locked'
+  if (bg.unlock_type === 'points') return userPoints.value >= bg.unlock_cost ? 'purchasable' : 'locked'
   if (bg.unlock_type === 'script') return userScriptIds.value.has(String(bg.unlock_ref_id)) ? 'claimable' : 'locked'
   if (bg.unlock_type === 'achievement') return userAchIds.value.has(bg.unlock_ref_id) ? 'claimable' : 'locked'
   return 'locked'
@@ -413,8 +417,7 @@ const purchaseItem = async (item) => {
   if (!confirm(`確定花費 ${item.unlock_cost} 點數購買「${item.name}」嗎？`)) return
   isClaiming.value = true
   try {
-    await supabase.from('users').update({ total_exp: userExp.value - item.unlock_cost }).eq('id', userId.value)
-    userStore.userData.total_exp -= item.unlock_cost
+    await userStore.grantPoints(userId.value, -item.unlock_cost, 'shop_redeem', item.id, `購買造型「${item.name}」`)
     await supabase.from('user_wardrobe').insert({ user_id: userId.value, item_id: item.id })
     ownedItemIds.value = new Set([...ownedItemIds.value, item.id])
     equipped[item.category] = item
@@ -438,8 +441,7 @@ const claimBg = async (bg) => {
 const purchaseBg = async (bg) => {
   if (!userId.value) return
   if (!confirm(`確定花費 ${bg.unlock_cost} 點數購買「${bg.name}」場景嗎？`)) return
-  await supabase.from('users').update({ total_exp: userExp.value - bg.unlock_cost }).eq('id', userId.value)
-  userStore.userData.total_exp -= bg.unlock_cost
+  await userStore.grantPoints(userId.value, -bg.unlock_cost, 'shop_redeem', bg.id, `購買場景「${bg.name}」`)
   await supabase.from('user_wardrobe_backgrounds').insert({ user_id: userId.value, background_id: bg.id })
   ownedBgIds.value = new Set([...ownedBgIds.value, bg.id])
   activeBgId.value = bg.id
@@ -678,6 +680,17 @@ const obtainDesc = (item) => {
   position: absolute; inset: 0;
   background: rgba(0,0,0,0.2);
   border-radius: 16px 16px 0 0;
+}
+.discontinued-veil {
+  position: absolute; inset: 0;
+  background: rgba(107,76,42,0.25);
+  border-radius: 16px 16px 0 0;
+}
+.item-card.discontinued { border-color: rgba(107,76,42,0.5); }
+.item-badge.discontinued-badge {
+  font-size: 0.6rem; color: #D4AF37; font-weight: 700;
+  background: rgba(107,76,42,0.3);
+  border-radius: 4px; padding: 0 4px;
 }
 
 .item-name {

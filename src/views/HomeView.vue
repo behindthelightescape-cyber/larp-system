@@ -3,7 +3,7 @@ import { computed, onMounted, ref } from 'vue'
 import { useUserStore } from '../stores/user'
 import { supabase } from '../supabase'
 import ReferralTreeModal from '../components/ReferralTreeModal.vue'
-import { Users } from 'lucide-vue-next'
+import { Users, Coins, ChevronRight } from 'lucide-vue-next'
 
 const showTreeModal = ref(false)
 const store = useUserStore()
@@ -272,6 +272,27 @@ onMounted(() => {
         </div>
 
         <div class="card-deco-bottom"></div>
+      </div>
+
+      <!-- 點數入口 -->
+      <div class="home-action-area fade-in-up delay-3">
+        <div class="points-card" @click="$router.push('/points')">
+          <div class="card-deco-top"></div>
+          <div class="points-card-inner">
+            <div class="points-card-label">
+              <Coins :size="14" :stroke-width="2" />
+              <span>冒險點數</span>
+            </div>
+            <div class="points-card-footer">
+              <div class="points-card-number">{{ (store.userData?.points ?? 0).toLocaleString() }}<span class="points-card-unit">pt</span></div>
+              <button class="points-card-link">
+                查看明細
+                <ChevronRight :size="13" :stroke-width="2" />
+              </button>
+            </div>
+          </div>
+          <div class="card-deco-bottom"></div>
+        </div>
       </div>
 
       <!-- 族譜入口 -->
@@ -694,6 +715,48 @@ onMounted(() => {
 .tree-btn-text  { display: flex; flex-direction: column; gap: 4px; }
 .tree-btn-title { color: #D4AF37; font-size: 1.05rem; font-weight: 700; letter-spacing: 1px; }
 .tree-btn-sub   { color: #555; font-size: 0.78rem; letter-spacing: 0.3px; }
+/* ── 點數卡片 ── */
+.points-card {
+  width: 100%; position: relative;
+  background: rgba(18,18,18,0.72);
+  backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(212,175,55,0.15);
+  border-radius: 20px; overflow: hidden;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.4);
+  cursor: pointer;
+  transition: transform 0.3s cubic-bezier(0.2,0.8,0.2,1), box-shadow 0.3s, border-color 0.3s;
+}
+.points-card:hover {
+  transform: translateY(-3px);
+  border-color: rgba(212,175,55,0.3);
+  box-shadow: 0 16px 40px rgba(0,0,0,0.5), 0 0 24px rgba(212,175,55,0.08);
+}
+.points-card:active { transform: scale(0.98); }
+.points-card-inner { padding: 20px 24px 18px; }
+.points-card-label {
+  display: flex; align-items: center; gap: 6px;
+  color: #888; font-size: 0.78rem; letter-spacing: 1px;
+  margin-bottom: 6px;
+}
+.points-card-footer {
+  display: flex; align-items: baseline;
+  justify-content: space-between; margin-top: 6px;
+}
+.points-card-number {
+  font-size: 3rem; font-weight: 900;
+  color: #fff; letter-spacing: -1px; line-height: 1;
+}
+.points-card-unit {
+  font-size: 0.9rem; font-weight: 700;
+  color: #D4AF37; letter-spacing: 1px; margin-left: 6px;
+}
+.points-card-link {
+  display: flex; align-items: center; gap: 2px;
+  background: none; border: none; cursor: pointer;
+  color: #555; font-size: 0.78rem;
+  transition: color 0.2s;
+}
+.points-card:hover .points-card-link { color: #D4AF37; }
 .tree-btn-right {
   display: flex; align-items: center;
   opacity: 0.4; transition: opacity 0.2s, transform 0.2s;

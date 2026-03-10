@@ -18,18 +18,22 @@ const quickGiftDate = ref('')
 const quickGiftDesc = ref('')
 const isSendingQuickGift = ref(false)
 
+const showAdjustForm = ref(false)
+const adjustDelta = ref(0)
+const adjustNote = ref('')
+const adjustSaving = ref(false)
+
 const searchMembers = async () => {
-  if (!searchQuery.value.trim()) {
-    searchResults.value = []
-    return
-  }
+  const q = searchQuery.value.trim()
+  if (!q) { searchResults.value = []; return }
   isSearching.value = true
   try {
+    const SELECT = 'id, display_name, legacy_id, picture_url, total_exp, level, created_at, last_birthday_year, birthday_claimed_year, points'
     const { data, error } = await supabase
       .from('users')
-      // 🚀 擴充：把生日領取年份的鎖也一起抓下來！
-      .select('id, display_name, legacy_id, picture_url, total_exp, level, created_at, last_birthday_year, birthday_claimed_year')
-      .or(`display_name.ilike.%${searchQuery.value}%,legacy_id.ilike.%${searchQuery.value}%`)
+      .select(SELECT)
+      .or(`display_name.ilike.%${q}%,legacy_id.ilike.%${q}%`)
+      .order('legacy_id')
       .limit(8)
     if (error) throw error
     searchResults.value = data || []
@@ -157,6 +161,34 @@ const deleteCoupon = async (couponId, couponTitle) => {
   }
 }
 
+const submitPointsAdjust = async () => {
+  if (!adjustDelta.value || adjustDelta.value === 0) return alert('請填寫調整點數（正數或負數）')
+  if (!adjustNote.value.trim()) return alert('請填寫調整原因')
+  const member = selectedMember.value
+  if (!confirm(`確定${adjustDelta.value > 0 ? '增加' : '扣除'} ${Math.abs(adjustDelta.value)} 點給「${member.display_name}」？`)) return
+
+  adjustSaving.value = true
+  try {
+    await supabase.from('points_transactions').insert([{
+      user_id: member.id,
+      delta: Number(adjustDelta.value),
+      source_type: 'admin_adjust',
+      note: adjustNote.value.trim(),
+    }])
+    const newPoints = Math.max(0, (member.points || 0) + Number(adjustDelta.value))
+    await supabase.from('users').update({ points: newPoints }).eq('id', member.id)
+    selectedMember.value.points = newPoints
+    alert(`✅ 已調整，目前點數：${newPoints} pt`)
+    adjustDelta.value = 0
+    adjustNote.value = ''
+    showAdjustForm.value = false
+  } catch (err) {
+    alert('調整失敗：' + err.message)
+  } finally {
+    adjustSaving.value = false
+  }
+}
+
 const calculateDays = (dateString) => {
   if (!dateString) return 0
   return Math.floor((new Date() - new Date(dateString)) / (1000 * 60 * 60 * 24))
@@ -202,19 +234,36 @@ const calculateDays = (dateString) => {
 
       <div class="member-stats">
         <div class="stat-box"><div class="stat-label">累積經驗</div><div class="stat-value">{{ selectedMember.total_exp || 0 }}</div></div>
+        <div class="stat-box"><div class="stat-label">冒險點數</div><div class="stat-value">{{ selectedMember.points ?? 0 }} pt</div></div>
         <div class="stat-box"><div class="stat-label">遊玩場次</div><div class="stat-value">{{ memberHistory.length }}</div></div>
         <div class="stat-box"><div class="stat-label">加入天數</div><div class="stat-value">{{ calculateDays(selectedMember.created_at) }} 天</div></div>
       </div>
 
       <div class="privilege-section">
         <p class="privilege-title">👑 櫃台特權操作區</p>
-        <button 
-          class="btn-outline-red" 
-          @click="preRedeemBirthday(selectedMember)" 
+        <button
+          class="btn-outline-red"
+          @click="preRedeemBirthday(selectedMember)"
           :disabled="selectedMember.birthday_claimed_year === new Date().getFullYear()"
         >
           {{ selectedMember.birthday_claimed_year === new Date().getFullYear() ? '✅ 今年壽星優惠已核銷/領取' : '🎂 在櫃檯預先核銷今年生日禮 (防系統重複發送)' }}
         </button>
+
+        <div style="margin-top: 12px; display: flex; align-items: center; justify-content: space-between;">
+          <span style="color:#D4AF37; font-size:0.9rem; font-weight:bold;">🪙 手動調整點數</span>
+          <button class="btn-mini-gold" @click="showAdjustForm = !showAdjustForm">
+            {{ showAdjustForm ? '✕ 取消' : '調整' }}
+          </button>
+        </div>
+        <div v-if="showAdjustForm" style="display:flex; flex-direction:column; gap:8px; margin-top:10px;">
+          <div style="display:flex; gap:8px;">
+            <input v-model="adjustDelta" type="number" class="admin-input-mini" style="flex:1;" placeholder="點數（正數增加，負數扣除）" />
+          </div>
+          <input v-model="adjustNote" type="text" class="admin-input-mini" placeholder="調整原因（必填）" />
+          <button class="btn-mini-gold full-width" style="padding:8px;" :disabled="adjustSaving" @click="submitPointsAdjust">
+            {{ adjustSaving ? '處理中...' : '確認調整' }}
+          </button>
+        </div>
       </div>
 
       <div class="details-grid">

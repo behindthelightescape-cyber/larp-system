@@ -1,6 +1,6 @@
 # 劇光燈 Spotlight LARP 系統 — 技術文件
 
-> 最後更新：2026-03-08｜版本：Vue 3.5.25 + Supabase + Vite
+> 最後更新：2026-03-09｜版本：Vue 3.5.25 + Supabase + Vite
 
 ---
 
@@ -227,12 +227,16 @@ UNIQUE 約束：`(user_id, achievement_id)`
 | id | uuid |
 | category | `expr` / `hat` / `top` / `cape` / `bottom` / `acc` |
 | name | 名稱 |
-| img_url | 圖片 URL |
+| img_url | 渲染圖 URL（600×600 透明底 PNG，舞台疊圖用） |
+| thumb_url | 預覽圖 URL（300×300，衣櫃縮圖用，可從渲染圖裁切產生） |
 | emoji | 備用 emoji（無圖時顯示） |
 | unlock_type | `free` / `points` / `script` / `achievement` |
 | unlock_cost | 購買花費（pt） |
 | is_active | 是否啟用 |
+| is_discontinued | 是否為絕版典藏（已擁有者可用，未擁有者僅能查看） |
 | sort_order | 排序 |
+
+> **img_url vs thumb_url：** 兩張圖用途不同。`img_url` 是完整 600×600 透明底 PNG，用於舞台疊圖；`thumb_url` 是後台編輯器從渲染圖裁切、加底色產生的 300×300 縮圖，用於衣櫃格子顯示。衣櫃優先使用 `thumb_url`，無則 fallback 到 `img_url`。
 
 #### `wardrobe_backgrounds` — 舞台背景
 與 `wardrobe_items` 結構相似，增加背景圖片管理。
@@ -394,8 +398,10 @@ onMounted
 - 角色舞台：底圖 + 6 個服裝分類圖層疊加
 - 分類 Tab 切換（表情、帽子、上衣、披風、下身、配件）
 - 換背景彈窗（含「無背景」選項）
-- 道具格子：縮圖 + 名稱 + 狀態標籤（領取/購買/已選）
+- 道具格子：縮圖（優先 thumb_url）+ 名稱 + 狀態標籤
 - 道具鎖定詳情彈窗（取得方式說明）
+
+**圖層疊加實作：** 使用 CSS Grid `grid-area: 1/1` 疊圖，所有圖層（底圖、服裝）皆為 600×600 透明底 PNG，不使用 absolute positioning。
 
 **圖層疊加順序（從後到前）：**
 ```
@@ -405,10 +411,13 @@ cape → bottom → top → acc → hat → expr
 **道具狀態判定（getItemState）：**
 | 狀態 | 顯示 | 條件 |
 |------|------|------|
-| `owned` | 可選擇 | 已在 ownedItemIds 中，或 free |
+| `owned` | 可選擇 | 已在 ownedItemIds 中（含絕版但已擁有） |
 | `claimable` | 領取 | 成就/劇本解鎖，且已達成條件 |
 | `purchasable` | N pt | unlock_type=points 且未擁有 |
+| `discontinued` | 已絕版 | is_discontinued=true 且未擁有 |
 | `locked` | 🔒 | 尚未達成取得條件 |
+
+> 絕版道具（`is_discontinued=true`）仍顯示在衣櫃中，但未擁有的玩家看到「已絕版」badge 和棕色遮罩，無法取得。已擁有的玩家照常使用。
 
 **資料庫同步：**
 ```javascript
@@ -669,10 +678,19 @@ for (let lvl = oldLevel + 1; lvl <= newLevel; lvl++) {
 
 | Tab | 功能 |
 |-----|------|
-| 👗 服裝道具 | CRUD wardrobe_items（含圖片上傳） |
+| 👗 服裝道具 | CRUD wardrobe_items（渲染圖上傳、預覽圖編輯器、絕版狀態管理） |
 | 🖼 場景背景 | CRUD wardrobe_backgrounds |
 | 🧍 角色底圖 | CRUD wardrobe_bases（設定預設底圖） |
-| 🎭 預設圖 | 設定各分類「不裝備」時的疊加預設圖（wardrobe_none_defaults） |
+| 🎭 預設圖 | 設定各分類「不裝備」時的疊加預設圖（支援直接上傳圖片） |
+
+**服裝道具狀態：**
+| 狀態 | 說明 |
+|------|------|
+| 🟢 上架中 | `is_active=true, is_discontinued=false` |
+| 🔴 下架 | `is_active=false` |
+| 🏛️ 絕版典藏 | `is_active=true, is_discontinued=true` |
+
+**預覽圖編輯器：** 後台提供 canvas 編輯器，可從渲染圖自由拖拉、縮放、設定底色（含預設色塊：白/淺灰/深灰/深褐/黑），輸出 300×300 PNG 儲存為 `thumb_url`。
 
 ---
 
@@ -698,9 +716,10 @@ for (let lvl = oldLevel + 1; lvl <= newLevel; lvl++) {
 ### 8.3 吉祥物內容
 
 - 角色底圖（wardrobe_bases）
-- 玩家已裝備道具圖層（wardrobe_items，依 SLOT_ORDER 疊加）
+- 玩家已裝備道具圖層（wardrobe_items，依 SLOT_ORDER 疊加，使用 `img_url` 渲染圖）
 - 未裝備分類補上預設圖（wardrobe_none_defaults）
 - 頁腳：玩家名稱 + 等級稱號
+- Flex Message 圖片比例：`1:1`（配合 600×600 素材規格）
 
 ### 8.4 圖層疊加順序
 
@@ -899,6 +918,12 @@ CREATE TABLE wardrobe_none_defaults (
 -- 帽子預設圖
 INSERT INTO wardrobe_none_defaults (category, img_url)
 VALUES ('hat', 'https://meee.com.tw/9huQORM.png');
+```
+
+**wardrobe_items 新增欄位：**
+```sql
+ALTER TABLE wardrobe_items ADD COLUMN thumb_url text;
+ALTER TABLE wardrobe_items ADD COLUMN is_discontinued boolean default false;
 ```
 
 ---

@@ -172,11 +172,13 @@ const defaultForm = () => ({
   name: '',
   category: 'hat',
   img_url: '',
+  thumb_url: '',
   unlock_type: 'points',
   unlock_cost: 100,
   unlock_ref_id: '',
   sort_order: 0,
   is_active: true,
+  is_discontinued: false,
 })
 
 const form = ref(defaultForm())
@@ -354,11 +356,13 @@ const save = async () => {
     name:           form.value.name.trim(),
     category:       form.value.category,
     img_url:        form.value.img_url.trim() || null,
+    thumb_url:      form.value.thumb_url?.trim() || null,
     unlock_type:    form.value.unlock_type,
     unlock_cost:    form.value.unlock_type === 'points' ? Number(form.value.unlock_cost) : null,
     unlock_ref_id:  ['script', 'achievement'].includes(form.value.unlock_type) ? form.value.unlock_ref_id : null,
-    sort_order:     Number(form.value.sort_order) || 0,
-    is_active:      form.value.is_active,
+    sort_order:      Number(form.value.sort_order) || 0,
+    is_active:       form.value.is_active,
+    is_discontinued: form.value.is_discontinued,
   }
 
   try {
@@ -548,12 +552,13 @@ const deleteItem = async (item) => {
     </div>
 
     <div v-else class="item-grid">
-      <div v-for="item in filteredItems" :key="item.id" class="item-card" :class="{ inactive: !item.is_active }">
+      <div v-for="item in filteredItems" :key="item.id" class="item-card" :class="{ inactive: !item.is_active, discontinued: item.is_discontinued }">
 
         <div class="item-thumb">
-          <img v-if="item.img_url" :src="item.img_url" :alt="item.name" />
+          <img v-if="item.thumb_url || item.img_url" :src="item.thumb_url || item.img_url" :alt="item.name" />
           <span v-else class="thumb-placeholder">？</span>
           <span class="cat-badge">{{ categories.find(c => c.key === item.category)?.label }}</span>
+          <span v-if="item.is_discontinued" class="discontinued-badge">絕版</span>
         </div>
 
         <div class="item-body">
@@ -570,7 +575,7 @@ const deleteItem = async (item) => {
 
         <div class="item-actions">
           <button class="action-btn toggle" @click="toggleActive(item)">
-            {{ item.is_active ? '🟢 上架' : '🔴 下架' }}
+            {{ item.is_discontinued ? '🏛️ 絕版' : item.is_active ? '🟢 上架' : '🔴 下架' }}
           </button>
           <button class="action-btn edit" @click="openEdit(item)">編輯</button>
           <button class="action-btn delete" @click="deleteItem(item)">刪除</button>
@@ -586,9 +591,19 @@ const deleteItem = async (item) => {
 
           <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
             <h3 style="margin:0; color:#eee;">{{ isEditing ? '✏️ 編輯道具' : '➕ 新增道具' }}</h3>
-            <select v-model="form.is_active" class="admin-input" style="width:auto; border-color:#D4AF37; color:#D4AF37; font-weight:bold; background:rgba(212,175,55,0.1);">
-              <option :value="true">🟢 上架中</option>
-              <option :value="false">🔴 下架</option>
+            <select
+              class="admin-input"
+              style="width:auto; border-color:#D4AF37; color:#D4AF37; font-weight:bold; background:rgba(212,175,55,0.1);"
+              :value="form.is_discontinued ? 'discontinued' : form.is_active ? 'active' : 'inactive'"
+              @change="e => {
+                const v = e.target.value
+                form.is_discontinued = v === 'discontinued'
+                form.is_active = v !== 'inactive'
+              }"
+            >
+              <option value="active">🟢 上架中</option>
+              <option value="inactive">🔴 下架</option>
+              <option value="discontinued">🏛️ 絕版典藏</option>
             </select>
           </div>
 
@@ -714,6 +729,15 @@ const deleteItem = async (item) => {
 
             <div class="thumb-controls">
               <label class="thumb-control-label">底色</label>
+              <div class="thumb-preset-colors">
+                <button
+                  v-for="c in ['#ffffff', '#cccccc', '#888888', '#1a1507', '#000000']"
+                  :key="c"
+                  class="thumb-preset-swatch"
+                  :style="{ background: c, outline: thumbBgColor === c ? '2px solid #D4AF37' : 'none' }"
+                  @click="thumbBgColor = c; drawThumbCanvas()"
+                />
+              </div>
               <input type="color" v-model="thumbBgColor" class="thumb-color-input" @input="drawThumbCanvas" />
 
               <label class="thumb-control-label">縮放</label>
@@ -1035,9 +1059,15 @@ const deleteItem = async (item) => {
 }
 .item-card:hover { border-color: #444; }
 .item-card.inactive { opacity: 0.45; }
+.item-card.discontinued { border-color: #6b4c2a; }
+.discontinued-badge {
+  position: absolute; top: 6px; right: 6px;
+  background: rgba(107,76,42,0.9); color: #D4AF37;
+  font-size: 0.62rem; font-weight: 700; padding: 2px 6px; border-radius: 6px;
+}
 
 .item-thumb {
-  aspect-ratio: 4/3; background: #111;
+  aspect-ratio: 1; background: #111;
   display: flex; align-items: center; justify-content: center;
   position: relative;
 }
@@ -1214,6 +1244,14 @@ const deleteItem = async (item) => {
   display: flex; flex-direction: column; gap: 8px; flex: 1;
 }
 .thumb-control-label { font-size: 0.82rem; color: #aaa; }
+.thumb-preset-colors {
+  display: flex; gap: 6px; margin-bottom: 6px;
+}
+.thumb-preset-swatch {
+  width: 28px; height: 28px; border-radius: 6px;
+  border: 1px solid #444; cursor: pointer; padding: 0;
+  outline-offset: 2px; transition: outline 0.1s;
+}
 .thumb-color-input {
   width: 100%; height: 36px; border-radius: 6px;
   border: 1px solid #333; background: #1a1a1a; cursor: pointer;

@@ -260,10 +260,27 @@ export const useUserStore = defineStore('user', () => {
       // 🚀 核心 1：推坑分潤 - 呼叫引擎給老手發券
       // ==========================================
       if (currentExp === 0 && userData.value.referred_by) {
-        const { data: referrer } = await supabase.from('users').select('id, display_name').eq('my_referral_code', userData.value.referred_by).single()
+        // 查詢 L1 推薦人
+        const { data: referrer } = await supabase.from('users').select('id, display_name, referred_by').eq('my_referral_code', userData.value.referred_by).single()
         if (referrer) {
+          // L1：系統票券 + 點數
           await grantSystemRewards(referrer.id, 'referral_veteran')
-          console.log(`✅ 已自動呼叫引擎，將推坑獎勵塞給 ${referrer.display_name}！`)
+          const { data: ruleL1 } = await supabase.from('referral_point_rules').select('*').eq('tier', 1).eq('is_active', true).single()
+          if (ruleL1?.points > 0) {
+            await grantPoints(referrer.id, ruleL1.points, 'referral_l1', userData.value.id, `${userData.value.display_name} 首場參賽`)
+          }
+          console.log(`✅ 已將推坑獎勵（票券+點數）給 ${referrer.display_name}`)
+
+          // L2+：查詢師公
+          if (referrer.referred_by) {
+            const { data: grandReferrer } = await supabase.from('users').select('id, display_name').eq('my_referral_code', referrer.referred_by).single()
+            if (grandReferrer) {
+              const { data: ruleL2 } = await supabase.from('referral_point_rules').select('*').eq('tier', 2).eq('is_active', true).single()
+              if (ruleL2?.points > 0) {
+                await grantPoints(grandReferrer.id, ruleL2.points, 'referral_l2_plus', userData.value.id, `徒孫 ${userData.value.display_name} 首場參賽`)
+              }
+            }
+          }
         }
       }
 
@@ -295,6 +312,24 @@ export const useUserStore = defineStore('user', () => {
 
     } catch (err) {
       console.error('加入遊戲失敗:', err.message)
+    }
+  }
+
+  // ==========================================
+  // 🪙 點數引擎：新增/扣除點數 + 寫入流水帳
+  // ==========================================
+  const grantPoints = async (userId, delta, sourceType, sourceRef = null, note = null) => {
+    try {
+      await supabase.from('points_transactions').insert([{
+        user_id: userId, delta, source_type: sourceType,
+        source_ref: sourceRef, note,
+      }])
+      const { data: u } = await supabase.from('users').select('points').eq('id', userId).single()
+      const newPoints = Math.max(0, (u?.points || 0) + delta)
+      await supabase.from('users').update({ points: newPoints }).eq('id', userId)
+      if (userId === userData.value?.id) userData.value.points = newPoints
+    } catch (err) {
+      console.error('grantPoints 失敗:', err.message)
     }
   }
 
@@ -332,7 +367,7 @@ export const useUserStore = defineStore('user', () => {
 
   return {
     lineProfile, userData, isLoggedIn, isLoading, error,
-    history, coupons, daysJoined, userTitle, 
-    initLiff, updateProfile, getLevelInfo
+    history, coupons, daysJoined, userTitle,
+    initLiff, updateProfile, getLevelInfo, grantPoints
   }
 })

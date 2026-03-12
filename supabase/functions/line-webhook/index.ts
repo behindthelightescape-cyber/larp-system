@@ -30,6 +30,14 @@ const dbGet = async (path: string) => {
   return res.json()
 }
 
+// 通用 POST：新增一筆資料
+const dbInsert = (table: string, payload: Record<string, unknown>) =>
+  fetch(`${SUPABASE_URL}/rest/v1/${table}`, {
+    method: 'POST',
+    headers: { ...dbHeaders, 'Prefer': 'return=minimal' },
+    body: JSON.stringify(payload),
+  })
+
 // 計數查詢：利用 content-range header 取得符合條件的總筆數
 // 範例：dbCount('game_participants', 'user_id=eq.U123') → 回傳該玩家的遊戲次數
 const dbCount = async (table: string, filter: string): Promise<number> => {
@@ -260,6 +268,53 @@ const buildDollCard = (
   }
 }
 
+// ── 組裝「群組規則」Flex Message ───────────────────────────────────────────
+// 觸發時機：memberJoined 事件（有人加入群組）
+// 從 group_settings 表讀取規則內容後組裝 Flex 回傳
+const buildRulesCard = (rulesText: string) => ({
+  type: 'flex',
+  altText: '劇光燈群組規則',
+  contents: {
+    type: 'bubble',
+    size: 'mega',
+    styles: {
+      header: { backgroundColor: '#080808' },
+      body:   { backgroundColor: '#0d0d0d' },
+      footer: { backgroundColor: '#080808' },
+    },
+    header: {
+      type: 'box', layout: 'horizontal', paddingAll: '12px', alignItems: 'center',
+      contents: [
+        { type: 'text', text: 'SPOTLIGHT LARP', size: 'xs', color: GOLD, weight: 'bold', flex: 1 },
+        {
+          type: 'box', layout: 'vertical', flex: 0,
+          backgroundColor: GOLD, cornerRadius: '20px',
+          paddingTop: '4px', paddingBottom: '4px', paddingStart: '12px', paddingEnd: '12px',
+          contents: [{ type: 'text', text: '群組規則', size: 'xs', color: '#080808', weight: 'bold' }],
+        },
+      ],
+    },
+    body: {
+      type: 'box', layout: 'vertical', paddingAll: '16px',
+      contents: [
+        { type: 'text', text: rulesText || '歡迎加入劇光燈！', color: '#dddddd', size: 'sm', wrap: true },
+      ],
+    },
+    footer: {
+      type: 'box', layout: 'vertical', paddingAll: '12px',
+      contents: [
+        {
+          type: 'box', layout: 'vertical',
+          backgroundColor: GOLD, cornerRadius: '8px',
+          paddingTop: '10px', paddingBottom: '10px',
+          action: { type: 'uri', uri: LIFF_URL },
+          contents: [{ type: 'text', text: '開始冒險 ⚔️', size: 'sm', color: '#080808', weight: 'bold', align: 'center' }],
+        },
+      ],
+    },
+  },
+})
+
 // ── LINE 回覆訊息 ──────────────────────────────────────────────────────────
 // 使用 replyToken 回覆，每個 token 只能用一次且有時效限制
 const lineReply = (replyToken: string, messages: unknown[]) =>
@@ -276,6 +331,17 @@ const lineReply = (replyToken: string, messages: unknown[]) =>
 const handleEvents = async (events: Record<string, unknown>[]) => {
   for (const event of events) {
     console.log('event.type:', event.type)
+
+    // ── 有人加入群組：發送群組規則 ─────────────────────────────────────────
+    if (event.type === 'memberJoined') {
+      const replyToken = event.replyToken as string
+      const settingsData = await dbGet('group_settings?key=eq.join_rules&limit=1')
+      const rulesText = (settingsData?.[0]?.value as string) || '歡迎加入劇光燈！'
+      const replyRes = await lineReply(replyToken, [buildRulesCard(rulesText)])
+      console.log('memberJoined reply status:', replyRes.status, await replyRes.text())
+      continue
+    }
+
     if (event.type !== 'message') continue
     const msg = event.message as Record<string, unknown>
     console.log('msg.type:', msg?.type, '| text:', msg?.text)
@@ -285,9 +351,22 @@ const handleEvents = async (events: Record<string, unknown>[]) => {
     console.log('text:', JSON.stringify(text))
 
     // 支援全形驚嘆號（！）與半形（!）
-    const isCard   = text === '!我的名片' || text === '！我的名片'
-    const isMascot = text === '!召喚'     || text === '！召喚'
-    if (!isCard && !isMascot) continue
+    const isCard   = text === '我的名片'
+    const isMascot = text === '召喚'
+    const isTarot  = text === '占卜'
+
+    // 群組訊息且非指令 → 存進 group_messages
+    const source = event.source as Record<string, unknown>
+    if (source.type === 'group' && !isCard && !isMascot && !isTarot) {
+      dbInsert('group_messages', {
+        line_user_id: source.userId as string,
+        group_id:     source.groupId as string,
+        message:      text,
+        sent_at:      new Date((event.timestamp as number)).toISOString(),
+      })
+    }
+
+    if (!isCard && !isMascot && !isTarot) continue
 
     const lineUserId = (event.source as Record<string, unknown>).userId as string
     const replyToken = event.replyToken as string
@@ -373,6 +452,91 @@ const handleEvents = async (events: Record<string, unknown>[]) => {
       const title    = (user.current_title as string) || info.title
       const replyRes = await lineReply(replyToken, [buildDollCard(name, baseUrl, layers, level, title)])
       console.log('mascot reply status:', replyRes.status, await replyRes.text())
+    }
+
+    // ── 抽塔羅指令 ────────────────────────────────────────────────────────────
+    if (isTarot) {
+      // 並行撈牌庫 + bot 人格設定
+      const [cardsData, settingsData] = await Promise.all([
+        dbGet('tarot_cards?is_active=eq.true&select=name,image_url,image_url_reversed,meaning_upright,meaning_reversed'),
+        dbGet('group_settings?key=in.(tarot_sender_name,tarot_sender_icon_url)&select=key,value'),
+      ])
+
+      if (!cardsData || cardsData.length === 0) {
+        await lineReply(replyToken, [{ type: 'text', text: '命運的牌庫尚未建立，請稍候...' }])
+        continue
+      }
+
+      // 隨機抽一張牌 + 隨機正/逆位
+      const card      = cardsData[Math.floor(Math.random() * cardsData.length)]
+      const reversed  = Math.random() < 0.5
+      const meaning   = reversed ? card.meaning_reversed : card.meaning_upright
+      const cardImage = reversed ? (card.image_url_reversed || card.image_url) : card.image_url
+      const direction = reversed ? '逆位' : '正位'
+      const dirColor  = reversed ? '#9b59b6' : '#D4AF37'
+
+      // 讀取 sender 設定
+      const nameRow = (settingsData || []).find((r: Record<string, string>) => r.key === 'tarot_sender_name')
+      const iconRow = (settingsData || []).find((r: Record<string, string>) => r.key === 'tarot_sender_icon_url')
+      const senderName = nameRow?.value || '命運女神'
+      const senderIcon = iconRow?.value || ''
+
+      const flexMsg: Record<string, unknown> = {
+        type: 'flex',
+        altText: `${card.name}（${direction}）— ${meaning?.slice(0, 30) || ''}`,
+        sender: { name: senderName, ...(senderIcon ? { iconUrl: senderIcon } : {}) },
+        contents: {
+          type: 'bubble',
+          size: 'kilo',
+          styles: {
+            header: { backgroundColor: '#0a0608' },
+            body:   { backgroundColor: '#0d0a10' },
+            footer: { backgroundColor: '#0a0608' },
+          },
+          header: {
+            type: 'box', layout: 'horizontal', paddingAll: '12px', alignItems: 'center',
+            contents: [
+              { type: 'text', text: 'TAROT', size: 'xs', color: dirColor, weight: 'bold', flex: 1, letterSpacing: '3px' },
+              {
+                type: 'box', layout: 'vertical', flex: 0,
+                backgroundColor: dirColor, cornerRadius: '10px',
+                paddingTop: '3px', paddingBottom: '3px', paddingStart: '10px', paddingEnd: '10px',
+                contents: [{ type: 'text', text: direction, size: 'xs', color: '#000', weight: 'bold' }],
+              },
+            ],
+          },
+          ...(cardImage ? {
+            hero: {
+              type: 'image',
+              url: cardImage,
+              size: 'full',
+              aspectRatio: '2:3',
+              aspectMode: 'cover',
+            },
+          } : {}),
+          body: {
+            type: 'box', layout: 'vertical', paddingAll: '16px', spacing: 'sm',
+            contents: [
+              { type: 'text', text: card.name, size: 'lg', color: dirColor, weight: 'bold', align: 'center' },
+              { type: 'separator', color: '#2a2a2a', margin: 'md' },
+              {
+                type: 'text',
+                text: meaning || '牌義尚未填寫',
+                size: 'sm', color: '#cccccc', wrap: true, lineSpacing: '6px', margin: 'md',
+              },
+            ],
+          },
+          footer: {
+            type: 'box', layout: 'vertical', paddingAll: '10px',
+            contents: [
+              { type: 'text', text: `由 ${senderName} 為你揭示`, size: 'xxs', color: '#444', align: 'center' },
+            ],
+          },
+        },
+      }
+
+      const tarotRes = await lineReply(replyToken, [flexMsg])
+      console.log('tarot reply status:', tarotRes.status, await tarotRes.text())
     }
   }
 }

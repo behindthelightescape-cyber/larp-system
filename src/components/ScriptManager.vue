@@ -52,7 +52,8 @@ const form = ref({
   selected_settings: [],    // 👈 裝背景的陣列
   selected_tags: [],        // 👈 裝標籤的陣列
   intro_text: '',
-  default_story_memory: ''
+  default_story_memory: '',
+  is_archived: false
 })
 
 onMounted(async () => {
@@ -108,7 +109,7 @@ const openAddModal = () => {
   isEditing.value = false
   form.value = {
     id: null, title: '', cover_url: '', player_limit: '', duration: 4, base_exp: 100,
-    selected_play_styles: [], selected_settings: [], selected_tags: [], intro_text: '', default_story_memory: ''
+    selected_play_styles: [], selected_settings: [], selected_tags: [], intro_text: '', default_story_memory: '', is_archived: false
   }
   showModal.value = true
 }
@@ -141,7 +142,8 @@ const openEditModal = (script) => {
     selected_settings: dbSettings,
     selected_tags: dbTags,
     intro_text: script.intro_text || '',
-    default_story_memory: script.default_story_memory || ''
+    default_story_memory: script.default_story_memory || '',
+    is_archived: script.is_archived || false
   }
   showModal.value = true
 }
@@ -160,10 +162,11 @@ const saveScript = async () => {
     player_limit: form.value.player_limit,
     duration: form.value.duration,
     base_exp: form.value.base_exp,
-    category: finalCategory, // 裝玩法
-    tags: finalTags,         // 裝背景+特色
+    category: finalCategory,
+    tags: finalTags,
     intro_text: form.value.intro_text,
-    default_story_memory: form.value.default_story_memory
+    default_story_memory: form.value.default_story_memory,
+    is_archived: form.value.is_archived
   }
 
   try {
@@ -248,8 +251,9 @@ const toggleArrayItem = (type, item) => {
     <div v-else class="script-grid">
       <div v-for="script in filteredScripts" :key="script.id" class="script-card">
         <div class="script-cover-wrapper">
-          <img :src="script.cover_url || 'https://images.unsplash.com/photo-1514467953502-5a7820e3efb4?w=600'" class="script-cover" />
+          <img :src="script.cover_url || 'https://images.unsplash.com/photo-1514467953502-5a7820e3efb4?w=600'" class="script-cover" :style="script.is_archived ? 'filter: grayscale(60%) opacity(0.6)' : ''" />
           <div class="script-cat-badge">{{ script.category ? script.category.split(',')[0] : '未分類' }}</div>
+          <div v-if="script.is_archived" class="archived-badge">已下架</div>
         </div>
         <div class="script-info">
           <h4 class="script-title">{{ script.title }}</h4>
@@ -371,6 +375,14 @@ const toggleArrayItem = (type, item) => {
                 <textarea v-model="form.default_story_memory" class="admin-input" rows="3" placeholder="例如: 恭喜各位還原了當年的慘案..."></textarea>
               </div>
 
+              <div class="form-group full">
+                <label>上架狀態</label>
+                <div class="archive-toggle" @click="form.is_archived = !form.is_archived" :class="{ archived: form.is_archived }">
+                  <div class="toggle-dot"></div>
+                  <span>{{ form.is_archived ? '已下架（不計入分析數據）' : '上架中' }}</span>
+                </div>
+              </div>
+
             </div>
             
             <div class="modal-footer">
@@ -444,6 +456,7 @@ const toggleArrayItem = (type, item) => {
 .script-cover-wrapper { position: relative; height: 280px; width: 100%; }
 .script-cover { width: 100%; height: 100%; object-fit: cover; }
 .script-cat-badge { position: absolute; top: 10px; right: 10px; background: rgba(0,0,0,0.8); border: 1px solid #D4AF37; color: #D4AF37; padding: 4px 10px; font-size: 0.8rem; font-weight: bold; border-radius: 6px; backdrop-filter: blur(4px); }
+.archived-badge { position: absolute; top: 10px; left: 10px; background: rgba(0,0,0,0.85); border: 1px solid #666; color: #888; padding: 4px 10px; font-size: 0.8rem; font-weight: bold; border-radius: 6px; backdrop-filter: blur(4px); }
 
 .script-info { padding: 15px; display: flex; flex-direction: column; flex: 1; }
 .script-title { margin: 0 0 8px 0; color: #fff; font-size: 1.1rem; }
@@ -504,6 +517,25 @@ textarea.admin-input { resize: vertical; }
 .btn-outline { background: transparent; border: 1px solid #555; color: #ccc; }
 .btn-outline:hover { background: #222; color: #fff; }
 .btn-small { padding: 8px 15px; font-size: 0.9rem; }
+
+.archive-toggle {
+  display: flex; align-items: center; gap: 12px; cursor: pointer;
+  background: #1a1a1a; border: 1px solid #444; border-radius: 8px;
+  padding: 12px 16px; transition: 0.2s; user-select: none;
+  color: #2ecc71;
+}
+.archive-toggle.archived { border-color: #555; color: #888; }
+.toggle-dot {
+  width: 36px; height: 20px; border-radius: 10px; background: #2ecc71;
+  position: relative; flex-shrink: 0; transition: 0.2s;
+}
+.toggle-dot::after {
+  content: ''; position: absolute; top: 3px; left: 3px;
+  width: 14px; height: 14px; border-radius: 50%; background: #fff;
+  transition: transform 0.2s;
+}
+.archive-toggle.archived .toggle-dot { background: #444; }
+.archive-toggle.archived .toggle-dot::after { transform: translateX(16px); }
 
 .fade-enter-active, .fade-leave-active { transition: opacity 0.3s; }
 .fade-enter-from, .fade-leave-to { opacity: 0; }

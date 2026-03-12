@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, nextTick } from 'vue'
 import { supabase } from '../supabase'
 import MemberManager from '../components/MemberManager.vue'
 import CouponManager from '../components/CouponManager.vue'
@@ -15,6 +15,8 @@ import AdminPushLogs from '../components/AdminPushLogs.vue'
 import AdminPaperDoll from '../components/AdminPaperDoll.vue'
 import AdminDisplayAds from '../components/AdminDisplayAds.vue'
 import AdminPoints from '../components/AdminPoints.vue'
+import AdminGroupSettings from '../components/AdminGroupSettings.vue'
+import AdminTarot from '../components/AdminTarot.vue'
 
 const session = ref(null)
 const isLoading = ref(true)
@@ -112,6 +114,13 @@ const changeTab = (tabName) => {
 const collapsedGroups = ref({})
 const toggleGroup = (key) => {
   collapsedGroups.value[key] = !collapsedGroups.value[key]
+}
+
+const memberManagerRef = ref(null)
+const goToMember = async (legacyId) => {
+  changeTab('member')
+  await nextTick()
+  memberManagerRef.value?.openMember(legacyId)
 }
 </script>
 
@@ -235,6 +244,19 @@ const toggleGroup = (key) => {
           </button>
         </template>
 
+        <button class="nav-group-label" @click="toggleGroup('line')">
+          <span>LINE</span>
+          <span class="group-arrow" :class="{ collapsed: collapsedGroups['line'] }">›</span>
+        </button>
+        <template v-if="!collapsedGroups['line']">
+          <button class="nav-btn" :class="{ active: currentTab === 'line_group' }" @click="changeTab('line_group')">
+            <span class="icon">💬</span> 群組設定
+          </button>
+          <button class="nav-btn" :class="{ active: currentTab === 'tarot' }" @click="changeTab('tarot')">
+            <span class="icon">🃏</span> 塔羅牌庫
+          </button>
+        </template>
+
       </nav>
 
       <div class="sidebar-footer">
@@ -272,7 +294,9 @@ const toggleGroup = (key) => {
               currentTab === 'achievement' ? '成就鑄造廠' :
               currentTab === 'paperdoll' ? '燈燈造型室' :
               currentTab === 'display_ads' ? '電視廣告管理' :
-              currentTab === 'points' ? '點數系統管理' : '劇本管理'
+              currentTab === 'points' ? '點數系統管理' :
+              currentTab === 'line_group' ? 'LINE 群組設定' :
+              currentTab === 'tarot' ? '塔羅牌庫管理' : '劇本管理'
             }}
           </h2>
         </div>
@@ -297,7 +321,7 @@ const toggleGroup = (key) => {
       </div>
 
       <div v-show="currentTab === 'member'" class="panel active">
-        <MemberManager />
+        <MemberManager ref="memberManagerRef" />
       </div>
 
       <div v-show="currentTab === 'coupon'" class="panel active">
@@ -313,7 +337,7 @@ const toggleGroup = (key) => {
       </div>
 
       <div v-show="currentTab === 'session'" class="panel active">
-        <SessionManager :branch="adminProfile.managed_branch" />
+        <SessionManager :branch="adminProfile.managed_branch" @open-member="goToMember" />
       </div>
 
       <div v-show="currentTab === 'game'" class="panel active">
@@ -338,6 +362,14 @@ const toggleGroup = (key) => {
 
       <div v-if="currentTab === 'points'" class="panel active">
         <AdminPoints />
+      </div>
+
+      <div v-if="currentTab === 'line_group'" class="panel active">
+        <AdminGroupSettings />
+      </div>
+
+      <div v-if="currentTab === 'tarot'" class="panel active">
+        <AdminTarot />
       </div>
 
     </main>

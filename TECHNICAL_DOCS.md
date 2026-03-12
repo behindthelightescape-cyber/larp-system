@@ -1,6 +1,6 @@
 # 劇光燈 Spotlight LARP 系統 — 技術文件
 
-> 最後更新：2026-03-09｜版本：Vue 3.5.25 + Supabase + Vite
+> 最後更新：2026-03-13｜版本：Vue 3.5.25 + Supabase + Vite
 
 ---
 
@@ -274,6 +274,12 @@ user_id + item_id → 玩家已解鎖的道具 ID 清單
 | `promo_codes` | 兌換碼（可連結到 system_rewards 派發） |
 | `push_logs` | 自動派發歷程記錄 |
 | `user_wardrobe_backgrounds` | 玩家已解鎖的背景清單 |
+| `points_transactions` | 點數流水帳（`user_id, delta, source_type, source_ref, note, created_at`） |
+| `point_qr_codes` | 點數 QR 碼（`id, label, points, is_single_use, expires_at, used_by`） |
+| `shop_items` | 點數商城商品（`name, type(coupon/wardrobe/physical), cost, stock, is_active, sort_order, coupon_title, coupon_desc, coupon_valid_days, wardrobe_item_id`） |
+| `tarot_cards` | 塔羅牌（`id, name, image_url, reversed_image_url, upright_meaning, reversed_meaning`） |
+| `group_settings` | LINE 群組歡迎規則（`group_id, welcome_message, is_active`） |
+| `group_messages` | LINE 群組訊息紀錄（`group_id, user_id, text, created_at`） |
 
 ---
 
@@ -507,6 +513,9 @@ currentProgress = script_ids.filter(id => playedIds.has(id)).length
 | 內容 | 劇本管理 | CRUD scripts |
 | 內容 | 成就鑄造 | CRUD achievements |
 | 內容 | 燈燈造型室 | 管理道具、背景、底圖、預設圖 |
+| 內容 | 塔羅占卜 | 管理 tarot_cards（含逆位圖自動生成） |
+| 系統 | 點數管理 | 商城商品 CRUD、QR 碼、點數流水帳 |
+| 系統 | 群組設定 | LINE 群組歡迎規則 CRUD |
 
 ---
 
@@ -673,6 +682,9 @@ for (let lvl = oldLevel + 1; lvl <= newLevel; lvl++) {
 | `AdminPushLogs.vue` | 派發日誌查詢 |
 | `AdminDisplayAds.vue` | 電視廣告輪播管理 |
 | `AdminPaperDoll.vue` | 服裝道具、背景、底圖、預設圖管理 |
+| `AdminPoints.vue` | 點數商城商品管理、QR 碼生成、流水帳查詢 |
+| `AdminTarot.vue` | 塔羅牌 CRUD、逆位圖自動生成（Canvas 旋轉 180°）、發送人設定 |
+| `AdminGroupSettings.vue` | LINE 群組歡迎規則編輯、群組 ID 管理 |
 
 ### AdminPaperDoll.vue — 主 Tab 說明
 
@@ -701,12 +713,24 @@ for (let lvl = oldLevel + 1; lvl <= newLevel; lvl++) {
 
 ### 8.1 支援指令
 
-| 指令 | 說明 |
-|------|------|
+| 指令 / 事件 | 說明 |
+|-------------|------|
 | `!我的名片` / `！我的名片` | 回傳冒險者名片 Flex Message |
 | `!召喚` / `！召喚` | 回傳燈燈吉祥物造型 Flex Message |
+| `!占卜` / `！占卜` | 從 tarot_cards 隨機抽一張，回傳正/逆位牌義 Flex Message |
+| memberJoined（群組事件） | 查詢 group_settings 對應群組歡迎規則，自動發送歡迎訊息 |
+| 群組文字訊息 | 記錄至 group_messages 表 |
 
-### 8.2 名片內容
+### 8.2 塔羅牌占卜
+
+- 從 `tarot_cards` 隨機抽一張（id, name, upright_meaning, reversed_meaning, image_url）
+- 隨機決定正位 / 逆位（逆位圖儲存為 `reversed_image_url`，由後台 Canvas 旋轉 180° 自動生成）
+- 可在 AdminTarot 設定發送人名稱（`sender_name`）與頭像（`sender_avatar_url`）
+- Flex Message 格式：牌名 + 牌圖 + 正逆位判定 + 牌義文字
+
+---
+
+### 8.3 名片內容
 
 - 玩家名稱 + EXP
 - LV + 稱號 badge

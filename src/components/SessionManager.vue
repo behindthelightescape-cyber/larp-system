@@ -3,6 +3,8 @@ import { ref, onMounted, computed } from 'vue'
 import { supabase } from '../supabase'
 import QrcodeVue from 'qrcode.vue' // 🚀 引入 QR Code 生成器
 
+const emit = defineEmits(['open-member'])
+
 const games = ref([])
 const isLoading = ref(false)
 
@@ -116,6 +118,51 @@ const generateQrUrl = (game) => {
   const targetId = game.qr_payload || game.id
   return `https://liff.line.me/2009161687-icfQU9r6?game_id=${targetId}`
 }
+
+// ── 玩家資料 Modal ──────────────────────────────────────────────────────────
+const showPlayerModal = ref(false)
+const selectedPlayer = ref(null)
+const playerLoading = ref(false)
+
+const getLevelInfo = (exp) => {
+  if (exp >= 2500) return { level: 6, title: '陽光開朗小萌新' }
+  if (exp >= 1000) return { level: 5, title: '穿越時空成癮者' }
+  if (exp >= 500)  return { level: 4, title: '平行宇宙開拓家' }
+  if (exp >= 250)  return { level: 3, title: '主角光環的勇者' }
+  if (exp >= 100)  return { level: 2, title: '不怕死的探險家' }
+  return               { level: 1, title: '剛加入的冒險者' }
+}
+
+const openPlayerDetail = async (event, user) => {
+  event.stopPropagation()
+  if (!user?.id) return
+  showPlayerModal.value = true
+  playerLoading.value = true
+  selectedPlayer.value = null
+
+  const [{ data: userData }, { count: gamesCount }] = await Promise.all([
+    supabase
+      .from('users')
+      .select('id, display_name, picture_url, legacy_id, total_exp, level, points, phone, created_at')
+      .eq('id', user.id)
+      .single(),
+    supabase
+      .from('game_participants')
+      .select('*', { count: 'exact', head: true })
+      .eq('user_id', user.id),
+  ])
+
+  if (userData) {
+    const info = getLevelInfo(userData.total_exp || 0)
+    selectedPlayer.value = {
+      ...userData,
+      games: gamesCount || 0,
+      levelInfo: info,
+      days: Math.ceil(Math.abs(Date.now() - new Date(userData.created_at).getTime()) / 86_400_000),
+    }
+  }
+  playerLoading.value = false
+}
 </script>
 
 <template>
@@ -206,7 +253,13 @@ const generateQrUrl = (game) => {
                   尚無玩家掃碼
                 </div>
                 
-                <div v-for="p in game.game_participants" :key="p.users?.id" class="player-chip">
+                <div
+                  v-for="p in game.game_participants"
+                  :key="p.users?.id"
+                  class="player-chip"
+                  style="cursor: pointer;"
+                  @click="openPlayerDetail($event, p.users)"
+                >
                   <img :src="p.users?.picture_url || 'https://via.placeholder.com/30'" class="player-avatar">
                   <div class="player-name-wrap">
                     <span class="p-name">{{ p.users?.display_name }}</span>
@@ -246,6 +299,62 @@ const generateQrUrl = (game) => {
           <div v-if="selectedGameForQr.status === 'closed'" style="color: #e74c3c; font-size: 0.85rem; margin-top: 10px;">
             ⚠️ 注意：此場次已關閉，但仍可提供漏掃玩家補掃。
           </div>
+        </div>
+      </div>
+    </Teleport>
+
+    <!-- 玩家資料 Modal -->
+    <Teleport to="body">
+      <div v-if="showPlayerModal" class="qr-modal-overlay" @click.self="showPlayerModal = false">
+        <div class="player-modal-content">
+          <button class="close-btn" @click="showPlayerModal = false">✕</button>
+
+          <div v-if="playerLoading" class="player-modal-loading">
+            <div class="spinner"></div>
+            <span style="color: #888; margin-top: 10px;">載入中...</span>
+          </div>
+
+          <template v-else-if="selectedPlayer">
+            <div class="pm-header">
+              <img :src="selectedPlayer.picture_url || 'https://via.placeholder.com/60'" class="pm-avatar">
+              <div class="pm-identity">
+                <div class="pm-name">{{ selectedPlayer.display_name }}</div>
+                <div class="pm-id">No. {{ selectedPlayer.legacy_id }}</div>
+                <div class="pm-badge">LV.{{ selectedPlayer.levelInfo.level }} ◆ {{ selectedPlayer.levelInfo.title }}</div>
+              </div>
+            </div>
+
+            <div class="pm-stats">
+              <div class="pm-stat-item">
+                <div class="pm-stat-val">{{ selectedPlayer.games }}</div>
+                <div class="pm-stat-label">場冒險</div>
+              </div>
+              <div class="pm-stat-item">
+                <div class="pm-stat-val">{{ selectedPlayer.days }}</div>
+                <div class="pm-stat-label">天資歷</div>
+              </div>
+              <div class="pm-stat-item">
+                <div class="pm-stat-val">{{ (selectedPlayer.total_exp || 0).toLocaleString() }}</div>
+                <div class="pm-stat-label">EXP</div>
+              </div>
+              <div class="pm-stat-item">
+                <div class="pm-stat-val" style="color: #D4AF37;">{{ (selectedPlayer.points || 0).toLocaleString() }}</div>
+                <div class="pm-stat-label">點數</div>
+              </div>
+            </div>
+
+            <div v-if="selectedPlayer.phone" class="pm-phone">
+              <span style="color: #555; font-size: 0.8rem;">電話</span>
+              <span style="color: #aaa; font-size: 0.9rem; margin-left: 10px;">{{ selectedPlayer.phone }}</span>
+            </div>
+
+            <button
+              class="pm-goto-btn"
+              @click="emit('open-member', selectedPlayer.legacy_id); showPlayerModal = false"
+            >
+              前往會員查詢
+            </button>
+          </template>
         </div>
       </div>
     </Teleport>
@@ -310,6 +419,35 @@ const generateQrUrl = (game) => {
 .qr-code-img { display: block; }
 .close-btn { position: absolute; top: 15px; right: 15px; background: transparent; border: 1px solid #555; color: #ccc; width: 30px; height: 30px; border-radius: 50%; cursor: pointer; display: flex; justify-content: center; align-items: center; transition: 0.2s; }
 .close-btn:hover { background: #333; color: white; border-color: #D4AF37; }
+
+/* 玩家資料 Modal */
+.player-modal-content {
+  background: #161616; padding: 30px; border-radius: 16px;
+  border: 1px solid #333; position: relative;
+  max-width: 360px; width: 90%; box-shadow: 0 10px 40px rgba(0,0,0,0.8);
+}
+.player-modal-loading { display: flex; flex-direction: column; align-items: center; padding: 30px 0; }
+.pm-header { display: flex; gap: 16px; align-items: center; margin-bottom: 20px; }
+.pm-avatar { width: 60px; height: 60px; border-radius: 50%; object-fit: cover; border: 2px solid #D4AF37; }
+.pm-identity { display: flex; flex-direction: column; gap: 4px; }
+.pm-name { font-size: 1.15rem; font-weight: bold; color: #fff; }
+.pm-id { font-size: 0.78rem; color: #D4AF37; font-family: monospace; }
+.pm-badge { font-size: 0.75rem; color: #888; margin-top: 2px; }
+.pm-stats {
+  display: grid; grid-template-columns: repeat(4, 1fr);
+  gap: 8px; background: #111; border-radius: 10px; padding: 14px 8px; margin-bottom: 16px;
+}
+.pm-stat-item { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.pm-stat-val { font-size: 1.2rem; font-weight: bold; color: #fff; }
+.pm-stat-label { font-size: 0.7rem; color: #666; }
+.pm-phone { background: #111; border-radius: 8px; padding: 10px 14px; display: flex; align-items: center; margin-bottom: 4px; }
+.pm-goto-btn {
+  margin-top: 12px; width: 100%;
+  background: #D4AF37; color: #000; border: none;
+  border-radius: 8px; padding: 11px; font-weight: bold;
+  font-size: 0.95rem; cursor: pointer; transition: 0.2s;
+}
+.pm-goto-btn:hover { background: #e5c358; }
 
 @media (max-width: 768px) {
   .search-group { justify-content: flex-start; }

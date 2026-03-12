@@ -4,6 +4,16 @@ import { supabase } from '../supabase'
 
 const emit = defineEmits(['update-stats'])
 
+const openMember = async (query) => {
+  searchQuery.value = query
+  await searchMembers()
+  if (searchResults.value.length === 1) {
+    await selectMember(searchResults.value[0])
+  }
+}
+
+defineExpose({ openMember })
+
 const searchQuery = ref('')
 const searchResults = ref([])
 const selectedMember = ref(null)

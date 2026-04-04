@@ -22,8 +22,10 @@ const router = createRouter({
     },
     // 🚀 小四特製：加上管理後台的秘密通道
     { path: '/admin', component: AdminView },
-    { path: '/paperdoll', component: PaperDollView },
-    { path: '/points', component: PointsView },
+    // 造型室素材準備中，暫時封鎖 (重新開放時改回 component: PaperDollView)
+    { path: '/paperdoll', redirect: '/' },
+    // 點數取得機制尚未定案，暫時封鎖 (重新開放時改回 component: PointsView)
+    { path: '/points', redirect: '/' },
     
     // === 互動裝置 ===
     { path: '/display', component: () => import('../views/display/DisplayView.vue'), meta: { hideNav: true } },

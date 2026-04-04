@@ -10,7 +10,7 @@ const route = useRoute()
 const showNav = computed(() => !userStore.isLoading && !route.meta.hideNav)
 
 onMounted(() => {
-  if (window.location.hash.includes('#/admin') || window.location.hash.includes('#/paperdoll') || window.location.hash.includes('#/display')) {
+  if (window.location.hash.includes('#/admin') || window.location.hash.includes('#/display')) {
     console.log('🕵️‍♂️ 偵測到老闆走後台通道，跳過 LINE 看門狗！')
     userStore.isLoading = false
     return

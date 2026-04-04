@@ -190,8 +190,8 @@ onMounted(() => {
           </div>
         </div>
 
-        <!-- 燈燈破框而出，點擊進入換裝 -->
-        <div class="showcase-doll-float" @click="$router.push('/paperdoll')">
+        <!-- 燈燈破框而出 (造型室素材準備中，暫時關閉換裝入口) -->
+        <div class="showcase-doll-float">
           <div class="showcase-doll">
             <img v-if="dollLayers.cape" class="doll-layer doll-clothing" :src="dollLayers.cape" alt="" />
             <img class="doll-layer doll-base" :src="baseImgUrl || FALLBACK_BASE" alt="燈燈" />
@@ -199,7 +199,6 @@ onMounted(() => {
               <img v-if="dollLayers[slot]" class="doll-layer doll-clothing" :src="dollLayers[slot]" alt="" />
             </template>
           </div>
-          <div class="doll-edit-badge">換裝</div>
         </div>
 
         <!-- 縮短版卡片：只留背景 + 名字稱號 -->
@@ -274,8 +273,8 @@ onMounted(() => {
         <div class="card-deco-bottom"></div>
       </div>
 
-      <!-- 點數入口 -->
-      <div class="home-action-area fade-in-up delay-3">
+      <!-- 點數入口 (點數取得機制尚未定案，暫時隱藏) -->
+      <div v-if="false" class="home-action-area fade-in-up delay-3">
         <div class="points-card" @click="$router.push('/points')">
           <div class="card-deco-top"></div>
           <div class="points-card-inner">
@@ -295,8 +294,8 @@ onMounted(() => {
         </div>
       </div>
 
-      <!-- 族譜入口 -->
-      <div class="home-action-area fade-in-up delay-3">
+      <!-- 族譜入口 (推坑優惠討論中，暫時隱藏) -->
+      <div v-if="false" class="home-action-area fade-in-up delay-3">
         <button @click="showTreeModal = true" class="tree-entry-btn">
           <div class="card-deco-top"></div>
           <div class="tree-btn-inner">

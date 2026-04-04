@@ -76,10 +76,12 @@
 | total_exp | int | 累積經驗值 |
 | current_title | varchar | 玩家選擇的稱號 |
 | phone | varchar | 電話 |
+| email | varchar | 電子郵件 |
 | birthday | date | 生日 |
 | birthday_claimed_year | int | 已領取生日禮的年份（防重發） |
 | referred_by | varchar | 推薦人的推薦碼 |
 | my_referral_code | varchar | 自己的推薦碼 |
+| points | int | 冒險點數餘額（預設 0） |
 | role | varchar | `player` / `manager` / `admin` |
 | managed_branch | varchar | 管轄分館（manager 用） |
 | created_at | timestamp | 註冊時間 |
@@ -138,6 +140,7 @@ EXP < 100   → LV.1 剛加入的冒險者
 | status | varchar | `available` / `used` / `expired` |
 | expiry_date | timestamp | 有效期限 |
 | used_at | timestamp | 核銷時間 |
+| source_promo_code | uuid (FK) | 來源兌換碼 ID（防重複領取用，可為 null） |
 
 **自動派發觸發點：**
 - `profile_complete`：首次完善個人資料（填生日）
@@ -363,8 +366,8 @@ src/
 
 **LIFF 初始化判斷：**
 ```javascript
-// /admin、/paperdoll、/display 路徑跳過 LIFF
-if (window.location.hash.includes('#/admin') || ...) {
+// /admin、/display 路徑跳過 LIFF（/paperdoll 已封鎖，不再列入）
+if (window.location.hash.includes('#/admin') || window.location.hash.includes('#/display')) {
   userStore.isLoading = false
   return
 }
@@ -373,6 +376,8 @@ if (import.meta.env.DEV) { ... }
 // 正常流程
 userStore.initLiff()
 ```
+
+> **注意：** `/paperdoll` 路由封鎖期間已從 LIFF bypass 清單移除。若直接輸入 `#/paperdoll`，router 會 redirect 到 `/` 並正常走 LIFF 流程。開放時需一併將 `#/paperdoll` 加回 App.vue bypass 清單（見第 14 節）。
 
 ---
 
@@ -964,3 +969,60 @@ ALTER TABLE wardrobe_items ADD COLUMN is_discontinued boolean default false;
 | 道具不顯示 | img_url vs img 欄位名稱錯誤 | 確認使用 `.img_url` |
 | LINE 名片 401 | Channel Secret 不符 | 確認 Supabase Secret 設定 |
 | 換裝存不了 | user_wardrobe_equipped upsert 失敗 | 確認 onConflict: 'user_id' |
+
+---
+
+## 14. 功能封鎖清單（待上線）
+
+> 最後更新：2026-04-04
+> 以下功能程式碼已完整保留，僅關閉入口，待條件成熟後依指示開放。
+
+### 14.1 燈燈造型室（`/paperdoll`）
+
+**封鎖原因：** 服裝素材尚未製作完成，衣櫃無內容可換。
+
+**封鎖範圍：**
+- `src/views/HomeView.vue` — 首頁燈燈移除點擊事件與「換裝」badge，保留角色展示
+- `src/router/index.js` — `/paperdoll` 改為 `redirect: '/'`，防止直接輸入網址進入
+
+**開放方式：**
+1. `router/index.js` 第 26 行：`redirect: '/'` 改回 `component: PaperDollView`
+2. `HomeView.vue` showcase-doll-float：加回 `@click="$router.push('/paperdoll')"` 與 `<div class="doll-edit-badge">換裝</div>`
+3. `App.vue` LIFF bypass 判斷：加回 `|| window.location.hash.includes('#/paperdoll')`
+
+---
+
+### 14.2 點數中心（`/points`）
+
+**封鎖原因：** 點數取得機制尚未定案（QR 掃碼給點、推薦分潤點數規則待確認）。
+
+**封鎖範圍：**
+- `src/views/HomeView.vue` — 首頁點數卡片加 `v-if="false"`（程式碼保留）
+- `src/router/index.js` — `/points` 改為 `redirect: '/'`
+
+**已完成的部分（開放後即可使用）：**
+- `PointsView.vue` 頁面（點數紀錄 + 點數商城）
+- `stores/user.js` `grantPoints()` 引擎
+- 後台「點數管理」Tab（AdminPoints.vue）
+
+**開放方式：**
+1. `router/index.js` 第 28 行：`redirect: '/'` 改回 `component: PointsView`
+2. `HomeView.vue` 點數入口 div：移除 `v-if="false"`
+
+---
+
+### 14.3 宗門弟子族譜 ＋ 好友推坑計畫
+
+**封鎖原因：** 推坑優惠內容（新手禮、老手獎勵金額）尚在討論中。
+
+**封鎖範圍：**
+- `src/views/HomeView.vue` — 族譜入口按鈕加 `v-if="false"`（程式碼保留）
+- `src/views/SettingsView.vue` — 「好友推坑計畫」整個 section 加 `v-if="false"`（程式碼保留）
+
+**注意：** 規則說明 Modal（`showRulesModal`）隨 section 一併隱藏，無需額外處理。
+
+**開放方式：**
+1. `HomeView.vue` 族譜入口 div：移除 `v-if="false"`
+2. `SettingsView.vue` 推坑計畫 section：移除 `v-if="false"`
+3. 確認 `system_rewards` 表中 `event_type = 'referral_newbie'` 與 `'referral_veteran'` 的獎勵規則已設定完畢
+

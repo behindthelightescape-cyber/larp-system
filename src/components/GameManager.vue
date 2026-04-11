@@ -80,7 +80,7 @@ const addToQueue = () => {
 
   const d = new Date(gameTime.value)
   const dt = `${d.getMonth()+1}/${d.getDate()} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`
-  const ft = `${d.getMonth()+1}${d.getDate()}_${d.getHours()}${d.getMinutes()}`
+  const ft = `${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}_${String(d.getHours()).padStart(2,'0')}${String(d.getMinutes()).padStart(2,'0')}`
 
   batchQueue.value.push({
     sid: selectedScript.value.id,

@@ -63,7 +63,7 @@ onMounted(async () => {
 })
 
 const displayAchievements = computed(() => {
-  return achievements.value.map(ach => {
+  return achievements.value.filter(ach => ach.status !== 'hidden').map(ach => {
     const isUnlocked = userUnlockedIds.value.includes(ach.id)
     const isEnded = ach.status === 'ended'
     
@@ -150,6 +150,13 @@ const claimReward = async (ach) => {
       const newExp = currentExp + ach.reward_exp
       await supabase.from('users').update({ total_exp: newExp }).eq('id', store.userData.id)
       successMsg += `\n✨ 獲得成就獎勵：+${ach.reward_exp} 經驗值！`
+    }
+
+    if (ach.reward_type === 'points' && ach.reward_points > 0) {
+      const currentPoints = store.userData.points || 0
+      const newPoints = currentPoints + ach.reward_points
+      await supabase.from('users').update({ points: newPoints }).eq('id', store.userData.id)
+      successMsg += `\n💎 獲得成就獎勵：+${ach.reward_points} 冒險點數！`
     }
 
     alert(successMsg)

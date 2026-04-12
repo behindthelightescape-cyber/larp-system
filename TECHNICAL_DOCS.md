@@ -187,7 +187,13 @@ EXP < 100   → LV.1 剛加入的冒險者
 | description | text | 說明 |
 | condition_type | varchar | `tag` / `script` |
 | condition_value | jsonb | 條件詳細（見下方） |
-| status | varchar | `active` / `ended` |
+| status | varchar | `active` / `hidden` / `ended` |
+| reward_type | varchar | `none` / `exp` / `points` / `coupon` |
+| reward_exp | int | 贈送經驗值數量（reward_type=exp 時有效） |
+| reward_points | int | 贈送冒險點數數量（reward_type=points 時有效） |
+| reward_coupon_title | varchar | 票券標題（reward_type=coupon 時有效） |
+| reward_coupon_desc | text | 票券說明 |
+| reward_coupon_valid_days | int | 票券有效天數 |
 
 **condition_value 格式：**
 ```json
@@ -638,12 +644,23 @@ grantSystemRewards(targetUserId, eventType, conditionValue, customExpiryDate)
 
 ```
 1. 取得玩家 birthday 月份
-2. 檢查當月或下月是否為生日月
+2. 檢查當月或下月是否為生日月（提前一個月預熱機制）
 3. 檢查 birthday_claimed_year 防重複
-4. 計算生日月末：new Date(year, bMonth, 0, 23, 59, 59)
-5. grantSystemRewards(userId, 'birthday', null, 月底日期)
-6. UPDATE users SET birthday_claimed_year = claimYear
+4. 計算生日月末：new Date(claimYear, bMonth, 0, 23, 59, 59)
+5. grantSystemRewards(userId, 'birthday', userData.level, 月底日期)
+   → condition_value 傳入玩家等級（1–6），對應不同禮包金額
+6. gifts 發送成功後，UPDATE users SET birthday_claimed_year = claimYear
 ```
+
+**system_rewards birthday 規則（condition_value = 玩家等級）：**
+| 等級 | 禮物 |
+|------|------|
+| LV.1 | 壽星禮 $50 折價券 |
+| LV.2 | 壽星禮 $100 折價券 |
+| LV.3 | 壽星禮 $200 折價券 |
+| LV.4 | LV.4 尊榮壽星 免費遊玩券 |
+| LV.5 | LV.5 尊榮壽星 免費遊玩券 |
+| LV.6 | LV.6 尊榮壽星 免費遊玩券 |
 
 ---
 

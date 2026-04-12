@@ -17,8 +17,9 @@ const form = ref({
   target_tag: '',
   target_count: 1,
   target_script_ids: [],
-  reward_type: 'none', 
+  reward_type: 'none',
   reward_exp: 0,
+  reward_points: 0,
   reward_coupon_title: '',
   reward_coupon_desc: '',
   reward_coupon_valid_days: 30,
@@ -82,7 +83,7 @@ const openAddModal = () => {
     id: crypto.randomUUID(), 
     title: '', description: '', icon_url: '🏆', 
     condition_type: 'tag', target_tag: '', target_count: 1, target_script_ids: [],
-    reward_type: 'none', reward_exp: 0, reward_coupon_title: '', reward_coupon_desc: '', reward_coupon_valid_days: 30,
+    reward_type: 'none', reward_exp: 0, reward_points: 0, reward_coupon_title: '', reward_coupon_desc: '', reward_coupon_valid_days: 30,
     status: 'active' // 預設開放中
   }
   showModal.value = true
@@ -116,6 +117,7 @@ const openEditModal = (ach) => {
     target_script_ids: parsedScriptIds,
     reward_type: ach.reward_type || 'none',
     reward_exp: ach.reward_exp || 0,
+    reward_points: ach.reward_points || 0,
     reward_coupon_title: ach.reward_coupon_title || '',
     reward_coupon_desc: ach.reward_coupon_desc || '',
     reward_coupon_valid_days: ach.reward_coupon_valid_days || 30,
@@ -155,6 +157,7 @@ const saveAchievement = async () => {
     condition_value: finalConditionValue,
     reward_type: form.value.reward_type,
     reward_exp: form.value.reward_type === 'exp' ? form.value.reward_exp : 0,
+    reward_points: form.value.reward_type === 'points' ? form.value.reward_points : 0,
     reward_coupon_title: form.value.reward_type === 'coupon' ? form.value.reward_coupon_title : null,
     reward_coupon_desc: form.value.reward_type === 'coupon' ? form.value.reward_coupon_desc : null,
     reward_coupon_valid_days: form.value.reward_type === 'coupon' ? form.value.reward_coupon_valid_days : null,
@@ -225,12 +228,13 @@ const deleteAchievement = async (id, title) => {
     <div v-else class="ach-grid">
       <div v-if="achievements.length === 0" style="color:#888; grid-column: 1/-1; text-align: center; padding: 40px;">目前還沒有任何成就，趕快建一個吧！</div>
       
-      <div v-for="ach in achievements" :key="ach.id" class="ach-card" :class="{ 'is-ended': ach.status === 'ended' }">
+      <div v-for="ach in achievements" :key="ach.id" class="ach-card" :class="{ 'is-ended': ach.status === 'ended', 'is-hidden': ach.status === 'hidden' }">
         <div class="ach-icon">{{ ach.icon_url || '🏆' }}</div>
         <div class="ach-info">
           <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 5px;">
             <h4 class="ach-title" style="margin: 0;">{{ ach.title }}</h4>
             <span v-if="ach.status === 'ended'" class="badge-ended">⏳ 已絕版</span>
+            <span v-if="ach.status === 'hidden'" class="badge-hidden">👁️ 隱藏中</span>
           </div>
           <p class="ach-desc">{{ ach.description }}</p>
           <div class="ach-meta">
@@ -250,6 +254,9 @@ const deleteAchievement = async (id, title) => {
             <span class="meta-coupon" v-else-if="ach.reward_type === 'coupon'">
               🎟️ 送券: {{ ach.reward_coupon_title }} ({{ ach.reward_coupon_valid_days }}天)
             </span>
+            <span class="meta-points" v-else-if="ach.reward_type === 'points'">
+              💎 +{{ ach.reward_points }} 冒險點數
+            </span>
           </div>
           <div class="ach-actions">
             <button class="action-btn edit" @click="openEditModal(ach)">編輯</button>
@@ -266,6 +273,7 @@ const deleteAchievement = async (id, title) => {
             <h3>{{ isEditing ? '✏️ 編輯成就規則' : '➕ 新增成就規則' }}</h3>
             <select v-model="form.status" class="admin-input" style="width: auto; border-color: #D4AF37; color: #D4AF37; font-weight: bold; background: rgba(212, 175, 55, 0.1);">
               <option value="active">🟢 開放獲取中</option>
+              <option value="hidden">👁️ 隱藏（玩家不可見）</option>
               <option value="ended">🔴 限時已絕版</option>
             </select>
           </div>
@@ -345,8 +353,18 @@ const deleteAchievement = async (id, title) => {
                 <label class="radio-label">
                   <input type="radio" v-model="form.reward_type" value="coupon"> 🎟️ 送專屬票券
                 </label>
+                <label class="radio-label">
+                  <input type="radio" v-model="form.reward_type" value="points"> 💎 送冒險點數
+                </label>
               </div>
             </div>
+
+            <template v-if="form.reward_type === 'points'">
+              <div class="form-group full">
+                <label>贈送冒險點數數量</label>
+                <input v-model="form.reward_points" type="number" class="admin-input" min="0">
+              </div>
+            </template>
 
             <template v-if="form.reward_type === 'exp'">
               <div class="form-group full">
@@ -390,12 +408,15 @@ const deleteAchievement = async (id, title) => {
 /* 🚀 絕版卡片樣式變暗 */
 .ach-card.is-ended { opacity: 0.5; filter: grayscale(50%); border-color: #222; }
 .ach-card.is-ended:hover { opacity: 0.8; }
+.ach-card.is-hidden { opacity: 0.6; border-color: #2a2a3a; border-style: dashed; }
+.ach-card.is-hidden:hover { opacity: 0.9; }
 
 .ach-icon { font-size: 3rem; background: #222; width: 80px; height: 80px; display: flex; justify-content: center; align-items: center; border-radius: 12px; border: 1px solid #444; flex-shrink: 0;}
 .ach-info { flex: 1; overflow: hidden; } 
 .ach-title { color: #D4AF37; font-size: 1.2rem; }
 /* 🚀 絕版小標籤 */
 .badge-ended { background: rgba(231, 76, 60, 0.15); border: 1px solid #e74c3c; color: #e74c3c; padding: 2px 6px; border-radius: 4px; font-size: 0.75rem; font-weight: bold; white-space: nowrap;}
+.badge-hidden { background: rgba(100, 100, 180, 0.15); border: 1px solid #6666cc; color: #9999ee; padding: 2px 6px; border-radius: 4px; font-size: 0.75rem; font-weight: bold; white-space: nowrap;}
 
 .ach-desc { color: #aaa; font-size: 0.9rem; margin: 0 0 10px 0; line-height: 1.4;}
 .ach-meta { display: flex; flex-direction: column; gap: 8px; font-size: 0.8rem; margin-bottom: 15px; }
@@ -403,6 +424,7 @@ const deleteAchievement = async (id, title) => {
 .meta-none { background: rgba(255, 255, 255, 0.1); border: 1px solid #888; color: #bbb; padding: 4px 8px; border-radius: 4px; display: inline-block; width: fit-content; font-weight: bold;}
 .meta-exp { background: rgba(52, 152, 219, 0.1); border: 1px solid #3498db; color: #3498db; padding: 4px 8px; border-radius: 4px; display: inline-block; width: fit-content; font-weight: bold;}
 .meta-coupon { background: rgba(212, 175, 55, 0.15); border: 1px solid #D4AF37; color: #D4AF37; padding: 4px 8px; border-radius: 4px; display: inline-block; width: fit-content; font-weight: bold;}
+.meta-points { background: rgba(46, 204, 113, 0.1); border: 1px solid #2ecc71; color: #2ecc71; padding: 4px 8px; border-radius: 4px; display: inline-block; width: fit-content; font-weight: bold;}
 .ach-actions { display: flex; gap: 10px; }
 .action-btn { flex: 1; padding: 6px; border: none; border-radius: 6px; font-weight: bold; cursor: pointer; font-size: 0.85rem; }
 .action-btn.edit { background: #333; color: #fff; }

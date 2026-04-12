@@ -73,7 +73,8 @@ const loadSessions = async () => {
     
   } catch (err) {
     console.error("時空傳輸失敗：", err)
-    alert("資料庫連線異常：" + err.message)
+    const detail = err?.message || err?.details || err?.hint || JSON.stringify(err)
+    alert("資料庫連線異常：" + detail)
   } finally {
     isLoading.value = false
   }

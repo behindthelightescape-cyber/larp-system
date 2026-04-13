@@ -182,7 +182,7 @@ export const useUserStore = defineStore('user', () => {
       isLoggedIn.value = true
     } else {
       let nextIdNumber = 1
-      const { data: maxUsers } = await supabase.from('users').select('legacy_id').not('legacy_id', 'is', null).order('legacy_id', { ascending: false }).limit(1)
+      const { data: maxUsers } = await supabase.from('users').select('legacy_id').filter('legacy_id', 'match', '^[0-9]').order('legacy_id', { ascending: false }).limit(1)
       if (maxUsers && maxUsers.length > 0 && maxUsers[0].legacy_id) {
         const currentMax = parseInt(maxUsers[0].legacy_id, 10)
         if (!isNaN(currentMax)) nextIdNumber = currentMax + 1 

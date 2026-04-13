@@ -89,7 +89,8 @@ try {
           gm: record.games?.gm_name || '無名氏',
           exp: record.exp_gained || record.games?.base_exp || 0,
           story_memory: finalMemory, // 👈 換上算好的乾淨手札
-          branch: finalBranch
+          branch: finalBranch,
+          play_time_raw: record.games?.play_time || null
         }
       })
     }
@@ -111,17 +112,21 @@ const openDetail = (game) => {
 }
 
 // ── 填寫回饋 ────────────────────────────────────────────────────────────────
-const FORM_BASE = 'https://docs.google.com/forms/d/1uI_wyjJvYWuO7GTWF-RmtyvZrMSzcoTV7Ap8erCXOAo/viewform'
+const FORM_BASE = 'https://docs.google.com/forms/d/e/1FAIpQLSccz35iYlo_fjDPllSnQLCuCBIQM-u6OzVvaTM67fdV0Nobag/viewform'
 
 const openFeedback = (game) => {
-  const raw = game.date || ''
-  const [datePart, timePart] = raw.split(' ')
-  const params = new URLSearchParams({
-    'entry.2061998432': datePart || '',
-    'entry.1414639528': timePart  || '',
-    'entry.559042233':  game.title || '',
-    'entry.289047265':  game.gm   || '',
-  })
+  const params = new URLSearchParams()
+  const d = game.play_time_raw ? new Date(game.play_time_raw) : null
+  if (d && !isNaN(d)) {
+    const yyyy = d.getFullYear()
+    const mm   = String(d.getMonth() + 1).padStart(2, '0')
+    const dd   = String(d.getDate()).padStart(2, '0')
+    params.set('entry.154120669', `${yyyy}-${mm}-${dd}`)
+    params.set('entry.1414639528_hour',   d.getHours())
+    params.set('entry.1414639528_minute', d.getMinutes())
+  }
+  params.set('entry.559042233', game.title || '')
+  params.set('entry.289047265', game.gm   || '')
   const url = `${FORM_BASE}?usp=pp_url&${params.toString()}`
   window.open(url, '_blank')
 }

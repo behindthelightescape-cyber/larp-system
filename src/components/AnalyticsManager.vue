@@ -30,7 +30,7 @@ const INFO = {
 
 const isLoaded = ref(false)
 const totalUsers = ref(0)
-const levelStats = ref({ lv1: 0, lv2: 0, lv3Plus: 0 })
+const levelStats = ref({ lv1: 0, lv2: 0, lv3: 0, lv4: 0, lv5: 0, lv6: 0 })
 const analyticsStats = ref({ played_0: 0, played_1: 0, played_2_3: 0, played_4_5: 0, played_6_plus: 0 })
 const recencyStats = ref({ active_6m: 0, inactive_6m_1y: 0, churned_1y_plus: 0 })
 const growthStats = ref({ thisMonth: 0, lastMonth: 0 })
@@ -100,6 +100,9 @@ const loadAnalytics = async () => {
       { count: lv1 },
       { count: lv2 },
       { count: lv3 },
+      { count: lv4 },
+      { count: lv5 },
+      { count: lv6 },
       { count: thisMonth },
       { count: lastMonth },
       { count: referred },
@@ -112,7 +115,10 @@ const loadAnalytics = async () => {
       realUsers(),
       realUsers().eq('level', 1),
       realUsers().eq('level', 2),
-      realUsers().gte('level', 3),
+      realUsers().eq('level', 3),
+      realUsers().eq('level', 4),
+      realUsers().eq('level', 5),
+      realUsers().eq('level', 6),
       realUsers().gte('created_at', thisMonthStart),
       realUsers().gte('created_at', lastMonthStart).lt('created_at', thisMonthStart),
       realUsers().not('referred_by', 'is', null),
@@ -126,7 +132,7 @@ const loadAnalytics = async () => {
     archivedTitles.value = new Set((archivedData || []).map(s => s.title))
 
     totalUsers.value = total || 0
-    levelStats.value = { lv1: lv1 || 0, lv2: lv2 || 0, lv3Plus: lv3 || 0 }
+    levelStats.value = { lv1: lv1 || 0, lv2: lv2 || 0, lv3: lv3 || 0, lv4: lv4 || 0, lv5: lv5 || 0, lv6: lv6 || 0 }
     growthStats.value = { thisMonth: thisMonth || 0, lastMonth: lastMonth || 0 }
     referralCount.value = referred || 0
     if (playData) analyticsStats.value = playData
@@ -191,30 +197,21 @@ const loadAnalytics = async () => {
       <!-- 玩家階級分佈 -->
       <div class="section-card">
         <h4 class="section-title">玩家階級分佈 <span class="base-text">基數 {{ totalUsers }} 人</span></h4>
-        <div class="level-grid">
-          <div class="level-card" @click="openInfo(INFO.lv1.title, INFO.lv1.desc)">
-            <div class="lv-badge lv1">LV.1</div>
-            <div class="lv-name">剛加入的冒險者</div>
-            <div class="lv-count">{{ levelStats.lv1 }}<span class="unit">人</span></div>
-            <div class="lv-bar-track"><div class="lv-bar-fill" :style="{ width: barWidth(levelStats.lv1) + '%', background: '#95a5a6' }"></div></div>
-            <div class="lv-pct">{{ getPctStr(levelStats.lv1) }}</div>
-            <div class="card-info-hint">ⓘ 點擊了解更多</div>
-          </div>
-          <div class="level-card" @click="openInfo(INFO.lv2.title, INFO.lv2.desc)">
-            <div class="lv-badge lv2">LV.2</div>
-            <div class="lv-name">不怕死的探險家</div>
-            <div class="lv-count" style="color:#3498db;">{{ levelStats.lv2 }}<span class="unit">人</span></div>
-            <div class="lv-bar-track"><div class="lv-bar-fill" :style="{ width: barWidth(levelStats.lv2) + '%', background: '#3498db' }"></div></div>
-            <div class="lv-pct" style="color:#3498db;">{{ getPctStr(levelStats.lv2) }}</div>
-            <div class="card-info-hint">ⓘ 點擊了解更多</div>
-          </div>
-          <div class="level-card" @click="openInfo(INFO.lv3plus.title, INFO.lv3plus.desc)">
-            <div class="lv-badge lv3">LV.3+</div>
-            <div class="lv-name">主角光環勇者以上</div>
-            <div class="lv-count" style="color:#D4AF37;">{{ levelStats.lv3Plus }}<span class="unit">人</span></div>
-            <div class="lv-bar-track"><div class="lv-bar-fill" :style="{ width: barWidth(levelStats.lv3Plus) + '%', background: '#D4AF37' }"></div></div>
-            <div class="lv-pct" style="color:#D4AF37;">{{ getPctStr(levelStats.lv3Plus) }}</div>
-            <div class="card-info-hint">ⓘ 點擊了解更多</div>
+        <div class="level-grid-6">
+          <div v-for="row in [
+            { lv: 1, key: 'lv1', name: '剛加入的冒險者', exp: '0–99',   color: '#95a5a6' },
+            { lv: 2, key: 'lv2', name: '不怕死的探險家', exp: '100–249',  color: '#3498db' },
+            { lv: 3, key: 'lv3', name: '主角光環的勇者', exp: '250–499',  color: '#2ecc71' },
+            { lv: 4, key: 'lv4', name: '平行宇宙開拓家', exp: '500–999',  color: '#9b59b6' },
+            { lv: 5, key: 'lv5', name: '穿越時空成癮者', exp: '1000–2499',color: '#e67e22' },
+            { lv: 6, key: 'lv6', name: '陽光開朗小萌新', exp: '2500+',    color: '#D4AF37' },
+          ]" :key="row.lv" class="level-card">
+            <div class="lv-badge" :style="{ background: row.color + '22', color: row.color, border: '1px solid ' + row.color + '66' }">LV.{{ row.lv }}</div>
+            <div class="lv-name">{{ row.name }}</div>
+            <div class="lv-exp">EXP {{ row.exp }}</div>
+            <div class="lv-count" :style="{ color: row.color }">{{ levelStats[row.key] }}<span class="unit">人</span></div>
+            <div class="lv-bar-track"><div class="lv-bar-fill" :style="{ width: barWidth(levelStats[row.key]) + '%', background: row.color }"></div></div>
+            <div class="lv-pct" :style="{ color: row.color }">{{ getPctStr(levelStats[row.key]) }}</div>
           </div>
         </div>
       </div>
@@ -401,6 +398,9 @@ const loadAnalytics = async () => {
 .lv-bar-track { width: 100%; height: 4px; background: #222; border-radius: 2px; margin: 10px 0 6px; }
 .lv-bar-fill { height: 100%; border-radius: 2px; transition: width 0.6s ease; }
 .lv-pct { font-size: 0.85rem; color: #aaa; font-weight: bold; }
+.lv-exp { font-size: 0.7rem; color: #444; margin-bottom: 8px; }
+.level-grid-6 { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; }
+.card-info-hint { display: none; }
 
 /* 兩欄 */
 .two-col-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }

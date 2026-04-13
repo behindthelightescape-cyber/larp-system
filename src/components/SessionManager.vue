@@ -120,17 +120,45 @@ const generateQrUrl = (game) => {
   return `https://liff.line.me/2009161687-icfQU9r6?game_id=${targetId}`
 }
 
-// ── 刪除場次 ──────────────────────────────────────────────────────────────
+// ── 刪除場次（含扣回 EXP）──────────────────────────────────────────────────
+const calcLevel = (exp) => {
+  if (exp >= 2500) return 6
+  if (exp >= 1000) return 5
+  if (exp >= 500)  return 4
+  if (exp >= 250)  return 3
+  if (exp >= 100)  return 2
+  return 1
+}
+
 const deleteGame = async (event, game) => {
   event.stopPropagation()
   const participantCount = game.game_participants?.length || 0
   const confirmMsg = participantCount > 0
-    ? `確定刪除「${game.scripts?.title || '未知劇本'}」？\n此場次有 ${participantCount} 位玩家的掃碼紀錄，一併刪除後無法復原。`
+    ? `確定刪除「${game.scripts?.title || '未知劇本'}」？\n此場次有 ${participantCount} 位玩家的掃碼紀錄，EXP 將一併扣回，無法復原。`
     : `確定刪除「${game.scripts?.title || '未知劇本'}」？`
   if (!confirm(confirmMsg)) return
 
+  // 1. 讀出每位參與者的 exp_gained 與現有 total_exp
+  const { data: participants, error: fetchError } = await supabase
+    .from('game_participants')
+    .select('user_id, exp_gained, users(total_exp)')
+    .eq('game_id', game.id)
+  if (fetchError) { alert('讀取參與者資料失敗：' + fetchError.message); return }
+
+  // 2. 逐一扣回 EXP、重算等級
+  for (const p of (participants || [])) {
+    const oldExp = p.users?.total_exp || 0
+    const newExp = Math.max(0, oldExp - (p.exp_gained || 0))
+    await supabase.from('users')
+      .update({ total_exp: newExp, level: calcLevel(newExp) })
+      .eq('id', p.user_id)
+  }
+
+  // 3. 刪掃碼紀錄
   const { error: e1 } = await supabase.from('game_participants').delete().eq('game_id', game.id)
   if (e1) { alert('刪除掃碼紀錄失敗：' + e1.message); return }
+
+  // 4. 刪場次
   const { error: e2 } = await supabase.from('games').delete().eq('id', game.id)
   if (e2) { alert('刪除場次失敗：' + e2.message); return }
 

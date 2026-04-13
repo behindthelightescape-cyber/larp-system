@@ -368,6 +368,6 @@ export const useUserStore = defineStore('user', () => {
   return {
     lineProfile, userData, isLoggedIn, isLoading, error,
     history, coupons, daysJoined, userTitle,
-    initLiff, updateProfile, getLevelInfo, grantPoints
+    initLiff, updateProfile, getLevelInfo, grantPoints, joinGame
   }
 })

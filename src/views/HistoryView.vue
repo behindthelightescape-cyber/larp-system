@@ -1,8 +1,9 @@
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useUserStore } from '../stores/user'
 import { supabase } from '../supabase'
 import { Loader2, BookOpen, ScrollText } from 'lucide-vue-next'
+import jsQR from 'jsqr'
 
 const store = useUserStore()
 const showModal = ref(false)
@@ -108,33 +109,70 @@ const openDetail = (game) => {
   showModal.value = true
 }
 
-// ── 掃碼加入遊戲 ────────────────────────────────────────────────────────────
+// ── 相機掃碼加入遊戲 ─────────────────────────────────────────────────────
+const showScanner = ref(false)
 const isScanning = ref(false)
-const scanAndJoin = async () => {
-  if (isScanning.value) return
-  if (import.meta.env.DEV) {
-    const gameId = prompt('（開發模式）手動輸入 game_id：')
-    if (gameId) await store.joinGame(gameId.trim())
-    return
-  }
+const videoRef = ref(null)
+const canvasRef = ref(null)
+let stream = null
+let rafId = null
+
+const openScanner = async () => {
+  showScanner.value = true
+  await new Promise(r => setTimeout(r, 100)) // 等 DOM
   try {
-    isScanning.value = true
-    const result = await window.liff.scanCodeV2()
-    const url = result?.value
-    if (!url) return
-    const params = new URL(url).searchParams
+    stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
+    videoRef.value.srcObject = stream
+    await videoRef.value.play()
+    tickScan()
+  } catch (err) {
+    alert('無法開啟相機：' + (err?.message || err))
+    closeScanner()
+  }
+}
+
+const closeScanner = () => {
+  cancelAnimationFrame(rafId)
+  if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null }
+  showScanner.value = false
+  isScanning.value = false
+}
+
+const tickScan = () => {
+  const video = videoRef.value
+  const canvas = canvasRef.value
+  if (!video || !canvas || !showScanner.value) return
+  if (video.readyState === video.HAVE_ENOUGH_DATA) {
+    canvas.width = video.videoWidth
+    canvas.height = video.videoHeight
+    const ctx = canvas.getContext('2d')
+    ctx.drawImage(video, 0, 0)
+    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height)
+    const code = jsQR(imageData.data, canvas.width, canvas.height)
+    if (code?.data) {
+      handleScanResult(code.data)
+      return
+    }
+  }
+  rafId = requestAnimationFrame(tickScan)
+}
+
+const handleScanResult = async (raw) => {
+  closeScanner()
+  try {
+    const params = new URL(raw).searchParams
     const gameId = params.get('game_id')
     if (gameId) {
       await store.joinGame(gameId)
     } else {
       alert('這個 QR Code 不是遊戲場次，請掃正確的掃碼入場圖。')
     }
-  } catch (err) {
-    if (err?.code !== 'CANCEL') alert('掃描失敗：' + (err?.message || err))
-  } finally {
-    isScanning.value = false
+  } catch {
+    alert('無法解析 QR Code 內容。')
   }
 }
+
+onUnmounted(closeScanner)
 </script>
 
 <template>
@@ -146,7 +184,7 @@ const scanAndJoin = async () => {
       </div>
       <div class="header-right">
         <span v-if="!isLoading && !hasError" class="count-badge">{{ displayList.length }} 場</span>
-        <button class="scan-btn" @click="scanAndJoin" :disabled="isScanning">
+        <button class="scan-btn" @click="openScanner" :disabled="isScanning">
           <svg v-if="!isScanning" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
             <path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/>
             <path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/>
@@ -256,6 +294,20 @@ const scanAndJoin = async () => {
           </div>
         </div>
       </transition>
+    </Teleport>
+    <!-- 相機掃描器 -->
+    <Teleport to="body">
+      <div v-if="showScanner" class="scanner-overlay">
+        <div class="scanner-box">
+          <video ref="videoRef" class="scanner-video" playsinline muted></video>
+          <canvas ref="canvasRef" style="display:none"></canvas>
+          <div class="scanner-frame">
+            <div class="scanner-line"></div>
+          </div>
+          <p class="scanner-hint">將 QR Code 對準框框內</p>
+          <button class="scanner-close" @click="closeScanner">✕ 取消</button>
+        </div>
+      </div>
     </Teleport>
   </div>
 </template>
@@ -409,4 +461,42 @@ const scanAndJoin = async () => {
 .safe-zone { height: 100px; width: 100%; }
 .pop-enter-active, .pop-leave-active { transition: transform 0.3s ease; }
 .pop-enter-from, .pop-leave-to { transform: translateY(100%); }
+
+/* === 掃描器 === */
+.scanner-overlay {
+  position: fixed; inset: 0; z-index: 9999;
+  background: #000; display: flex; align-items: center; justify-content: center;
+}
+.scanner-box { position: relative; width: 100%; height: 100%; }
+.scanner-video { width: 100%; height: 100%; object-fit: cover; }
+.scanner-frame {
+  position: absolute; top: 50%; left: 50%;
+  transform: translate(-50%, -60%);
+  width: 240px; height: 240px;
+  border: 2px solid #D4AF37; border-radius: 12px;
+  box-shadow: 0 0 0 9999px rgba(0,0,0,0.55);
+  overflow: hidden;
+}
+.scanner-line {
+  position: absolute; top: 0; left: 0; right: 0; height: 2px;
+  background: #D4AF37; box-shadow: 0 0 8px #D4AF37;
+  animation: scan-move 2s linear infinite;
+}
+@keyframes scan-move {
+  0%   { top: 0; }
+  50%  { top: calc(100% - 2px); }
+  100% { top: 0; }
+}
+.scanner-hint {
+  position: absolute; top: calc(50% + 70px); left: 50%;
+  transform: translateX(-50%);
+  color: #fff; font-size: 0.85rem; white-space: nowrap;
+  text-shadow: 0 1px 4px rgba(0,0,0,0.8);
+}
+.scanner-close {
+  position: absolute; bottom: 60px; left: 50%; transform: translateX(-50%);
+  background: rgba(255,255,255,0.15); border: 1px solid rgba(255,255,255,0.3);
+  color: #fff; padding: 12px 32px; border-radius: 30px;
+  font-size: 1rem; font-weight: bold; cursor: pointer;
+}
 </style>

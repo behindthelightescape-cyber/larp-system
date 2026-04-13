@@ -4,6 +4,7 @@ import { useUserStore } from '../stores/user'
 import { supabase } from '../supabase'
 import { Loader2, BookOpen, ScrollText } from 'lucide-vue-next'
 import jsQR from 'jsqr'
+import liff from '@line/liff'
 
 const store = useUserStore()
 const showModal = ref(false)
@@ -114,7 +115,6 @@ const FORM_BASE = 'https://docs.google.com/forms/d/1uI_wyjJvYWuO7GTWF-RmtyvZrMSz
 
 const openFeedback = (game, event) => {
   event.stopPropagation()
-  // 從 date 字串（YYYY-MM-DD HH:MM）拆出日期與時間
   const raw = game.date || ''
   const [datePart, timePart] = raw.split(' ')
   const params = new URLSearchParams({
@@ -124,9 +124,9 @@ const openFeedback = (game, event) => {
     'entry.289047265':  game.gm   || '',
   })
   const url = `${FORM_BASE}?usp=pp_url&${params.toString()}`
-  if (window.liff?.openWindow) {
-    window.liff.openWindow({ url, external: true })
-  } else {
+  try {
+    liff.openWindow({ url, external: true })
+  } catch {
     window.open(url, '_blank')
   }
 }
@@ -251,21 +251,23 @@ onUnmounted(closeScanner)
         class="game-card"
         @click="openDetail(item)"
       >
-        <div class="cover-wrapper">
-          <img :src="item.cover" class="game-cover" />
-        </div>
-
-        <div class="game-info">
-          <h3 class="game-title line-clamp-1">{{ item.title }}</h3>
-          <div class="meta-row">
-            <span class="meta-date">{{ item.date }}</span>
-            <span class="divider">|</span>
-            <span class="meta-gm line-clamp-1">GM: {{ item.gm }}</span>
+        <div class="card-top">
+          <div class="cover-wrapper">
+            <img :src="item.cover" class="game-cover" />
           </div>
+          <div class="game-info">
+            <h3 class="game-title line-clamp-1">{{ item.title }}</h3>
+            <div class="meta-row">
+              <span class="meta-date">{{ item.date }}</span>
+              <span class="divider">|</span>
+              <span class="meta-gm line-clamp-1">GM: {{ item.gm }}</span>
+            </div>
+          </div>
+          <div class="arrow-icon">›</div>
         </div>
-
-        <button class="feedback-btn" @click="openFeedback(item, $event)">填寫回饋</button>
-        <div class="arrow-icon">›</div>
+        <div class="card-bottom">
+          <button class="feedback-btn" @click="openFeedback(item, $event)">✍ 填寫遊玩回饋</button>
+        </div>
       </div>
       
       <div class="spacer"></div>
@@ -404,16 +406,22 @@ onUnmounted(closeScanner)
 
 /* === 列表卡片 === */
 .game-card {
-  display: flex; align-items: center; 
-  background: #111; margin-bottom: 16px; padding: 12px; 
-  border-radius: 16px; 
-  border: 1px solid #222; 
+  display: flex; flex-direction: column;
+  background: #111; margin-bottom: 16px;
+  border-radius: 16px; border: 1px solid #222;
   transition: all 0.2s ease; cursor: pointer;
-  width: 100%; box-sizing: border-box; 
-  height: 110px; 
-  box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+  width: 100%; box-sizing: border-box;
+  box-shadow: 0 4px 6px rgba(0,0,0,0.3); overflow: hidden;
 }
 .game-card:active { background: #222; transform: scale(0.98); }
+.card-top {
+  display: flex; align-items: center;
+  padding: 12px; height: 110px;
+}
+.card-bottom {
+  border-top: 1px solid #1e1e1e;
+  padding: 10px 12px;
+}
 
 .cover-wrapper {
   width: 65px; height: 86px; margin-right: 18px; 
@@ -439,13 +447,13 @@ onUnmounted(closeScanner)
 .meta-gm { flex: 1; min-width: 0; }
 
 .feedback-btn {
-  flex-shrink: 0; white-space: nowrap;
-  background: transparent; border: 1px solid #333;
-  color: #666; font-size: 0.72rem; font-weight: 600;
-  padding: 5px 10px; border-radius: 12px; cursor: pointer;
+  width: 100%; background: transparent;
+  border: 1px solid #2a2a2a; color: #555;
+  font-size: 0.8rem; font-weight: 600;
+  padding: 8px; border-radius: 8px; cursor: pointer;
   transition: 0.2s;
 }
-.feedback-btn:hover { border-color: #D4AF37; color: #D4AF37; }
+.feedback-btn:hover { border-color: #D4AF37; color: #D4AF37; background: rgba(212,175,55,0.05); }
 .arrow-icon { color: #444; font-size: 1.8rem; padding-left: 6px; flex-shrink: 0; opacity: 0.5; }
 .spacer { height: 50px; }
 

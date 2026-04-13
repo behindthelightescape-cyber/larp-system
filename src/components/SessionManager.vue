@@ -130,6 +130,15 @@ const calcLevel = (exp) => {
   return 1
 }
 
+const LEVEL_TITLES = {
+  1: '剛加入的冒險者',
+  2: '不怕死的探險家',
+  3: '主角光環的勇者',
+  4: '平行宇宙開拓家',
+  5: '穿越時空成癮者',
+  6: '陽光開朗小萌新',
+}
+
 const deleteGame = async (event, game) => {
   event.stopPropagation()
   const participantCount = game.game_participants?.length || 0
@@ -145,13 +154,30 @@ const deleteGame = async (event, game) => {
     .eq('game_id', game.id)
   if (fetchError) { alert('讀取參與者資料失敗：' + fetchError.message); return }
 
-  // 2. 逐一扣回 EXP、重算等級
+  // 2. 逐一扣回 EXP、重算等級、檢查稱號
+  const userIds = (participants || []).map(p => p.user_id)
+  const { data: usersData } = await supabase
+    .from('users')
+    .select('id, total_exp, current_title')
+    .in('id', userIds)
+  const usersMap = Object.fromEntries((usersData || []).map(u => [u.id, u]))
+
   for (const p of (participants || [])) {
-    const oldExp = p.users?.total_exp || 0
+    const user = usersMap[p.user_id] || {}
+    const oldExp = user.total_exp || 0
     const newExp = Math.max(0, oldExp - (p.exp_gained || 0))
-    await supabase.from('users')
-      .update({ total_exp: newExp, level: calcLevel(newExp) })
-      .eq('id', p.user_id)
+    const newLevel = calcLevel(newExp)
+
+    // 如果目前稱號是已超過新等級的等級稱號，清空
+    const titlesAboveNewLevel = Object.entries(LEVEL_TITLES)
+      .filter(([lv]) => Number(lv) > newLevel)
+      .map(([, title]) => title)
+    const shouldClearTitle = titlesAboveNewLevel.includes(user.current_title)
+
+    const updatePayload = { total_exp: newExp, level: newLevel }
+    if (shouldClearTitle) updatePayload.current_title = null
+
+    await supabase.from('users').update(updatePayload).eq('id', p.user_id)
   }
 
   // 3. 刪掃碼紀錄

@@ -105,34 +105,6 @@ const expPercentage = computed(() =>
 
 const closeLevelUpAnimation = () => { store.levelUpData = null }
 
-// ── 掃碼加入遊戲 ────────────────────────────────────────────────────────────
-const isScanning = ref(false)
-const scanAndJoin = async () => {
-  if (isScanning.value) return
-  if (import.meta.env.DEV) {
-    const gameId = prompt('（開發模式）手動輸入 game_id：')
-    if (gameId) await store.joinGame(gameId.trim())
-    return
-  }
-  try {
-    isScanning.value = true
-    const result = await window.liff.scanCodeV2()
-    const url = result?.value
-    if (!url) return
-    const params = new URL(url).searchParams
-    const gameId = params.get('game_id')
-    if (gameId) {
-      await store.joinGame(gameId)
-    } else {
-      alert('這個 QR Code 不是遊戲場次，請掃正確的掃碼入場圖。')
-    }
-  } catch (err) {
-    if (err?.code !== 'CANCEL') alert('掃描失敗：' + (err?.message || err))
-  } finally {
-    isScanning.value = false
-  }
-}
-
 const showTitleModal = ref(false)
 const availableTitles = ref([])
 const isLoadingTitles = ref(false)
@@ -250,19 +222,10 @@ onMounted(() => {
 
       </div>
 
-      <!-- UID + 掃碼 -->
+      <!-- UID -->
       <div class="uid-row fade-in-up delay-2">
         <span class="uid-label">UID</span>
         <span class="uid-val">{{ store.userData?.legacy_id || '000000' }}</span>
-        <button class="scan-btn" @click="scanAndJoin" :disabled="isScanning">
-          <svg v-if="!isScanning" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/>
-            <path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/>
-            <rect x="7" y="7" width="10" height="10" rx="1"/>
-          </svg>
-          <span v-else class="scan-spinner"></span>
-          {{ isScanning ? '掃描中...' : '掃碼加入' }}
-        </button>
       </div>
 
       <!-- EXP + 數據卡 -->
@@ -610,21 +573,7 @@ onMounted(() => {
   border-radius: 24px; padding: 14px 24px;
 }
 .uid-label { color: #555; font-size: 0.65rem; font-weight: 800; letter-spacing: 2px; }
-.uid-val { color: #D4AF37; font-size: 1rem; font-weight: 700; font-family: monospace; letter-spacing: 3px; flex: 1; }
-.scan-btn {
-  display: flex; align-items: center; gap: 6px;
-  background: rgba(212,175,55,0.12); color: #D4AF37;
-  border: 1px solid rgba(212,175,55,0.35); border-radius: 20px;
-  padding: 7px 14px; font-size: 0.8rem; font-weight: 700;
-  cursor: pointer; transition: 0.2s; white-space: nowrap;
-}
-.scan-btn:hover:not(:disabled) { background: rgba(212,175,55,0.22); border-color: #D4AF37; }
-.scan-btn:disabled { opacity: 0.6; cursor: not-allowed; }
-.scan-spinner {
-  width: 14px; height: 14px; border: 2px solid rgba(212,175,55,0.3);
-  border-top-color: #D4AF37; border-radius: 50%;
-  animation: spin 0.8s linear infinite; flex-shrink: 0;
-}
+.uid-val { color: #D4AF37; font-size: 1rem; font-weight: 700; font-family: monospace; letter-spacing: 3px; }
 
 /* ── EXP + 數據卡 ── */
 .info-card {

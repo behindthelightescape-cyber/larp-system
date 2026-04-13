@@ -107,6 +107,34 @@ const openDetail = (game) => {
   selectedGame.value = game
   showModal.value = true
 }
+
+// ── 掃碼加入遊戲 ────────────────────────────────────────────────────────────
+const isScanning = ref(false)
+const scanAndJoin = async () => {
+  if (isScanning.value) return
+  if (import.meta.env.DEV) {
+    const gameId = prompt('（開發模式）手動輸入 game_id：')
+    if (gameId) await store.joinGame(gameId.trim())
+    return
+  }
+  try {
+    isScanning.value = true
+    const result = await window.liff.scanCodeV2()
+    const url = result?.value
+    if (!url) return
+    const params = new URL(url).searchParams
+    const gameId = params.get('game_id')
+    if (gameId) {
+      await store.joinGame(gameId)
+    } else {
+      alert('這個 QR Code 不是遊戲場次，請掃正確的掃碼入場圖。')
+    }
+  } catch (err) {
+    if (err?.code !== 'CANCEL') alert('掃描失敗：' + (err?.message || err))
+  } finally {
+    isScanning.value = false
+  }
+}
 </script>
 
 <template>
@@ -116,7 +144,18 @@ const openDetail = (game) => {
         <span class="title-sub">SPOTLIGHT</span>
         <h2 class="page-title">冒險回憶</h2>
       </div>
-      <span v-if="!isLoading && !hasError" class="count-badge">{{ displayList.length }} 場</span>
+      <div class="header-right">
+        <span v-if="!isLoading && !hasError" class="count-badge">{{ displayList.length }} 場</span>
+        <button class="scan-btn" @click="scanAndJoin" :disabled="isScanning">
+          <svg v-if="!isScanning" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/>
+            <path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/>
+            <rect x="7" y="7" width="10" height="10" rx="1"/>
+          </svg>
+          <span v-else class="scan-spinner"></span>
+          {{ isScanning ? '掃描中...' : '掃碼加入' }}
+        </button>
+      </div>
     </div>
 
     <!-- Loading -->
@@ -248,12 +287,26 @@ const openDetail = (game) => {
   background: linear-gradient(135deg, #fff 0%, #fceabb 40%, #D4AF37 100%);
   -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
 }
+.header-right { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
 .count-badge {
   color: #888; font-size: 0.85rem;
   background: rgba(255,255,255,0.05);
   border: 1px solid rgba(255,255,255,0.08);
   padding: 3px 12px; border-radius: 20px;
-  margin-bottom: 4px;
+}
+.scan-btn {
+  display: flex; align-items: center; gap: 6px;
+  background: rgba(212,175,55,0.12); color: #D4AF37;
+  border: 1px solid rgba(212,175,55,0.35); border-radius: 20px;
+  padding: 7px 14px; font-size: 0.8rem; font-weight: 700;
+  cursor: pointer; transition: 0.2s; white-space: nowrap;
+}
+.scan-btn:hover:not(:disabled) { background: rgba(212,175,55,0.22); border-color: #D4AF37; }
+.scan-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+.scan-spinner {
+  width: 13px; height: 13px; border: 2px solid rgba(212,175,55,0.3);
+  border-top-color: #D4AF37; border-radius: 50%;
+  animation: spin 0.8s linear infinite; flex-shrink: 0;
 }
 
 /* === 狀態畫面 === */

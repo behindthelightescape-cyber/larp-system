@@ -347,12 +347,13 @@ onUnmounted(closeScanner)
   background: linear-gradient(135deg, #fff 0%, #fceabb 40%, #D4AF37 100%);
   -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
 }
-.header-right { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
+.header-right { display: flex; flex-direction: row; align-items: center; gap: 8px; }
 .count-badge {
   color: #888; font-size: 0.85rem;
   background: rgba(255,255,255,0.05);
   border: 1px solid rgba(255,255,255,0.08);
-  padding: 3px 12px; border-radius: 20px;
+  padding: 5px 12px; border-radius: 20px;
+  white-space: nowrap;
 }
 .scan-btn {
   display: flex; align-items: center; gap: 6px;

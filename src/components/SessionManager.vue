@@ -120,6 +120,23 @@ const generateQrUrl = (game) => {
   return `https://liff.line.me/2009161687-icfQU9r6?game_id=${targetId}`
 }
 
+// ── 刪除場次 ──────────────────────────────────────────────────────────────
+const deleteGame = async (event, game) => {
+  event.stopPropagation()
+  const participantCount = game.game_participants?.length || 0
+  const confirmMsg = participantCount > 0
+    ? `確定刪除「${game.scripts?.title || '未知劇本'}」？\n此場次有 ${participantCount} 位玩家的掃碼紀錄，一併刪除後無法復原。`
+    : `確定刪除「${game.scripts?.title || '未知劇本'}」？`
+  if (!confirm(confirmMsg)) return
+
+  const { error: e1 } = await supabase.from('game_participants').delete().eq('game_id', game.id)
+  if (e1) { alert('刪除掃碼紀錄失敗：' + e1.message); return }
+  const { error: e2 } = await supabase.from('games').delete().eq('id', game.id)
+  if (e2) { alert('刪除場次失敗：' + e2.message); return }
+
+  await loadSessions()
+}
+
 // ── 玩家資料 Modal ──────────────────────────────────────────────────────────
 const showPlayerModal = ref(false)
 const selectedPlayer = ref(null)
@@ -238,6 +255,7 @@ const openPlayerDetail = async (event, user) => {
                 </div>
               </div>
               <div class="status-dot" :class="game.status === 'open' ? 'active' : 'closed'" title="狀態"></div>
+              <button class="btn-delete-game" @click="deleteGame($event, game)" title="刪除此場次">🗑️</button>
             </div>
 
             <div style="background: rgba(212,175,55,0.1); color: #D4AF37; font-size: 0.75rem; text-align: center; padding: 4px 0; font-weight: bold;">
@@ -396,7 +414,9 @@ const openPlayerDetail = async (event, user) => {
 .game-title { font-weight: bold; font-size: 1.1rem; color: #fff; }
 .game-meta { display: flex; gap: 10px; font-size: 0.85rem; color: #aaa; }
 .meta-item { background: #222; padding: 2px 6px; border-radius: 4px; border: 1px solid #333;}
-.status-dot { position: absolute; top: 15px; right: 15px; width: 10px; height: 10px; border-radius: 50%; }
+.status-dot { position: absolute; top: 15px; right: 35px; width: 10px; height: 10px; border-radius: 50%; }
+.btn-delete-game { position: absolute; top: 8px; right: 8px; background: transparent; border: none; color: #555; font-size: 1rem; cursor: pointer; padding: 2px 4px; border-radius: 4px; line-height: 1; }
+.btn-delete-game:hover { color: #e74c3c; background: rgba(231,76,60,0.1); }
 .status-dot.active { background: #2ecc71; box-shadow: 0 0 8px #2ecc71; }
 .status-dot.closed { background: #e74c3c; }
 .players-section { padding: 15px; background: #111; flex: 1; }

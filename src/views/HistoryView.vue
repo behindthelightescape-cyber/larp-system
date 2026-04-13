@@ -160,15 +160,23 @@ const tickScan = () => {
 const handleScanResult = async (raw) => {
   closeScanner()
   try {
-    const params = new URL(raw).searchParams
-    const gameId = params.get('game_id')
+    // 嘗試當完整 URL 解析
+    let gameId = null
+    try {
+      gameId = new URL(raw).searchParams.get('game_id')
+    } catch {
+      // 不是 URL，嘗試直接當 game_id（UUID 格式）
+      const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+      if (uuidPattern.test(raw.trim())) gameId = raw.trim()
+    }
+
     if (gameId) {
       await store.joinGame(gameId)
     } else {
-      alert('這個 QR Code 不是遊戲場次，請掃正確的掃碼入場圖。')
+      alert('這個 QR Code 不是遊戲場次。\n\n掃到的內容：' + raw)
     }
-  } catch {
-    alert('無法解析 QR Code 內容。')
+  } catch (err) {
+    alert('處理失敗：' + (err?.message || err))
   }
 }
 

@@ -109,6 +109,28 @@ const openDetail = (game) => {
   showModal.value = true
 }
 
+// ── 填寫回饋 ────────────────────────────────────────────────────────────────
+const FORM_BASE = 'https://docs.google.com/forms/d/1uI_wyjJvYWuO7GTWF-RmtyvZrMSzcoTV7Ap8erCXOAo/viewform'
+
+const openFeedback = (game, event) => {
+  event.stopPropagation()
+  // 從 date 字串（YYYY-MM-DD HH:MM）拆出日期與時間
+  const raw = game.date || ''
+  const [datePart, timePart] = raw.split(' ')
+  const params = new URLSearchParams({
+    'entry.2061998432': datePart || '',
+    'entry.1414639528': timePart  || '',
+    'entry.559042233':  game.title || '',
+    'entry.289047265':  game.gm   || '',
+  })
+  const url = `${FORM_BASE}?usp=pp_url&${params.toString()}`
+  if (window.liff?.openWindow) {
+    window.liff.openWindow({ url, external: true })
+  } else {
+    window.open(url, '_blank')
+  }
+}
+
 // ── 相機掃碼加入遊戲 ─────────────────────────────────────────────────────
 const showScanner = ref(false)
 const isScanning = ref(false)
@@ -242,6 +264,7 @@ onUnmounted(closeScanner)
           </div>
         </div>
 
+        <button class="feedback-btn" @click="openFeedback(item, $event)">填寫回饋</button>
         <div class="arrow-icon">›</div>
       </div>
       
@@ -415,7 +438,15 @@ onUnmounted(closeScanner)
 .meta-date { flex-shrink: 0; font-family: monospace; letter-spacing: 0.5px; } 
 .meta-gm { flex: 1; min-width: 0; }
 
-.arrow-icon { color: #444; font-size: 1.8rem; padding-left: 10px; flex-shrink: 0; opacity: 0.5; }
+.feedback-btn {
+  flex-shrink: 0; white-space: nowrap;
+  background: transparent; border: 1px solid #333;
+  color: #666; font-size: 0.72rem; font-weight: 600;
+  padding: 5px 10px; border-radius: 12px; cursor: pointer;
+  transition: 0.2s;
+}
+.feedback-btn:hover { border-color: #D4AF37; color: #D4AF37; }
+.arrow-icon { color: #444; font-size: 1.8rem; padding-left: 6px; flex-shrink: 0; opacity: 0.5; }
 .spacer { height: 50px; }
 
 /* === 彈窗系統 === */

@@ -16,6 +16,7 @@ import AdminPaperDoll from '../components/AdminPaperDoll.vue'
 import AdminDisplayAds from '../components/AdminDisplayAds.vue'
 import AdminPoints from '../components/AdminPoints.vue'
 import AdminGroupSettings from '../components/AdminGroupSettings.vue'
+import AdminLineFeatures from '../components/AdminLineFeatures.vue'
 import AdminTarot from '../components/AdminTarot.vue'
 
 const session = ref(null)
@@ -249,8 +250,11 @@ const goToMember = async (legacyId) => {
           <span class="group-arrow" :class="{ collapsed: collapsedGroups['line'] }">›</span>
         </button>
         <template v-if="!collapsedGroups['line']">
+          <button class="nav-btn" :class="{ active: currentTab === 'line_features' }" @click="changeTab('line_features')">
+            <span class="icon">⚙️</span> 群組設定
+          </button>
           <button class="nav-btn" :class="{ active: currentTab === 'line_group' }" @click="changeTab('line_group')">
-            <span class="icon">💬</span> 群組設定
+            <span class="icon">💬</span> 版規
           </button>
           <button class="nav-btn" :class="{ active: currentTab === 'tarot' }" @click="changeTab('tarot')">
             <span class="icon">🃏</span> 塔羅牌庫
@@ -295,7 +299,8 @@ const goToMember = async (legacyId) => {
               currentTab === 'paperdoll' ? '燈燈造型室' :
               currentTab === 'display_ads' ? '電視廣告管理' :
               currentTab === 'points' ? '點數系統管理' :
-              currentTab === 'line_group' ? 'LINE 群組設定' :
+              currentTab === 'line_features' ? 'LINE 群組設定' :
+              currentTab === 'line_group' ? '版規設定' :
               currentTab === 'tarot' ? '塔羅牌庫管理' : '劇本管理'
             }}
           </h2>
@@ -362,6 +367,10 @@ const goToMember = async (legacyId) => {
 
       <div v-if="currentTab === 'points'" class="panel active">
         <AdminPoints />
+      </div>
+
+      <div v-if="currentTab === 'line_features'" class="panel active">
+        <AdminLineFeatures />
       </div>
 
       <div v-if="currentTab === 'line_group'" class="panel active">

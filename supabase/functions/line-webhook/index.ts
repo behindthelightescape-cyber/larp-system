@@ -375,10 +375,11 @@ const handleEvents = async (events: Record<string, unknown>[]) => {
     const isCard   = cmd === '我的名片'
     const isMascot = cmd === '召喚'
     const isTarot  = cmd === '占卜'
+    const isRules  = cmd === '版規'
 
     // 群組訊息且非指令 → 存進 group_messages
     const source = event.source as Record<string, unknown>
-    if (source.type === 'group' && !isCard && !isMascot && !isTarot) {
+    if (source.type === 'group' && !isCard && !isMascot && !isTarot && !isRules) {
       dbInsert('group_messages', {
         line_user_id: source.userId as string,
         group_id:     source.groupId as string,
@@ -387,7 +388,21 @@ const handleEvents = async (events: Record<string, unknown>[]) => {
       })
     }
 
-    if (!isCard && !isMascot && !isTarot) continue
+    if (!isCard && !isMascot && !isTarot && !isRules) continue
+
+    // ── 版規指令：回傳群組規則 ─────────────────────────────────────────────
+    if (isRules) {
+      if (!features['feature_rules']) {
+        console.log('feature_rules is off, skip')
+        continue
+      }
+      const replyToken = event.replyToken as string
+      const settingsData = await dbGet('group_settings?key=eq.join_rules&limit=1')
+      const rulesText = (settingsData?.[0]?.value as string) || '歡迎加入劇光燈！'
+      const replyRes = await lineReply(replyToken, [buildRulesCard(rulesText)])
+      console.log('rules reply status:', replyRes.status, await replyRes.text())
+      continue
+    }
 
     const lineUserId = (event.source as Record<string, unknown>).userId as string
     const replyToken = event.replyToken as string

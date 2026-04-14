@@ -33,12 +33,41 @@ const adjustDelta = ref(0)
 const adjustNote = ref('')
 const adjustSaving = ref(false)
 
+const editingBirthday = ref(false)
+const birthdayValue = ref('')
+const birthdaySaving = ref(false)
+
+const openEditBirthday = () => {
+  birthdayValue.value = selectedMember.value.birthday
+    ? selectedMember.value.birthday.split('T')[0]
+    : ''
+  editingBirthday.value = true
+}
+
+const saveBirthday = async () => {
+  birthdaySaving.value = true
+  try {
+    const { error } = await supabase
+      .from('users')
+      .update({ birthday: birthdayValue.value || null })
+      .eq('id', selectedMember.value.id)
+    if (error) throw error
+    selectedMember.value.birthday = birthdayValue.value || null
+    editingBirthday.value = false
+    alert('✅ 生日已更新')
+  } catch (err) {
+    alert('儲存失敗：' + err.message)
+  } finally {
+    birthdaySaving.value = false
+  }
+}
+
 const searchMembers = async () => {
   const q = searchQuery.value.trim()
   if (!q) { searchResults.value = []; return }
   isSearching.value = true
   try {
-    const SELECT = 'id, display_name, legacy_id, picture_url, total_exp, level, created_at, last_birthday_year, birthday_claimed_year, points'
+    const SELECT = 'id, display_name, legacy_id, picture_url, total_exp, level, created_at, last_birthday_year, birthday_claimed_year, points, birthday'
     const { data, error } = await supabase
       .from('users')
       .select(SELECT)
@@ -247,6 +276,10 @@ const calculateDays = (dateString) => {
         <div class="stat-box"><div class="stat-label">冒險點數</div><div class="stat-value">{{ selectedMember.points ?? 0 }} pt</div></div>
         <div class="stat-box"><div class="stat-label">遊玩場次</div><div class="stat-value">{{ memberHistory.length }}</div></div>
         <div class="stat-box"><div class="stat-label">加入天數</div><div class="stat-value">{{ calculateDays(selectedMember.created_at) }} 天</div></div>
+        <div class="stat-box">
+          <div class="stat-label">生日</div>
+          <div class="stat-value" style="font-size:1rem;">{{ selectedMember.birthday ? selectedMember.birthday.split('T')[0] : '未填寫' }}</div>
+        </div>
       </div>
 
       <div class="privilege-section">
@@ -258,6 +291,17 @@ const calculateDays = (dateString) => {
         >
           {{ selectedMember.birthday_claimed_year === new Date().getFullYear() ? '✅ 今年壽星優惠已核銷/領取' : '🎂 在櫃檯預先核銷今年生日禮 (防系統重複發送)' }}
         </button>
+
+        <div style="margin-top: 12px; display: flex; align-items: center; justify-content: space-between;">
+          <span style="color:#D4AF37; font-size:0.9rem; font-weight:bold;">🎂 修改生日</span>
+          <button class="btn-mini-gold" @click="openEditBirthday">{{ editingBirthday ? '✕ 取消' : '修改' }}</button>
+        </div>
+        <div v-if="editingBirthday" style="display:flex; gap:8px; margin-top:10px; align-items:center;">
+          <input v-model="birthdayValue" type="date" class="admin-input-mini" style="flex:1;" />
+          <button class="btn-mini-gold" :disabled="birthdaySaving" @click="saveBirthday">
+            {{ birthdaySaving ? '儲存中...' : '確認' }}
+          </button>
+        </div>
 
         <div style="margin-top: 12px; display: flex; align-items: center; justify-content: space-between;">
           <span style="color:#D4AF37; font-size:0.9rem; font-weight:bold;">🪙 手動調整點數</span>

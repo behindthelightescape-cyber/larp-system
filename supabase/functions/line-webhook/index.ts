@@ -370,10 +370,11 @@ const handleEvents = async (events: Record<string, unknown>[]) => {
     const text = (msg.text as string).trim()
     console.log('text:', JSON.stringify(text))
 
-    // 支援全形驚嘆號（！）與半形（!）
-    const isCard   = text === '我的名片'
-    const isMascot = text === '召喚'
-    const isTarot  = text === '占卜'
+    // 支援全形驚嘆號（！）與半形（!）前綴，也支援不加前綴
+    const cmd    = text.replace(/^[!！]/, '').trim()
+    const isCard   = cmd === '我的名片'
+    const isMascot = cmd === '召喚'
+    const isTarot  = cmd === '占卜'
 
     // 群組訊息且非指令 → 存進 group_messages
     const source = event.source as Record<string, unknown>

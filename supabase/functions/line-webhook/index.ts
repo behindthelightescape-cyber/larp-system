@@ -333,8 +333,8 @@ const handleEvents = async (events: Record<string, unknown>[]) => {
   const featureKeys = ['feature_rules', 'feature_tarot', 'feature_summon', 'feature_card']
   const featuresData = await dbGet(`group_settings?key=in.(${featureKeys.join(',')})&select=key,value`)
   const features: Record<string, boolean> = {}
-  featureKeys.forEach(k => { features[k] = false }) // 預設全部關閉
-  if (featuresData) {
+  featureKeys.forEach(k => { features[k] = true }) // 預設全部開啟（DB 沒設定時維持原本行為）
+  if (Array.isArray(featuresData)) {
     for (const row of featuresData as { key: string; value: string }[]) {
       features[row.key] = row.value === 'true'
     }

@@ -40,7 +40,7 @@ const saveAll = async () => {
     value: String(toggles.value[f.key] ?? false),
     updated_at: now,
   }))
-  const { error } = await supabase.from('group_settings').upsert(rows)
+  const { error } = await supabase.from('group_settings').upsert(rows, { onConflict: 'key' })
   if (error) {
     alert('儲存失敗：' + error.message)
   } else {

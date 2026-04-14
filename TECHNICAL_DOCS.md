@@ -1,6 +1,6 @@
 # 劇光燈 Spotlight LARP 系統 — 技術文件
 
-> 最後更新：2026-03-13｜版本：Vue 3.5.25 + Supabase + Vite
+> 最後更新：2026-04-14｜版本：Vue 3.5.25 + Supabase + Vite
 
 ---
 
@@ -287,7 +287,7 @@ user_id + item_id → 玩家已解鎖的道具 ID 清單
 | `point_qr_codes` | 點數 QR 碼（`id, label, points, is_single_use, expires_at, used_by`） |
 | `shop_items` | 點數商城商品（`name, type(coupon/wardrobe/physical), cost, stock, is_active, sort_order, coupon_title, coupon_desc, coupon_valid_days, wardrobe_item_id`） |
 | `tarot_cards` | 塔羅牌（`id, name, image_url, reversed_image_url, upright_meaning, reversed_meaning`） |
-| `group_settings` | LINE 群組歡迎規則（`group_id, welcome_message, is_active`） |
+| `group_settings` | Key-Value 設定表（`key` text PK, `value` text, `updated_at`）。儲存：`join_rules`（版規內容）、`feature_rules/tarot/summon/card`（LINE 功能開關，`'true'/'false'`）、`tarot_sender_name/icon_url` |
 | `group_messages` | LINE 群組訊息紀錄（`group_id, user_id, text, created_at`） |
 
 ---
@@ -453,6 +453,18 @@ user_wardrobe_equipped.upsert({
 - 列出所有遊戲參與記錄（倒序）
 - 卡片顯示：劇本封面、名稱、日期、GM、EXP
 - 點擊卡片開啟詳情彈窗（HistoryCard）
+- 右上角「掃碼」按鈕：使用 jsQR + getUserMedia 開啟鏡頭掃描 QR Code 加入遊戲（不需離開 App）
+- 詳情彈窗底部「填寫遊玩回饋」按鈕：開啟 Google Form 並自動帶入日期、時間、劇本名稱、GM
+
+**Google Form 預填參數：**
+```javascript
+entry.154120669      → 日期（YYYY-MM-DD）
+entry.1414639528_hour / _minute → 時間
+entry.559042233      → 劇本名稱
+entry.289047265      → 主持人（勾選，需與表單選項完全一致）
+```
+
+> 歷史紀錄 mapping 額外保留 `play_time_raw`（原始 timestamp）供 Google Form 解析用，`date` 欄位為格式化顯示字串。
 
 **查詢語法（Supabase 多層 join）：**
 ```sql
@@ -526,7 +538,8 @@ currentProgress = script_ids.filter(id => playedIds.has(id)).length
 | 內容 | 燈燈造型室 | 管理道具、背景、底圖、預設圖 |
 | 內容 | 塔羅占卜 | 管理 tarot_cards（含逆位圖自動生成） |
 | 系統 | 點數管理 | 商城商品 CRUD、QR 碼、點數流水帳 |
-| 系統 | 群組設定 | LINE 群組歡迎規則 CRUD |
+| LINE | 群組設定 | LINE 各功能開關（版規/塔羅牌/召喚/名片，存入 group_settings） |
+| LINE | 版規 | LINE 群組新成員歡迎規則內容編輯（join_rules） |
 
 ---
 
@@ -691,7 +704,7 @@ for (let lvl = oldLevel + 1; lvl <= newLevel; lvl++) {
 
 | 元件 | 功能 |
 |------|------|
-| `MemberManager.vue` | 玩家搜尋、編輯、手動調整 EXP/等級 |
+| `MemberManager.vue` | 玩家搜尋、查看生日、修改生日、手動調整點數、生日禮核銷 |
 | `CouponManager.vue` | 手動發券、核銷管理 |
 | `GameManager.vue` | 場次批量建立 |
 | `SessionManager.vue` | 場次簽到管理（QR Code 生成） |
@@ -706,7 +719,8 @@ for (let lvl = oldLevel + 1; lvl <= newLevel; lvl++) {
 | `AdminPaperDoll.vue` | 服裝道具、背景、底圖、預設圖管理 |
 | `AdminPoints.vue` | 點數商城商品管理、QR 碼生成、流水帳查詢 |
 | `AdminTarot.vue` | 塔羅牌 CRUD、逆位圖自動生成（Canvas 旋轉 180°）、發送人設定 |
-| `AdminGroupSettings.vue` | LINE 群組歡迎規則編輯、群組 ID 管理 |
+| `AdminGroupSettings.vue` | LINE 群組版規內容編輯（join_rules）、Flex Message 預覽 |
+| `AdminLineFeatures.vue` | LINE 功能開關面板（版規/塔羅牌/召喚/名片各自 toggle，儲存至 group_settings） |
 
 ### AdminPaperDoll.vue — 主 Tab 說明
 
@@ -737,11 +751,22 @@ for (let lvl = oldLevel + 1; lvl <= newLevel; lvl++) {
 
 | 指令 / 事件 | 說明 |
 |-------------|------|
-| `!我的名片` / `！我的名片` | 回傳冒險者名片 Flex Message |
-| `!召喚` / `！召喚` | 回傳燈燈吉祥物造型 Flex Message |
-| `!占卜` / `！占卜` | 從 tarot_cards 隨機抽一張，回傳正/逆位牌義 Flex Message |
-| memberJoined（群組事件） | 查詢 group_settings 對應群組歡迎規則，自動發送歡迎訊息 |
+| `我的名片` / `!我的名片` / `！我的名片` | 回傳冒險者名片 Flex Message（受 feature_card 開關控制） |
+| `召喚` / `!召喚` / `！召喚` | 回傳燈燈吉祥物造型 Flex Message（受 feature_summon 開關控制） |
+| `占卜` / `!占卜` / `！占卜` | 從 tarot_cards 隨機抽一張，回傳正/逆位牌義 Flex Message（受 feature_tarot 開關控制） |
+| memberJoined（群組事件） | 查詢 join_rules 自動發送版規（受 feature_rules 開關控制） |
 | 群組文字訊息 | 記錄至 group_messages 表 |
+
+**功能開關機制：**
+每次 webhook 觸發時，先從 `group_settings` 讀取 `feature_rules/tarot/summon/card`，值為 `'true'` 才執行對應功能。讀取失敗時預設全部開啟（fail-open）。後台「群組設定」頁籤控制開關。
+
+**指令解析：**
+```typescript
+const cmd = text.replace(/^[!！]/, '').trim()  // 去除前綴驚嘆號
+const isCard   = cmd === '我的名片'
+const isMascot = cmd === '召喚'
+const isTarot  = cmd === '占卜'
+```
 
 ### 8.2 塔羅牌占卜
 

@@ -329,15 +329,19 @@ const lineReply = (replyToken: string, messages: unknown[]) =>
 // 只處理文字訊息（type=message, message.type=text）
 // 非指令文字直接跳過，不做任何回應
 const handleEvents = async (events: Record<string, unknown>[]) => {
-  // 一次撈所有功能開關，減少 DB 請求次數
+  // 一次撈所有功能開關，預設全開（讀取失敗時不影響正常運作）
   const featureKeys = ['feature_rules', 'feature_tarot', 'feature_summon', 'feature_card']
-  const featuresData = await dbGet(`group_settings?key=in.(${featureKeys.join(',')})&select=key,value`)
   const features: Record<string, boolean> = {}
-  featureKeys.forEach(k => { features[k] = true }) // 預設全部開啟（DB 沒設定時維持原本行為）
-  if (Array.isArray(featuresData)) {
-    for (const row of featuresData as { key: string; value: string }[]) {
-      features[row.key] = row.value === 'true'
+  featureKeys.forEach(k => { features[k] = true })
+  try {
+    const featuresData = await dbGet(`group_settings?key=in.(${featureKeys.join(',')})&select=key,value`)
+    if (Array.isArray(featuresData)) {
+      for (const row of featuresData as { key: string; value: string }[]) {
+        features[row.key] = row.value === 'true'
+      }
     }
+  } catch (e) {
+    console.error('features load error (using defaults):', e)
   }
   console.log('features:', features)
 

@@ -329,11 +329,27 @@ const lineReply = (replyToken: string, messages: unknown[]) =>
 // 只處理文字訊息（type=message, message.type=text）
 // 非指令文字直接跳過，不做任何回應
 const handleEvents = async (events: Record<string, unknown>[]) => {
+  // 一次撈所有功能開關，減少 DB 請求次數
+  const featureKeys = ['feature_rules', 'feature_tarot', 'feature_summon', 'feature_card']
+  const featuresData = await dbGet(`group_settings?key=in.(${featureKeys.join(',')})&select=key,value`)
+  const features: Record<string, boolean> = {}
+  featureKeys.forEach(k => { features[k] = false }) // 預設全部關閉
+  if (featuresData) {
+    for (const row of featuresData as { key: string; value: string }[]) {
+      features[row.key] = row.value === 'true'
+    }
+  }
+  console.log('features:', features)
+
   for (const event of events) {
     console.log('event.type:', event.type)
 
     // ── 有人加入群組：發送群組規則 ─────────────────────────────────────────
     if (event.type === 'memberJoined') {
+      if (!features['feature_rules']) {
+        console.log('feature_rules is off, skip')
+        continue
+      }
       const replyToken = event.replyToken as string
       const settingsData = await dbGet('group_settings?key=eq.join_rules&limit=1')
       const rulesText = (settingsData?.[0]?.value as string) || '歡迎加入劇光燈！'
@@ -390,6 +406,10 @@ const handleEvents = async (events: Record<string, unknown>[]) => {
     }
 
     // ── 名片指令：回傳冒險者名片 ──────────────────────────────────────────
+    if (isCard && !features['feature_card']) {
+      console.log('feature_card is off, skip')
+      continue
+    }
     if (isCard) {
       // 並行查詢：遊戲次數 + 推薦人數（若無推薦碼則直接給 0）
       const [games, disciples] = await Promise.all([
@@ -407,6 +427,10 @@ const handleEvents = async (events: Record<string, unknown>[]) => {
     }
 
     // ── 召喚指令：回傳燈燈吉祥物造型 ─────────────────────────────────────
+    if (isMascot && !features['feature_summon']) {
+      console.log('feature_summon is off, skip')
+      continue
+    }
     if (isMascot) {
       // 並行查詢：角色底圖、玩家裝備紀錄、各分類「不裝備」預設圖設定
       const [basesData, equippedData, noneDefaultsData] = await Promise.all([
@@ -455,6 +479,10 @@ const handleEvents = async (events: Record<string, unknown>[]) => {
     }
 
     // ── 抽塔羅指令 ────────────────────────────────────────────────────────────
+    if (isTarot && !features['feature_tarot']) {
+      console.log('feature_tarot is off, skip')
+      continue
+    }
     if (isTarot) {
       // 並行撈牌庫 + bot 人格設定
       const [cardsData, settingsData] = await Promise.all([

@@ -4,6 +4,7 @@ import { supabase } from '../supabase'
 
 const saving = ref(false)
 const loading = ref(true)
+const saved = ref(false)
 
 const FEATURES = [
   { key: 'feature_rules',  label: '版規',  desc: '新成員加入群組時自動發送版規訊息' },
@@ -42,6 +43,9 @@ const saveAll = async () => {
   const { error } = await supabase.from('group_settings').upsert(rows)
   if (error) {
     alert('儲存失敗：' + error.message)
+  } else {
+    saved.value = true
+    setTimeout(() => { saved.value = false }, 2500)
   }
   saving.value = false
 }
@@ -55,9 +59,12 @@ const saveAll = async () => {
           <h3 class="lf-title">LINE 功能開關</h3>
           <p class="lf-sub">控制各項 LINE Bot 功能是否對群組開放</p>
         </div>
-        <button class="btn-save" :disabled="saving || loading" @click="saveAll">
-          {{ saving ? '儲存中...' : '儲存設定' }}
-        </button>
+        <div class="lf-save-area">
+          <span v-if="saved" class="lf-saved-hint">已儲存</span>
+          <button class="btn-save" :disabled="saving || loading" @click="saveAll">
+            {{ saving ? '儲存中...' : '儲存設定' }}
+          </button>
+        </div>
       </div>
 
       <div v-if="loading" class="lf-loading">讀取中...</div>
@@ -121,6 +128,9 @@ const saveAll = async () => {
 .lf-switch input:checked + .lf-slider::before {
   transform: translateX(22px); background: #4caf50;
 }
+
+.lf-save-area { display: flex; align-items: center; gap: 10px; }
+.lf-saved-hint { color: #4caf50; font-size: 0.85rem; font-weight: 600; white-space: nowrap; }
 
 .btn-save {
   background: #D4AF37; color: #000; border: none;

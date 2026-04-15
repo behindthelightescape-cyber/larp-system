@@ -1,6 +1,6 @@
 # 劇光燈 Spotlight LARP 系統 — 技術文件
 
-> 最後更新：2026-04-14｜版本：Vue 3.5.25 + Supabase + Vite
+> 最後更新：2026-04-16｜版本：Vue 3.5.25 + Supabase + Vite
 
 ---
 
@@ -280,7 +280,7 @@ user_id + item_id → 玩家已解鎖的道具 ID 清單
 |------|------|
 | `display_sessions` | 電視展示裝置的 Session（掃碼觸發登場動畫） |
 | `display_ads` | 電視廣告輪播內容（標題、描述、圖片） |
-| `promo_codes` | 兌換碼（可連結到 system_rewards 派發） |
+| `promo_codes` | 兌換碼（`code, title, description, valid_days, max_uses, used_count, limit_per_user, reuse_after_redeem, is_active`）。`reuse_after_redeem=true` 時核銷後可再領（只計算 available 票券） |
 | `push_logs` | 自動派發歷程記錄 |
 | `user_wardrobe_backgrounds` | 玩家已解鎖的背景清單 |
 | `points_transactions` | 點數流水帳（`user_id, delta, source_type, source_ref, note, created_at`） |
@@ -607,6 +607,7 @@ const daysJoined     = ref(0)      // 入會天數
 6. fetchUserExtraData()
 7. 生日攔截器
 8. URL 帶 game_id 參數 → 自動加入遊戲
+9. URL 帶 promo_code 參數 → 自動兌換兌換碼
 ```
 
 ---
@@ -637,7 +638,30 @@ const daysJoined     = ref(0)      // 入會天數
 
 ---
 
-### 6.5 grantSystemRewards() — 自動派發引擎
+### 6.5 redeemPromoCode(code) — 兌換碼兌換
+
+```
+1. 查詢 promo_codes WHERE code = ?
+2. 驗證：is_active、max_uses、limit_per_user
+   - reuse_after_redeem=true → 只計算 status='available' 的票券數
+   - reuse_after_redeem=false → 計算所有領過的票券數
+3. INSERT coupons（expiry = now + valid_days）
+4. UPDATE promo_codes SET used_count + 1
+5. 回傳票券標題
+```
+
+**QR Code 兌換流程：**
+```
+後台產生 QR（內容：https://liff.line.me/LIFF_ID?promo_code=CODE）
+→ 玩家用 LINE 掃描
+→ LIFF 開啟，initLiff() 讀取 promo_code URL 參數
+→ 自動執行 redeemPromoCode()
+→ 彈出成功/失敗訊息
+```
+
+---
+
+### 6.6 grantSystemRewards() — 自動派發引擎
 
 ```javascript
 grantSystemRewards(targetUserId, eventType, conditionValue, customExpiryDate)
@@ -713,7 +737,7 @@ for (let lvl = oldLevel + 1; lvl <= newLevel; lvl++) {
 | `AnalyticsManager.vue` | 圖表統計分析 |
 | `AdminAchievements.vue` | 成就建立（條件配置） |
 | `AdminAutoRewards.vue` | 自動派發規則 CRUD |
-| `AdminPromoCodes.vue` | 兌換碼管理 |
+| `AdminPromoCodes.vue` | 兌換碼管理、每張碼可產生 QR Code（LIFF URL + promo_code 參數）、核銷後可再領設定 |
 | `AdminPushLogs.vue` | 派發日誌查詢 |
 | `AdminDisplayAds.vue` | 電視廣告輪播管理 |
 | `AdminPaperDoll.vue` | 服裝道具、背景、底圖、預設圖管理 |
@@ -754,6 +778,7 @@ for (let lvl = oldLevel + 1; lvl <= newLevel; lvl++) {
 | `我的名片` / `!我的名片` / `！我的名片` | 回傳冒險者名片 Flex Message（受 feature_card 開關控制） |
 | `召喚` / `!召喚` / `！召喚` | 回傳燈燈吉祥物造型 Flex Message（受 feature_summon 開關控制） |
 | `占卜` / `!占卜` / `！占卜` | 從 tarot_cards 隨機抽一張，回傳正/逆位牌義 Flex Message（受 feature_tarot 開關控制） |
+| `版規` / `!版規` / `！版規` | 主動觸發發送版規訊息（受 feature_rules 開關控制） |
 | memberJoined（群組事件） | 查詢 join_rules 自動發送版規（受 feature_rules 開關控制） |
 | 群組文字訊息 | 記錄至 group_messages 表 |
 

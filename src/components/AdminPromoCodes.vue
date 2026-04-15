@@ -1,6 +1,20 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { supabase } from '../supabase'
+import QrcodeVue from 'qrcode.vue'
+
+const LIFF_BASE = 'https://liff.line.me/2009161687-icfQU9r6'
+const showQrModal = ref(false)
+const qrItem = ref(null)
+
+const openQr = (item) => {
+  qrItem.value = item
+  showQrModal.value = true
+}
+
+const qrUrl = () => qrItem.value
+  ? `${LIFF_BASE}?promo_code=${encodeURIComponent(qrItem.value.code)}`
+  : ''
 
 const promoCodes = ref([])
 const isLoading = ref(true)
@@ -164,6 +178,7 @@ const deletePromoCode = async (id, codeStr) => {
         </div>
         
         <div class="code-actions">
+          <button class="action-btn qr" @click="openQr(item)">QR Code</button>
           <button class="action-btn toggle" @click="toggleStatus(item)">
             {{ item.is_active ? '暫停活動' : '重新開放' }}
           </button>
@@ -171,6 +186,20 @@ const deletePromoCode = async (id, codeStr) => {
         </div>
       </div>
     </div>
+
+    <Teleport to="body">
+      <div v-if="showQrModal && qrItem" class="modal-overlay" @click.self="showQrModal = false">
+        <div class="modal-content" style="max-width: 340px; text-align: center;">
+          <h3 style="color: #D4AF37; margin-top: 0;">{{ qrItem.code }}</h3>
+          <p style="color: #888; font-size: 0.85rem; margin-bottom: 20px;">玩家用 LINE 掃描後自動兌換</p>
+          <div class="qr-box">
+            <QrcodeVue :value="qrUrl()" :size="240" level="M" />
+          </div>
+          <p class="qr-url-text">{{ qrUrl() }}</p>
+          <button class="btn btn-outline" style="margin-top: 16px; width: 100%;" @click="showQrModal = false">關閉</button>
+        </div>
+      </div>
+    </Teleport>
 
     <Teleport to="body">
       <div v-if="showModal" class="modal-overlay" @click.self="showModal = false">
@@ -256,6 +285,10 @@ const deletePromoCode = async (id, codeStr) => {
 .action-btn.toggle:hover { background: #222; color: #fff;}
 .action-btn.delete { color: #e74c3c; }
 .action-btn.delete:hover { background: #331111; color: #ff5555;}
+.action-btn.qr { color: #3498db; }
+.action-btn.qr:hover { background: #112233; color: #5dade2; }
+.qr-box { display: flex; justify-content: center; background: #fff; padding: 16px; border-radius: 12px; }
+.qr-url-text { font-size: 0.7rem; color: #555; word-break: break-all; margin-top: 12px; }
 
 .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.8); z-index: 9999; display: flex; justify-content: center; align-items: center; backdrop-filter: blur(5px); }
 .modal-content { background: #161616; width: 90%; max-width: 500px; padding: 25px; border-radius: 16px; border: 1px solid #333; max-height: 90vh; overflow-y: auto; }

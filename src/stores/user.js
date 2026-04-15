@@ -165,6 +165,17 @@ export const useUserStore = defineStore('user', () => {
         await joinGame(gameId)
       }
 
+      const promoCode = urlParams.get('promo_code')
+      if (promoCode) {
+        try {
+          const title = await redeemPromoCode(promoCode)
+          alert(`兌換成功！已將【${title}】放入您的票券夾！`)
+          await fetchUserExtraData(userData.value.id)
+        } catch (err) {
+          alert('兌換失敗：' + err.message)
+        }
+      }
+
     } catch (err) {
       console.error('LIFF 錯誤:', err)
       error.value = err.message
@@ -365,9 +376,44 @@ export const useUserStore = defineStore('user', () => {
     }
   }
 
+  const redeemPromoCode = async (code) => {
+    if (!userData.value) throw new Error('請先確認登入狀態')
+    const cleanCode = code.trim().toUpperCase()
+
+    const { data: promo, error: promoErr } = await supabase
+      .from('promo_codes').select('*').eq('code', cleanCode).single()
+    if (promoErr || !promo) throw new Error('找不到此兌換碼，請確認是否有打錯字')
+    if (!promo.is_active) throw new Error('此兌換碼活動已結束或暫停')
+    if (promo.max_uses > 0 && promo.used_count >= promo.max_uses) throw new Error('這組兌換碼已被搶光了')
+
+    const { count: used } = await supabase
+      .from('coupons').select('*', { count: 'exact', head: true })
+      .eq('user_id', userData.value.id)
+      .eq('source_promo_code', promo.id)
+    if (used >= promo.limit_per_user) throw new Error(`這組代碼每人最多領 ${promo.limit_per_user} 次，你已經領滿了`)
+
+    const expiry = new Date()
+    expiry.setDate(expiry.getDate() + (promo.valid_days || 30))
+
+    const { error: insertErr } = await supabase.from('coupons').insert([{
+      user_id: userData.value.id,
+      title: promo.title,
+      description: promo.description,
+      status: 'available',
+      expiry_date: expiry.toISOString(),
+      source_promo_code: promo.id,
+    }])
+    if (insertErr) throw insertErr
+
+    await supabase.from('promo_codes')
+      .update({ used_count: promo.used_count + 1 }).eq('id', promo.id)
+
+    return promo.title
+  }
+
   return {
     lineProfile, userData, isLoggedIn, isLoading, error,
     history, coupons, daysJoined, userTitle,
-    initLiff, updateProfile, getLevelInfo, grantPoints, joinGame
+    initLiff, updateProfile, getLevelInfo, grantPoints, joinGame, redeemPromoCode
   }
 })

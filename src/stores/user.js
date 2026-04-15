@@ -386,10 +386,12 @@ export const useUserStore = defineStore('user', () => {
     if (!promo.is_active) throw new Error('此兌換碼活動已結束或暫停')
     if (promo.max_uses > 0 && promo.used_count >= promo.max_uses) throw new Error('這組兌換碼已被搶光了')
 
-    const { count: used } = await supabase
+    let countQuery = supabase
       .from('coupons').select('*', { count: 'exact', head: true })
       .eq('user_id', userData.value.id)
       .eq('source_promo_code', promo.id)
+    if (promo.reuse_after_redeem) countQuery = countQuery.eq('status', 'available')
+    const { count: used } = await countQuery
     if (used >= promo.limit_per_user) throw new Error(`這組代碼每人最多領 ${promo.limit_per_user} 次，你已經領滿了`)
 
     const expiry = new Date()

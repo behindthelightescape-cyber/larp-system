@@ -26,8 +26,9 @@ const form = ref({
   title: '',
   description: '',
   valid_days: 30,
-  max_uses: 0, // 0 代表無限量
-  limit_per_user: 1, // 預設每人限領 1 次
+  max_uses: 0,
+  limit_per_user: 1,
+  reuse_after_redeem: false,
   is_active: true
 })
 
@@ -55,7 +56,7 @@ const fetchPromoCodes = async () => {
 const openAddModal = () => {
   form.value = {
     id: '', code: '', title: '', description: '',
-    valid_days: 30, max_uses: 0, limit_per_user: 1, is_active: true
+    valid_days: 30, max_uses: 0, limit_per_user: 1, reuse_after_redeem: false, is_active: true
   }
   showModal.value = true
 }
@@ -73,6 +74,7 @@ const savePromoCode = async () => {
     valid_days: form.value.valid_days,
     max_uses: form.value.max_uses,
     limit_per_user: form.value.limit_per_user,
+    reuse_after_redeem: form.value.reuse_after_redeem,
     is_active: form.value.is_active
   }
 
@@ -174,6 +176,12 @@ const deletePromoCode = async (id, codeStr) => {
               <span class="meta-label">領取後效期</span>
               <span class="meta-value">{{ item.valid_days }} 天</span>
             </div>
+            <div class="meta-item" style="grid-column: span 3;">
+              <span class="meta-label">核銷後可再領</span>
+              <span class="meta-value" :style="{ color: item.reuse_after_redeem ? '#2ecc71' : '#888' }">
+                {{ item.reuse_after_redeem ? '是' : '否' }}
+              </span>
+            </div>
           </div>
         </div>
         
@@ -237,6 +245,14 @@ const deletePromoCode = async (id, codeStr) => {
               <input v-model="form.limit_per_user" type="number" class="admin-input" min="1">
             </div>
             
+            <div class="form-group">
+              <label>🔁 核銷後可再領</label>
+              <select v-model="form.reuse_after_redeem" class="admin-input">
+                <option :value="false">否，領過就算（預設）</option>
+                <option :value="true">是，核銷後可再領一張</option>
+              </select>
+            </div>
+
             <div class="form-group">
               <label>🟢 立即開放兌換</label>
               <select v-model="form.is_active" class="admin-input">

@@ -20,7 +20,6 @@ const selectedMember = ref(null)
 const memberCoupons = ref([])
 const memberHistory = ref([])
 const memberAchievements = ref([])
-const memberPointsByDate = ref({})
 const isSearching = ref(false)
 
 const showQuickGiftForm = ref(false)
@@ -90,33 +89,21 @@ const selectMember = async (user) => {
   searchQuery.value = ''   
   showQuickGiftForm.value = false 
 
-  const [couponsRes, historyRes, achieveRes, pointsRes] = await Promise.all([
+  const [couponsRes, historyRes, achieveRes] = await Promise.all([
     supabase.from('coupons').select('*').eq('user_id', user.id).order('created_at', { ascending: false }),
     supabase.from('game_participants')
-      .select('created_at, character_name, games ( play_time, gm_name, story_memory, scripts ( title ) )')
+      .select('created_at, character_name, exp_gained, games ( play_time, gm_name, story_memory, scripts ( title ) )')
       .eq('user_id', user.id)
       .order('created_at', { ascending: false }),
     supabase.from('user_achievements')
       .select('unlocked_at, achievements(title)')
       .eq('user_id', user.id)
-      .order('unlocked_at', { ascending: false }),
-    supabase.from('points_transactions')
-      .select('delta, created_at, source_type, note')
-      .eq('user_id', user.id)
-      .gt('delta', 0)
+      .order('unlocked_at', { ascending: false })
   ])
 
   memberCoupons.value = couponsRes.data || []
   memberHistory.value = historyRes.data || []
   memberAchievements.value = achieveRes.data || []
-
-  // 依日期加總正點數，方便對應到每場遊玩
-  const byDate = {}
-  for (const tx of pointsRes.data || []) {
-    const day = tx.created_at.split('T')[0]
-    byDate[day] = (byDate[day] || 0) + tx.delta
-  }
-  memberPointsByDate.value = byDate
 }
 
 // 🚀 新增：手動預先核銷本年度生日優惠
@@ -392,12 +379,8 @@ const calculateDays = (dateString) => {
                 <span class="list-sub">GM: {{ history.games?.gm_name || '無' }}</span>
               </div>
               <div style="display:flex; flex-direction:column; align-items:flex-end; gap:4px; flex-shrink:0;">
-                <span v-if="memberPointsByDate[history.created_at?.split('T')[0]]" class="points-badge">
-                  +{{ memberPointsByDate[history.created_at.split('T')[0]] }} pt
-                </span>
-                <span style="font-size:0.85rem; color:#aaa;">
-                  {{ history.created_at ? history.created_at.split('T')[0] : '' }}
-                </span>
+                <span v-if="history.exp_gained" class="points-badge">+{{ history.exp_gained }} exp</span>
+                <span style="font-size:0.85rem; color:#aaa;">{{ history.created_at ? history.created_at.split('T')[0] : '' }}</span>
               </div>
             </div>
           </div>

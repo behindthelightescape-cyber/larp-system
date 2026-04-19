@@ -92,7 +92,7 @@ const selectMember = async (user) => {
   const [couponsRes, historyRes, achieveRes] = await Promise.all([
     supabase.from('coupons').select('*').eq('user_id', user.id).order('created_at', { ascending: false }),
     supabase.from('game_participants')
-      .select('created_at, character_name, exp_gained, games ( play_time, gm_name, story_memory, scripts ( title ) )')
+      .select('id, created_at, character_name, exp_gained, games ( play_time, gm_name, story_memory, scripts ( title ) )')
       .eq('user_id', user.id)
       .order('created_at', { ascending: false }),
     supabase.from('user_achievements')
@@ -225,6 +225,60 @@ const submitPointsAdjust = async () => {
     alert('調整失敗：' + err.message)
   } finally {
     adjustSaving.value = false
+  }
+}
+
+const editingHistoryId = ref(null)
+const editExpValue = ref(0)
+const editExpSaving = ref(false)
+
+const calcLevel = (exp) => {
+  if (exp >= 2500) return 6
+  if (exp >= 1000) return 5
+  if (exp >= 500)  return 4
+  if (exp >= 250)  return 3
+  if (exp >= 100)  return 2
+  return 1
+}
+
+const startEditExp = (history) => {
+  editingHistoryId.value = history.id
+  editExpValue.value = history.exp_gained ?? 0
+}
+
+const saveEditExp = async (history) => {
+  const newExp = Number(editExpValue.value)
+  if (isNaN(newExp) || newExp < 0) return alert('請輸入有效的經驗值（0 以上）')
+  if (!confirm(`確定將這場的經驗值從 ${history.exp_gained} 改為 ${newExp}？`)) return
+
+  editExpSaving.value = true
+  try {
+    const { error } = await supabase
+      .from('game_participants')
+      .update({ exp_gained: newExp })
+      .eq('id', history.id)
+    if (error) throw error
+
+    const { data: allGames, error: sumErr } = await supabase
+      .from('game_participants')
+      .select('exp_gained')
+      .eq('user_id', selectedMember.value.id)
+    if (sumErr) throw sumErr
+
+    const newTotal = allGames.reduce((sum, g) => sum + (g.exp_gained || 0), 0)
+    const newLevel = calcLevel(newTotal)
+
+    await supabase.from('users').update({ total_exp: newTotal, level: newLevel }).eq('id', selectedMember.value.id)
+
+    history.exp_gained = newExp
+    selectedMember.value.total_exp = newTotal
+    selectedMember.value.level = newLevel
+    editingHistoryId.value = null
+    alert(`✅ 修正完成！新總經驗：${newTotal}，等級：LV.${newLevel}`)
+  } catch (err) {
+    alert('修正失敗：' + err.message)
+  } finally {
+    editExpSaving.value = false
   }
 }
 
@@ -371,16 +425,27 @@ const calculateDays = (dateString) => {
           <h4 class="section-title-inline mt-1" style="border-bottom: none;">📜 遊玩歷程 ({{ memberHistory.length }})</h4>
           <div class="list-container mt-2">
             <div v-if="memberHistory.length === 0" class="empty-list">尚無遊玩紀錄</div>
-            <div v-for="history in memberHistory" :key="history.created_at" class="list-item">
-              <div class="list-info">
-                <span style="font-weight:bold; color:#fff;">
-                 {{ history.games?.scripts?.title || history.character_name || history.games?.story_memory || '未知劇本' }}
-                </span>
-                <span class="list-sub">GM: {{ history.games?.gm_name || '無' }}</span>
+            <div v-for="history in memberHistory" :key="history.id" class="list-item" style="flex-direction:column; align-items:stretch; gap:8px;">
+              <div style="display:flex; justify-content:space-between; align-items:center;">
+                <div class="list-info">
+                  <span style="font-weight:bold; color:#fff;">
+                    {{ history.games?.scripts?.title || history.character_name || history.games?.story_memory || '未知劇本' }}
+                  </span>
+                  <span class="list-sub">GM: {{ history.games?.gm_name || '無' }}</span>
+                </div>
+                <div style="display:flex; flex-direction:column; align-items:flex-end; gap:4px; flex-shrink:0;">
+                  <div style="display:flex; align-items:center; gap:6px;">
+                    <span v-if="history.exp_gained != null" class="points-badge">+{{ history.exp_gained }} exp</span>
+                    <button class="btn-mini-gold" @click="startEditExp(history)">修正</button>
+                  </div>
+                  <span style="font-size:0.85rem; color:#aaa;">{{ history.created_at ? history.created_at.split('T')[0] : '' }}</span>
+                </div>
               </div>
-              <div style="display:flex; flex-direction:column; align-items:flex-end; gap:4px; flex-shrink:0;">
-                <span v-if="history.exp_gained" class="points-badge">+{{ history.exp_gained }} exp</span>
-                <span style="font-size:0.85rem; color:#aaa;">{{ history.created_at ? history.created_at.split('T')[0] : '' }}</span>
+              <div v-if="editingHistoryId === history.id" style="display:flex; gap:8px; align-items:center; background:#1a1a1a; padding:10px; border-radius:6px; border:1px solid #D4AF37;">
+                <span style="color:#aaa; font-size:0.85rem; white-space:nowrap;">正確經驗值：</span>
+                <input v-model="editExpValue" type="number" min="0" class="admin-input-mini" style="width:100px;" />
+                <button class="btn-mini-gold" :disabled="editExpSaving" @click="saveEditExp(history)">{{ editExpSaving ? '儲存中...' : '確認' }}</button>
+                <button class="btn-mini-red" @click="editingHistoryId = null">取消</button>
               </div>
             </div>
           </div>

@@ -48,9 +48,10 @@ const loadSessions = async () => {
     let query = supabase
       .from('games')
       .select(`
-        id, play_time, gm_name, status, qr_payload,
+        id, play_time, gm_name, status, qr_payload, base_exp,
         scripts ( title, cover_url, player_limit ),
         game_participants (
+          exp_gained,
           users ( id, display_name, picture_url, legacy_id )
         )
       `)
@@ -306,6 +307,7 @@ const openPlayerDetail = async (event, user) => {
                 <div class="game-meta">
                   <span class="meta-item">🕒 {{ formatTime(game.play_time) }}</span>
                   <span class="meta-item">🎭 GM: {{ game.gm_name }}</span>
+                  <span class="meta-item exp-meta">⭐ {{ game.base_exp ?? '?' }} EXP</span>
                 </div>
               </div>
               <div class="status-dot" :class="game.status === 'open' ? 'active' : 'closed'" title="狀態"></div>
@@ -338,6 +340,9 @@ const openPlayerDetail = async (event, user) => {
                     <span class="p-name">{{ p.users?.display_name }}</span>
                     <span class="p-id">{{ p.users?.legacy_id }}</span>
                   </div>
+                  <span class="p-exp" :class="{ 'exp-mismatch': game.base_exp != null && p.exp_gained !== game.base_exp }">
+                    +{{ p.exp_gained ?? '?' }}
+                  </span>
                 </div>
               </div>
             </div>
@@ -483,6 +488,9 @@ const openPlayerDetail = async (event, user) => {
 .player-name-wrap { display: flex; flex-direction: column; }
 .p-name { font-size: 0.8rem; font-weight: bold; color: #ddd; white-space: nowrap; }
 .p-id { font-size: 0.65rem; color: #D4AF37; font-family: monospace; line-height: 1; }
+.p-exp { font-size: 0.65rem; color: #aaa; font-weight: bold; white-space: nowrap; margin-left: 2px; }
+.p-exp.exp-mismatch { color: #e74c3c; }
+.exp-meta { color: #7ec8a0; border-color: #2a5c3a; background: #0d2a1a; }
 .spinner { width: 30px; height: 30px; border: 3px solid rgba(212, 175, 55, 0.2); border-top-color: #D4AF37; border-radius: 50%; animation: spin 1s linear infinite; margin: 0 auto 10px auto; }
 @keyframes spin { to { transform: rotate(360deg); } }
 .empty-state { text-align: center; padding: 40px; color: #666; background: #111; border-radius: 12px; border: 1px dashed #333; }

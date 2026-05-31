@@ -13,7 +13,7 @@ const props = defineProps({
 })
 
 const emit = defineEmits(['update-stats'])
-const gameExp = ref(100)
+const gameExp = ref(0)
 const allScripts = ref([])
 const searchQuery = ref('')
 const searchResults = ref([])
@@ -60,11 +60,8 @@ const selectScript = (script) => {
   selectedScript.value = script
   searchQuery.value = script.title
   gameMemory.value = script.default_story_memory || ''
-  
-  // 🚀 關鍵：選擇劇本時，自動把該劇本的 base_exp 帶入！(如果沒設就預設 100)
-  gameExp.value = script.base_exp || 50 
-  
-  showDropdown.value = false 
+  if (script.base_exp != null) gameExp.value = script.base_exp
+  showDropdown.value = false
 }
 
 const closeDropdown = () => {

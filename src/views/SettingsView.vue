@@ -322,8 +322,8 @@ const bindFriendCode = () => withLoading(isBindingCode, async () => {
         </div>
       </section>
 
-      <!-- 推坑計畫 (推坑優惠討論中，暫時隱藏) -->
-      <section v-if="false" class="card card--gold">
+      <!-- 推坑計畫 -->
+      <section class="card card--gold">
         <div class="card-shimmer card-shimmer--gold"></div>
 
         <div class="referral-head">

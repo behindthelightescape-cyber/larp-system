@@ -294,8 +294,8 @@ onMounted(() => {
         </div>
       </div>
 
-      <!-- 族譜入口 (推坑優惠討論中，暫時隱藏) -->
-      <div v-if="false" class="home-action-area fade-in-up delay-3">
+      <!-- 族譜入口 -->
+      <div class="home-action-area fade-in-up delay-3">
         <button @click="showTreeModal = true" class="tree-entry-btn">
           <div class="card-deco-top"></div>
           <div class="tree-btn-inner">

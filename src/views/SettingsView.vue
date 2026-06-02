@@ -532,7 +532,7 @@ const bindFriendCode = () => withLoading(isBindingCode, async () => {
   overflow: hidden;
   box-shadow: 0 12px 40px rgba(0,0,0,0.45);
 }
-.card--gold { border-color: rgba(212,175,55,0.18); }
+.card--gold { border-color: rgba(212,175,55,0.18); margin-top: 24px; }
 
 .card-shimmer {
   position: absolute;

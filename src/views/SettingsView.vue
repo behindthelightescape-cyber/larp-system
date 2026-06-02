@@ -17,6 +17,7 @@ const store = useUserStore()
 // ─────────────────────────────────────────
 const form = ref({ name: '', phone: '', birthday: '', email: '' })
 const isBirthdayLocked = ref(false)
+const isSaving = ref(false)
 
 // 提前宣告，watch immediate 執行時才能正確賦值
 const myReferralCode   = ref('')
@@ -38,8 +39,7 @@ watch(
   { immediate: true }
 )
 
-const save = async () => {
-  if (store.isLoading) return
+const save = () => withLoading(isSaving, async () => {
   const phone = form.value.phone?.trim()
   if (!phone)           return alert('⚠️ 請填寫您的手機號碼喔！這是必填欄位。')
   if (phone.length < 8) return alert('⚠️ 請填寫有效的手機號碼格式喔！')
@@ -60,7 +60,7 @@ const save = async () => {
   } else {
     alert('儲存失敗：' + result.message)
   }
-}
+})
 
 // ─────────────────────────────────────────
 //  工具：統一 loading 狀態控制
@@ -283,7 +283,7 @@ const bindFriendCode = () => withLoading(isBindingCode, async () => {
           </div>
         </div>
 
-        <button class="save-btn" @click="save" :disabled="store.isLoading">
+        <button class="save-btn" @click="save" :disabled="store.isLoading || isSaving">
           <span>確認修改</span>
           <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
             <path d="M3 8h10M9 4l4 4-4 4" stroke="currentColor" stroke-width="1.8"

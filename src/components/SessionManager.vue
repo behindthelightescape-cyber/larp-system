@@ -192,6 +192,36 @@ const deleteGame = async (event, game) => {
   await loadSessions()
 }
 
+// ── 移除單一玩家掃碼紀錄 ────────────────────────────────────────────────────
+const removeParticipant = async (event, game, participant) => {
+  event.stopPropagation()
+  const name = participant.users?.display_name || '該玩家'
+  const exp  = participant.exp_gained || 0
+  if (!confirm(`確定要移除「${name}」的掃碼紀錄？\n將扣回 ${exp} EXP，無法復原。`)) return
+
+  const userId = participant.users?.id
+  if (!userId) return alert('找不到玩家 ID')
+
+  // 1. 扣回 EXP 並重算等級
+  const { data: userData } = await supabase.from('users').select('total_exp').eq('id', userId).single()
+  if (userData) {
+    const newExp   = Math.max(0, (userData.total_exp || 0) - exp)
+    const newLevel = calcLevel(newExp)
+    await supabase.from('users').update({ total_exp: newExp, level: newLevel }).eq('id', userId)
+  }
+
+  // 2. 刪除該筆 game_participants 紀錄
+  const { error } = await supabase
+    .from('game_participants')
+    .delete()
+    .eq('game_id', game.id)
+    .eq('user_id', userId)
+  if (error) return alert('刪除失敗：' + error.message)
+
+  // 3. 即時更新畫面
+  game.game_participants = game.game_participants.filter(p => p.users?.id !== userId)
+}
+
 // ── 玩家資料 Modal ──────────────────────────────────────────────────────────
 const showPlayerModal = ref(false)
 const selectedPlayer = ref(null)
@@ -343,6 +373,7 @@ const openPlayerDetail = async (event, user) => {
                   <span class="p-exp" :class="{ 'exp-mismatch': game.base_exp != null && p.exp_gained !== game.base_exp }">
                     +{{ p.exp_gained ?? '?' }}
                   </span>
+                  <button class="btn-remove-participant" @click="removeParticipant($event, game, p)" title="移除此玩家">✕</button>
                 </div>
               </div>
             </div>
@@ -476,6 +507,8 @@ const openPlayerDetail = async (event, user) => {
 .status-dot { position: absolute; top: 15px; right: 35px; width: 10px; height: 10px; border-radius: 50%; }
 .btn-delete-game { position: absolute; top: 8px; right: 8px; background: transparent; border: none; color: #555; font-size: 1rem; cursor: pointer; padding: 2px 4px; border-radius: 4px; line-height: 1; }
 .btn-delete-game:hover { color: #e74c3c; background: rgba(231,76,60,0.1); }
+.btn-remove-participant { margin-left: auto; background: transparent; border: none; color: #555; font-size: 0.75rem; cursor: pointer; padding: 2px 5px; border-radius: 4px; line-height: 1; flex-shrink: 0; }
+.btn-remove-participant:hover { color: #e74c3c; background: rgba(231,76,60,0.15); }
 .status-dot.active { background: #2ecc71; box-shadow: 0 0 8px #2ecc71; }
 .status-dot.closed { background: #e74c3c; }
 .players-section { padding: 15px; background: #111; flex: 1; }

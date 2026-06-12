@@ -399,20 +399,20 @@ const calculateDays = (dateString) => {
               </div>
 
             <div class="coupon-actions">
-                <button 
-                  v-if="coupon.status === 'available'" 
-                  class="btn-mini-green" 
+                <button
+                  v-if="coupon.status === 'available' && (!coupon.expiry_date || new Date(coupon.expiry_date) >= new Date())"
+                  class="btn-mini-green"
                   @click="redeemCoupon(coupon)"
                 >
                   ✔ 核銷
                 </button>
 
-                <span 
+                <span
                   v-else
-                  class="status-tag" 
-                  :class="'status-' + coupon.status"
+                  class="status-tag"
+                  :class="coupon.status === 'used' ? 'status-used' : 'status-expired'"
                 >
-                  {{ coupon.status === 'used' ? '已核銷' : '已過期' }}
+                  {{ coupon.status === 'used' ? '已核銷' : '已失效' }}
                 </span>
 
                 <button class="btn-mini-red" @click="deleteCoupon(coupon.id, coupon.title)">✕</button>

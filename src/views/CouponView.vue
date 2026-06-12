@@ -15,18 +15,24 @@ const isSubmitting = ref(false)
 const displayCoupons = computed(() => {
   if (!store.coupons || !Array.isArray(store.coupons)) return []
 
-  // 加上排序：可用的排上面，用過或過期的排下面
+  const now = new Date()
+
+  const getUiStatus = (c) => {
+    if ((c.status || 'available') === 'used') return 'used'
+    if (c.expiry_date && new Date(c.expiry_date) < now) return 'expired'
+    return 'active'
+  }
+
   return [...store.coupons].sort((a, b) => {
-    const aActive = (a.status || 'available') === 'available'
-    const bActive = (b.status || 'available') === 'available'
-    if (aActive && !bActive) return -1
-    if (!aActive && bActive) return 1
+    const order = { active: 0, expired: 1, used: 2 }
+    const diff = order[getUiStatus(a)] - order[getUiStatus(b)]
+    if (diff !== 0) return diff
     return new Date(b.created_at) - new Date(a.created_at)
   }).map(c => {
-    const status = c.status || 'available'
+    const uiStatus = getUiStatus(c)
     return {
       ...c,
-      uiStatus: (status === 'available') ? 'active' : 'used',
+      uiStatus,
       uiType: (c.title && c.title.includes('券')) ? 'discount' : 'gift',
       uiCode: c.id ? `NO. ${c.id.toString().padStart(8, '0')}` : 'NO. --------',
       uiExpiry: c.expiry_date ? c.expiry_date.split('T')[0] : '無限期',
@@ -109,11 +115,13 @@ const confirmRedeem = async () => {
             <div class="ticket-title">{{ coupon.title }}</div>
             <div class="ticket-expiry">
               <template v-if="coupon.uiStatus === 'active'">效期至: {{ coupon.uiExpiry }}</template>
-              <template v-else>已於 {{ coupon.uiUsedAt }} 核銷</template>
+              <template v-else-if="coupon.uiStatus === 'used'">已於 {{ coupon.uiUsedAt }} 核銷</template>
+              <template v-else>已於 {{ coupon.uiExpiry }} 到期</template>
             </div>
           </div>
           <div class="ticket-right">
             <button v-if="coupon.uiStatus === 'active'" class="use-btn" @click.stop="openDetail(coupon)">使用</button>
+            <div v-else-if="coupon.uiStatus === 'used'" class="used-stamp">已核銷</div>
             <div v-else class="used-stamp">已失效</div>
           </div>
         </div>

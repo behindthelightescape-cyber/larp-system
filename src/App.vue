@@ -18,7 +18,14 @@ if (pendingRef) sessionStorage.setItem('pendingRef', pendingRef)
 watch(() => userStore.isLoading, (loading) => {
   if (!loading && sessionStorage.getItem('pendingRef')) {
     const u = userStore.userData
-    if (u && (u.total_exp || 0) === 0 && !u.referred_by) {
+    if (!u) return
+    if (u.referred_by) {
+      sessionStorage.removeItem('pendingRef')
+      alert('你已經綁定過師父囉！每位冒險者只能拜一位師父。')
+    } else if ((u.total_exp || 0) > 0) {
+      sessionStorage.removeItem('pendingRef')
+      alert('推坑碼只有在首次遊玩前才能綁定喔！')
+    } else {
       router.push('/settings')
     }
   }

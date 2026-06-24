@@ -29,7 +29,7 @@ watch(() => userStore.isLoading, (loading) => {
       router.push('/settings')
     }
   }
-})
+}, { once: true })
 
 onMounted(() => {
   if (window.location.hash.includes('#/admin') || window.location.hash.includes('#/display')) {

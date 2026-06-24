@@ -82,7 +82,8 @@ const GOLD = '#D4AF37'
 // 過濾 email 格式的 display_name，避免顯示個資
 const safeName = (n: unknown): string => {
   const s = String(n || '').trim()
-  return s.includes('@') || !s ? '冒險者' : s
+  const isEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s)
+  return (!s || isEmail) ? '冒險者' : s
 }
 
 // ── 組裝「冒險者名片」Flex Message ────────────────────────────────────────

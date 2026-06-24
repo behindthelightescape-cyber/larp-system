@@ -72,8 +72,9 @@ const sendToDisplay = async () => {
 }
 
 // 等 userStore 完成 LIFF 初始化
-watch(() => userStore.isLoading, (loading) => {
+const stopWatch = watch(() => userStore.isLoading, (loading) => {
   if (loading) return
+  stopWatch()
   if (userStore.isLoggedIn) sendToDisplay()
   else { status.value = 'error'; errorMsg.value = '登入失敗，請重新掃描' }
 }, { immediate: true })

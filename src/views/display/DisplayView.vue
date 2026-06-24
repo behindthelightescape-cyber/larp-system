@@ -213,15 +213,18 @@ const particles = Array.from({ length: 45 }, (_, i) => ({
 }))
 
 // ── Count-up ──
+const activeRafs = new Set()
 const countUp = (target, refVal, duration = 1200) => {
   const start = Date.now()
+  let handle
   const tick = () => {
     const t = Math.min((Date.now() - start) / duration, 1)
     refVal.value = Math.round(target * (1 - Math.pow(1 - t, 3)))
-    if (t < 1) requestAnimationFrame(tick)
-    else refVal.value = target
+    if (t < 1) { handle = requestAnimationFrame(tick); activeRafs.add(handle) }
+    else { refVal.value = target; activeRafs.delete(handle) }
   }
-  requestAnimationFrame(tick)
+  handle = requestAnimationFrame(tick)
+  activeRafs.add(handle)
 }
 
 // ── 紙娃娃載入 ──
@@ -389,6 +392,8 @@ onMounted(async () => {
   clockTimer = setInterval(() => { now.value = new Date() }, 1000)
 })
 onUnmounted(() => {
+  activeRafs.forEach(h => cancelAnimationFrame(h))
+  activeRafs.clear()
   clearPageTimers()
   clearSlideTimer()
   stopPolling()

@@ -193,21 +193,19 @@ export const useUserStore = defineStore('user', () => {
       userData.value = existingUser
       isLoggedIn.value = true
     } else {
-      let nextIdNumber = 1
-      const { data: maxUsers } = await supabase.from('users').select('legacy_id').filter('legacy_id', 'match', '^[0-9]').order('legacy_id', { ascending: false }).limit(1)
-      if (maxUsers && maxUsers.length > 0 && maxUsers[0].legacy_id) {
-        const currentMax = parseInt(maxUsers[0].legacy_id, 10)
-        if (!isNaN(currentMax)) nextIdNumber = currentMax + 1 
+      let newUser = null
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const { data: maxUsers } = await supabase.from('users').select('legacy_id').filter('legacy_id', 'match', '^[0-9]').order('legacy_id', { ascending: false }).limit(1)
+        const currentMax = parseInt(maxUsers?.[0]?.legacy_id || '0', 10) || 0
+        const newLegacyId = String(currentMax + 1 + attempt).padStart(8, '0')
+        const { data, error: insertError } = await supabase
+          .from('users')
+          .insert([{ id: profile.userId, display_name: profile.displayName, picture_url: profile.pictureUrl, legacy_id: newLegacyId, level: 1, total_exp: 0 }])
+          .select().single()
+        if (!insertError) { newUser = data; break }
+        if (insertError.code !== '23505') throw insertError
       }
-      
-      const newLegacyId = String(nextIdNumber).padStart(8, '0')
-
-      const { data: newUser, error: insertError } = await supabase
-        .from('users')
-        .insert([{ id: profile.userId, display_name: profile.displayName, picture_url: profile.pictureUrl, legacy_id: newLegacyId, level: 1, total_exp: 0 }])
-        .select().single()
-
-      if (insertError) throw insertError
+      if (!newUser) throw new Error('無法產生會員編號，請稍後再試')
       userData.value = newUser
       isLoggedIn.value = true
       alert(`🎉 註冊成功！歡迎加入，您的專屬會員編號是：${newLegacyId}`)

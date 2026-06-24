@@ -2,7 +2,7 @@
 // ─────────────────────────────────────────
 //  依賴
 // ─────────────────────────────────────────
-import { ref, watch, computed, onUnmounted } from 'vue'
+import { ref, watch, computed, onUnmounted, nextTick } from 'vue'
 import { useUserStore } from '../stores/user'
 import { supabase } from '../supabase'
 import { User, Gift, Lock, Ticket, UserPlus, UserCheck, HelpCircle, Copy, Sparkles, Ban, Sprout, Crown, Loader2, Link2, QrCode, Download, ScanLine } from 'lucide-vue-next'
@@ -206,7 +206,7 @@ let refRafId  = null
 
 const openRefScanner = async () => {
   showRefScanner.value = true
-  await new Promise(r => setTimeout(r, 100))
+  await nextTick()
   try {
     refStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
     refVideoRef.value.srcObject = refStream

@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted, nextTick } from 'vue'
+import { ref, onMounted, onUnmounted, nextTick } from 'vue'
 import { supabase } from '../supabase'
 import MemberManager from '../components/MemberManager.vue'
 import CouponManager from '../components/CouponManager.vue'
@@ -31,12 +31,14 @@ const adminProfile = ref({
   role: 'player',
   managed_branch: '載入中...'
 })
+let authSubscription = null
+onUnmounted(() => { authSubscription?.unsubscribe() })
 
 onMounted(async () => {
   const { data } = await supabase.auth.getSession()
   session.value = data.session
 
-  supabase.auth.onAuthStateChange((_event, _session) => {
+  const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, _session) => {
     session.value = _session
     if (_session) {
       fetchAdminProfile(_session.user.id)
@@ -44,6 +46,7 @@ onMounted(async () => {
       adminProfile.value = { role: 'player', managed_branch: '無權限' }
     }
   })
+  authSubscription = subscription
 
   if (session.value) {
     fetchAdminProfile(session.value.user.id)

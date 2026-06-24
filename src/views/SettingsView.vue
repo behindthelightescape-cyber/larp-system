@@ -2,11 +2,12 @@
 // ─────────────────────────────────────────
 //  依賴
 // ─────────────────────────────────────────
-import { ref, watch, computed } from 'vue'
+import { ref, watch, computed, onUnmounted } from 'vue'
 import { useUserStore } from '../stores/user'
 import { supabase } from '../supabase'
-import { User, Gift, Lock, Ticket, UserPlus, UserCheck, HelpCircle, Copy, Sparkles, Ban, Sprout, Crown, Loader2, Link2, QrCode, Download } from 'lucide-vue-next'
+import { User, Gift, Lock, Ticket, UserPlus, UserCheck, HelpCircle, Copy, Sparkles, Ban, Sprout, Crown, Loader2, Link2, QrCode, Download, ScanLine } from 'lucide-vue-next'
 import QrcodeVue from 'qrcode.vue'
+import jsQR from 'jsqr'
 
 // ─────────────────────────────────────────
 //  Store
@@ -170,8 +171,14 @@ const copyMyCode = () => {
 
 const copyShareLink = () => {
   if (!shareLink.value) return
-  navigator.clipboard.writeText(shareLink.value)
-    .then(() => alert('🔗 分享連結已複製！貼給朋友就能直接加入～'))
+  const text = `🎭 加入劇光燈 LARP！
+
+我在玩劇光燈桌遊 LARP，快來跟我一起冒險吧！
+用我的推坑碼「${myReferralCode.value}」加入，新手可以立刻獲得 $50 折價券喔！
+
+👉 點我加入：${shareLink.value}`
+  navigator.clipboard.writeText(text)
+    .then(() => alert('📋 分享訊息已複製！直接貼給朋友吧～'))
     .catch(() => alert('複製失敗，請手動選取複製'))
 }
 
@@ -183,6 +190,71 @@ const downloadQr = () => {
   link.href = canvas.toDataURL('image/png')
   link.click()
 }
+
+// ─────────────────────────────────────────
+//  掃碼綁定推坑碼（給新手用）
+// ─────────────────────────────────────────
+const showRefScanner = ref(false)
+const refVideoRef    = ref(null)
+const refCanvasRef   = ref(null)
+let refStream = null
+let refRafId  = null
+
+const openRefScanner = async () => {
+  showRefScanner.value = true
+  await new Promise(r => setTimeout(r, 100))
+  try {
+    refStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
+    refVideoRef.value.srcObject = refStream
+    await refVideoRef.value.play()
+    tickRefScan()
+  } catch (err) {
+    alert('無法開啟相機：' + (err?.message || err))
+    closeRefScanner()
+  }
+}
+
+const closeRefScanner = () => {
+  cancelAnimationFrame(refRafId)
+  if (refStream) { refStream.getTracks().forEach(t => t.stop()); refStream = null }
+  showRefScanner.value = false
+}
+
+const tickRefScan = () => {
+  const video  = refVideoRef.value
+  const canvas = refCanvasRef.value
+  if (!video || !canvas || !showRefScanner.value) return
+  if (video.readyState === video.HAVE_ENOUGH_DATA) {
+    canvas.width  = video.videoWidth
+    canvas.height = video.videoHeight
+    const ctx = canvas.getContext('2d')
+    ctx.drawImage(video, 0, 0)
+    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height)
+    const code = jsQR(imageData.data, canvas.width, canvas.height)
+    if (code?.data) { handleRefScanResult(code.data); return }
+  }
+  refRafId = requestAnimationFrame(tickRefScan)
+}
+
+const handleRefScanResult = (raw) => {
+  closeRefScanner()
+  let code = ''
+  try {
+    const url = new URL(raw)
+    code = url.searchParams.get('ref') || ''
+  } catch {
+    // 不是 URL，嘗試直接當推坑碼（4-10 位英數）
+  }
+  if (!code) {
+    const match = raw.trim().match(/^[A-Z0-9]{4,10}$/i)
+    code = match ? raw.trim().toUpperCase() : ''
+  }
+  if (!code) return alert('這個 QR 碼不含推坑碼喔，請掃老手的推坑 QR 碼！')
+  friendCodeInput.value = code.toUpperCase()
+  alert(`✅ 已帶入推坑碼「${friendCodeInput.value}」，確認後請點「綁定」！`)
+}
+
+onUnmounted(closeRefScanner)
 
 const bindFriendCode = () => withLoading(isBindingCode, async () => {
   if (!isNewbie.value)
@@ -417,6 +489,9 @@ const bindFriendCode = () => withLoading(isBindingCode, async () => {
               placeholder="輸入朋友的推坑碼…"
               class="code-input"
             />
+            <button class="action-btn action-btn--scan" @click="openRefScanner" title="掃描老手的 QR 碼">
+              <ScanLine :size="16" :stroke-width="1.8" />
+            </button>
             <button class="action-btn action-btn--gold"
                     @click="bindFriendCode" :disabled="isBindingCode">
               {{ isBindingCode ? '綁定中…' : '綁定' }}
@@ -463,6 +538,19 @@ const bindFriendCode = () => withLoading(isBindingCode, async () => {
           </div>
         </div>
       </Transition>
+    </Teleport>
+
+    <!-- ── 掃碼綁定 Overlay ── -->
+    <Teleport to="body">
+      <div v-if="showRefScanner" class="ref-scanner-overlay">
+        <video ref="refVideoRef" class="ref-scanner-video" playsinline muted></video>
+        <canvas ref="refCanvasRef" style="display:none"></canvas>
+        <div class="ref-scanner-frame">
+          <div class="ref-scanner-line"></div>
+        </div>
+        <p class="ref-scanner-hint">將老手的 QR 碼對準框框內</p>
+        <button class="ref-scanner-close" @click="closeRefScanner">✕ 取消</button>
+      </div>
     </Teleport>
 
     <!-- ── 規則 Modal ── -->
@@ -819,6 +907,8 @@ const bindFriendCode = () => withLoading(isBindingCode, async () => {
 .action-btn:hover   { background: rgba(212,175,55,0.2); border-color: var(--gold); }
 .action-btn:disabled { background: rgba(255,255,255,0.03); color: #444; border-color: #333; cursor: not-allowed; }
 .action-btn--gold   { background: rgba(212,175,55,0.1); }
+.action-btn--scan   { padding: 0 12px; background: rgba(255,255,255,0.03); border-color: #444; color: #888; flex-shrink: 0; }
+.action-btn--scan:hover { background: rgba(255,255,255,0.08); color: #fff; }
 
 /* ══════════════════════════════════════
    推坑計畫
@@ -1069,6 +1159,40 @@ const bindFriendCode = () => withLoading(isBindingCode, async () => {
 .share-action-btn:hover          { background: rgba(255,255,255,0.08); color: #fff; }
 .share-action-btn--gold          { background: rgba(212,175,55,0.1); border-color: var(--gold-border); color: var(--gold); }
 .share-action-btn--gold:hover    { background: var(--gold); color: #000; }
+
+/* 掃碼 Overlay */
+.ref-scanner-overlay {
+  position: fixed; inset: 0; z-index: 10000;
+  background: #000;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+}
+.ref-scanner-video { width: 100%; height: 100%; object-fit: cover; }
+.ref-scanner-frame {
+  position: absolute;
+  width: 220px; height: 220px;
+  border: 2px solid var(--gold);
+  border-radius: 12px;
+  box-shadow: 0 0 0 9999px rgba(0,0,0,0.55);
+  overflow: hidden;
+}
+.ref-scanner-line {
+  position: absolute; top: 0; left: 0; right: 0;
+  height: 2px; background: var(--gold); opacity: 0.8;
+  animation: ref-scan-move 1.8s linear infinite;
+}
+@keyframes ref-scan-move { 0% { top: 0; } 50% { top: calc(100% - 2px); } 100% { top: 0; } }
+.ref-scanner-hint {
+  position: absolute; bottom: 140px;
+  color: #fff; font-size: .9rem; text-align: center;
+  text-shadow: 0 1px 4px rgba(0,0,0,0.8);
+  margin: 0;
+}
+.ref-scanner-close {
+  position: absolute; bottom: 70px;
+  padding: 12px 32px; border-radius: 24px;
+  background: rgba(255,255,255,0.15); border: 1px solid rgba(255,255,255,0.3);
+  color: #fff; font-size: .95rem; font-weight: 700; font-family: inherit; cursor: pointer;
+}
 
 /* ══════════════════════════════════════
    Modal

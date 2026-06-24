@@ -171,12 +171,12 @@ const copyMyCode = () => {
 
 const copyShareLink = () => {
   if (!shareLink.value) return
-  const text = `🎭 加入劇光燈 LARP！
+  const text = `💡加入劇光燈 LARP！
 
-我在玩劇光燈桌遊 LARP，快來跟我一起冒險吧！
-用我的推坑碼「${myReferralCode.value}」加入，新手可以立刻獲得 $50 折價券喔！
+我在玩劇光燈，快來成為我的徒弟吧！！
+用我的推坑碼「${myReferralCode.value}」加入，新手徒兒可以立刻獲得 $50 折價券喔！
 
-👉 點我加入：${shareLink.value}`
+👉 點我入門：${shareLink.value}`
   navigator.clipboard.writeText(text)
     .then(() => alert('📋 分享訊息已複製！直接貼給朋友吧～'))
     .catch(() => alert('複製失敗，請手動選取複製'))

@@ -5,7 +5,8 @@
 import { ref, watch, computed } from 'vue'
 import { useUserStore } from '../stores/user'
 import { supabase } from '../supabase'
-import { User, Gift, Lock, Ticket, UserPlus, UserCheck, HelpCircle, Copy, Sparkles, Ban, Sprout, Crown, Loader2 } from 'lucide-vue-next'
+import { User, Gift, Lock, Ticket, UserPlus, UserCheck, HelpCircle, Copy, Sparkles, Ban, Sprout, Crown, Loader2, Link2, QrCode, Download } from 'lucide-vue-next'
+import QrcodeVue from 'qrcode.vue'
 
 // ─────────────────────────────────────────
 //  Store
@@ -35,6 +36,9 @@ watch(
     if (val.birthday)         isBirthdayLocked.value  = true
     if (val.my_referral_code) myReferralCode.value    = val.my_referral_code
     if (val.referred_by)    { referredBy.value        = val.referred_by; isReferredLocked.value = true }
+    if (urlRefCode && !val.referred_by && (val.total_exp || 0) === 0 && !friendCodeInput.value) {
+      friendCodeInput.value = urlRefCode
+    }
   },
   { immediate: true }
 )
@@ -134,6 +138,11 @@ const friendCodeInput  = ref('')
 const isGeneratingCode = ref(false)
 const isBindingCode    = ref(false)
 const showRulesModal   = ref(false)
+const showQrModal      = ref(false)
+
+const LIFF_URL   = 'https://liff.line.me/2009161687-icfQU9r6'
+const shareLink  = computed(() => myReferralCode.value ? `${LIFF_URL}?ref=${myReferralCode.value}` : '')
+const urlRefCode = new URLSearchParams(window.location.search).get('ref')?.toUpperCase() || ''
 
 const totalExp = computed(() => store.userData?.total_exp || 0)
 const isNewbie = computed(() => totalExp.value === 0)
@@ -157,6 +166,22 @@ const copyMyCode = () => {
   navigator.clipboard.writeText(myReferralCode.value)
     .then(() => alert('📋 推薦碼已複製到剪貼簿！'))
     .catch(() => alert('複製失敗，請手動選取複製'))
+}
+
+const copyShareLink = () => {
+  if (!shareLink.value) return
+  navigator.clipboard.writeText(shareLink.value)
+    .then(() => alert('🔗 分享連結已複製！貼給朋友就能直接加入～'))
+    .catch(() => alert('複製失敗，請手動選取複製'))
+}
+
+const downloadQr = () => {
+  const canvas = document.querySelector('#qr-canvas canvas')
+  if (!canvas) return
+  const link = document.createElement('a')
+  link.download = `劇光燈推坑碼-${myReferralCode.value}.png`
+  link.href = canvas.toDataURL('image/png')
+  link.click()
 }
 
 const bindFriendCode = () => withLoading(isBindingCode, async () => {
@@ -347,7 +372,15 @@ const bindFriendCode = () => withLoading(isBindingCode, async () => {
               <span class="code-dot"></span>
               <span class="code-text">{{ myReferralCode }}</span>
             </div>
-            <button class="copy-btn" @click="copyMyCode"><Copy :size="13" :stroke-width="1.8" /> 複製</button>
+            <button class="copy-btn" @click="copyMyCode"><Copy :size="13" :stroke-width="1.8" /> 複製碼</button>
+          </div>
+          <div v-if="myReferralCode" class="share-actions">
+            <button class="share-btn" @click="copyShareLink">
+              <Link2 :size="13" :stroke-width="1.8" /> 複製連結
+            </button>
+            <button class="share-btn share-btn--qr" @click="showQrModal = true">
+              <QrCode :size="13" :stroke-width="1.8" /> QR 碼
+            </button>
           </div>
 
           <button v-else-if="!isNewbie" class="generate-btn"
@@ -393,6 +426,44 @@ const bindFriendCode = () => withLoading(isBindingCode, async () => {
       </section>
 
     </div><!-- /sections-wrap -->
+
+    <!-- ── QR 碼 Modal ── -->
+    <Teleport to="body">
+      <Transition name="slide-up">
+        <div v-if="showQrModal" class="modal-overlay" @click.self="showQrModal = false">
+          <div class="qr-modal" role="dialog" aria-label="推坑 QR 碼">
+            <div class="modal-handle"></div>
+            <div class="modal-header">
+              <h2 class="modal-title"><QrCode :size="16" :stroke-width="1.8" class="title-icon" /> 分享推坑連結</h2>
+              <button class="modal-close" @click="showQrModal = false">✕</button>
+            </div>
+            <div class="qr-body">
+              <p class="qr-hint">將 QR 碼或連結傳給朋友，<br>他們掃碼後會自動帶入你的推坑碼！</p>
+              <div class="qr-canvas-wrap" id="qr-canvas">
+                <QrcodeVue
+                  :value="shareLink"
+                  :size="200"
+                  level="M"
+                  :margin="2"
+                  foreground="#D4AF37"
+                  background="#111111"
+                />
+              </div>
+              <div class="qr-code-label">{{ myReferralCode }}</div>
+              <div class="qr-url">{{ shareLink }}</div>
+              <div class="qr-actions">
+                <button class="share-action-btn" @click="copyShareLink">
+                  <Link2 :size="15" :stroke-width="1.8" /> 複製連結
+                </button>
+                <button class="share-action-btn share-action-btn--gold" @click="downloadQr">
+                  <Download :size="15" :stroke-width="1.8" /> 下載圖片
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </Transition>
+    </Teleport>
 
     <!-- ── 規則 Modal ── -->
     <Teleport to="body">
@@ -899,6 +970,105 @@ const bindFriendCode = () => withLoading(isBindingCode, async () => {
   letter-spacing: 2px;
   color: var(--gold);
 }
+
+.share-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+.share-btn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-height: 40px;
+  padding: 0 10px;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid #333;
+  border-radius: 10px;
+  color: #aaa;
+  font-size: .82rem;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  transition: .2s;
+}
+.share-btn:hover        { background: rgba(255,255,255,0.07); color: #fff; border-color: #555; }
+.share-btn--qr          { background: rgba(212,175,55,0.05); border-color: var(--gold-border); color: var(--gold); }
+.share-btn--qr:hover    { background: rgba(212,175,55,0.15); border-color: var(--gold); }
+
+/* QR Modal */
+.qr-modal {
+  width: 100%;
+  max-width: 500px;
+  background: #111;
+  border-radius: 24px 24px 0 0;
+  border-top: 2px solid rgba(212,175,55,0.4);
+  padding-bottom: env(safe-area-inset-bottom, 20px);
+}
+.qr-body {
+  padding: 0 28px 28px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+}
+.qr-hint {
+  margin: 0;
+  font-size: .85rem;
+  color: #888;
+  text-align: center;
+  line-height: 1.6;
+}
+.qr-canvas-wrap {
+  padding: 16px;
+  background: #111;
+  border-radius: 16px;
+  border: 1px solid rgba(212,175,55,0.25);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.qr-code-label {
+  font-family: 'Courier New', monospace;
+  font-size: 1.4rem;
+  font-weight: 900;
+  letter-spacing: 4px;
+  color: var(--gold-light);
+}
+.qr-url {
+  font-size: .72rem;
+  color: #555;
+  word-break: break-all;
+  text-align: center;
+  padding: 0 8px;
+}
+.qr-actions {
+  display: flex;
+  gap: 10px;
+  width: 100%;
+}
+.share-action-btn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 48px;
+  border-radius: 12px;
+  border: 1px solid #333;
+  background: rgba(255,255,255,0.04);
+  color: #aaa;
+  font-size: .9rem;
+  font-weight: 700;
+  font-family: inherit;
+  cursor: pointer;
+  transition: .2s;
+}
+.share-action-btn:hover          { background: rgba(255,255,255,0.08); color: #fff; }
+.share-action-btn--gold          { background: rgba(212,175,55,0.1); border-color: var(--gold-border); color: var(--gold); }
+.share-action-btn--gold:hover    { background: var(--gold); color: #000; }
 
 /* ══════════════════════════════════════
    Modal

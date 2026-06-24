@@ -274,18 +274,11 @@ const buildDollCard = (
 const buildSectCard = (
   user: Record<string, unknown>,
   master: string | null,
-  disciples: string[],
+  discipleCount: number,
 ) => {
   const name     = (user.display_name as string) || '冒險者'
   const referral = user.my_referral_code as string | undefined
   const shareUrl = referral ? `${LIFF_URL}?ref=${referral}` : LIFF_URL
-
-  const MAX_SHOW = 10
-  const shown = disciples.slice(0, MAX_SHOW)
-  const extra = disciples.length - shown.length
-  const discipleText = disciples.length === 0
-    ? '尚未推坑任何人'
-    : shown.join('・') + (extra > 0 ? ` … 另 +${extra} 人` : '')
 
   return {
     type: 'flex',
@@ -313,76 +306,25 @@ const buildSectCard = (
       body: {
         type: 'box', layout: 'vertical', paddingAll: '16px', spacing: 'md',
         contents: [
-          // 師父區塊
+          // 玩家名稱
+          { type: 'text', text: name, size: 'xl', color: '#ffffff', weight: 'bold', align: 'center' },
+          { type: 'separator', color: '#222222' },
+          // 師父
           {
-            type: 'box', layout: 'vertical', backgroundColor: '#141414',
-            cornerRadius: '8px', paddingAll: '12px',
+            type: 'box', layout: 'horizontal', alignItems: 'center', paddingAll: '4px',
             contents: [
-              { type: 'text', text: '⚔️  師父', size: 'xs', color: '#555555' },
-              {
-                type: 'text',
-                text: master || '無師自通',
-                size: 'md',
-                color: master ? '#ffffff' : '#555555',
-                weight: master ? 'bold' : 'regular',
-                margin: 'sm',
-              },
+              { type: 'text', text: '師父', size: 'sm', color: '#666666', flex: 1 },
+              { type: 'text', text: master || '無師自通', size: 'sm', color: master ? '#ffffff' : '#555555', weight: master ? 'bold' : 'regular', align: 'end' },
             ],
           },
-          // 徒弟區塊
+          // 徒弟人數
           {
-            type: 'box', layout: 'vertical', backgroundColor: '#141414',
-            cornerRadius: '8px', paddingAll: '12px',
+            type: 'box', layout: 'horizontal', alignItems: 'center', paddingAll: '4px',
             contents: [
-              {
-                type: 'box', layout: 'horizontal', alignItems: 'center',
-                contents: [
-                  { type: 'text', text: '👥  門下弟子', size: 'xs', color: '#555555', flex: 1 },
-                  {
-                    type: 'box', layout: 'vertical', flex: 0,
-                    backgroundColor: disciples.length > 0 ? GOLD : '#2a2a2a',
-                    cornerRadius: '10px',
-                    paddingTop: '2px', paddingBottom: '2px', paddingStart: '8px', paddingEnd: '8px',
-                    contents: [{
-                      type: 'text',
-                      text: `${disciples.length} 人`,
-                      size: 'xxs',
-                      color: disciples.length > 0 ? '#080808' : '#555',
-                      weight: 'bold',
-                    }],
-                  },
-                ],
-              },
-              {
-                type: 'text',
-                text: discipleText,
-                size: 'sm',
-                color: disciples.length > 0 ? '#dddddd' : '#444444',
-                wrap: true,
-                margin: 'sm',
-              },
+              { type: 'text', text: '門下弟子', size: 'sm', color: '#666666', flex: 1 },
+              { type: 'text', text: `${discipleCount} 人`, size: 'sm', color: discipleCount > 0 ? GOLD : '#555555', weight: 'bold', align: 'end' },
             ],
           },
-          // 推坑碼區塊
-          referral
-            ? {
-                type: 'box', layout: 'horizontal', backgroundColor: '#141414',
-                cornerRadius: '8px', paddingAll: '12px', alignItems: 'center',
-                contents: [
-                  {
-                    type: 'box', layout: 'vertical', flex: 1,
-                    contents: [
-                      { type: 'text', text: '推坑碼', size: 'xxs', color: '#444444' },
-                      { type: 'text', text: referral, size: 'lg', color: GOLD, weight: 'bold', margin: 'xs' },
-                    ],
-                  },
-                ],
-              }
-            : {
-                type: 'text',
-                text: '🔒 完成首場遊戲後可解鎖推坑碼',
-                size: 'xs', color: '#444444', align: 'center',
-              },
         ],
       },
       ...(referral ? {
@@ -736,12 +678,10 @@ const handleEvents = async (events: Record<string, unknown>[]) => {
           : Promise.resolve([]),
       ])
 
-      const master    = (masterData as Record<string, unknown>[])?.[0]?.display_name as string | null || null
-      const disciples = ((disciplesData as Record<string, unknown>[]) || [])
-        .map(d => d.display_name as string)
-        .filter(Boolean)
+      const master         = (masterData as Record<string, unknown>[])?.[0]?.display_name as string | null || null
+      const discipleCount  = (disciplesData as unknown[])?.length || 0
 
-      const replyRes = await lineReply(replyToken, [buildSectCard(user, master, disciples)])
+      const replyRes = await lineReply(replyToken, [buildSectCard(user, master, discipleCount)])
       console.log('sect reply status:', replyRes.status, await replyRes.text())
     }
   }

@@ -353,7 +353,7 @@ const buildLineageCard = (
             backgroundColor: GOLD, cornerRadius: '8px',
             paddingTop: '12px', paddingBottom: '12px',
             action: { type: 'uri', uri: shareUrl },
-            contents: [{ type: 'text', text: '召募徒弟 ⚔️', size: 'sm', color: '#080808', weight: 'bold', align: 'center' }],
+            contents: [{ type: 'text', text: '點我拜師 ⚔️', size: 'sm', color: '#080808', weight: 'bold', align: 'center' }],
           }],
         },
       } : {}),

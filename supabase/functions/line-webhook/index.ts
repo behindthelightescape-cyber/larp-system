@@ -271,18 +271,33 @@ const buildDollCard = (
 // ── 組裝「師門關係」Flex Message ───────────────────────────────────────────
 // 觸發指令：!師門
 // 顯示師父名稱、門下弟子列表、推坑碼、召募徒弟按鈕
-const buildSectCard = (
+const buildLineageCard = (
   user: Record<string, unknown>,
-  master: string | null,
-  discipleCount: number,
+  disciples: string[],
 ) => {
   const name     = (user.display_name as string) || '冒險者'
   const referral = user.my_referral_code as string | undefined
   const shareUrl = referral ? `${LIFF_URL}?ref=${referral}` : LIFF_URL
 
+  const MAX = 8
+  const shown = disciples.slice(0, MAX)
+  const extra = disciples.length - MAX
+
+  // 徒弟列表列
+  const discipleRows: unknown[] = shown.map(d => ({
+    type: 'box', layout: 'horizontal', alignItems: 'center', paddingTop: '5px', paddingBottom: '5px',
+    contents: [
+      { type: 'text', text: '└─', size: 'xs', color: '#444444', flex: 0 },
+      { type: 'text', text: d, size: 'sm', color: '#cccccc', margin: 'md' },
+    ],
+  }))
+  if (extra > 0) {
+    discipleRows.push({ type: 'text', text: `    … 另 +${extra} 人`, size: 'xs', color: '#555555', margin: 'xs' })
+  }
+
   return {
     type: 'flex',
-    altText: `⚔️ ${name} 的師門關係`,
+    altText: `⚔️ ${name} 的門派`,
     contents: {
       type: 'bubble',
       size: 'mega',
@@ -299,32 +314,35 @@ const buildSectCard = (
             type: 'box', layout: 'vertical', flex: 0,
             backgroundColor: GOLD, cornerRadius: '20px',
             paddingTop: '4px', paddingBottom: '4px', paddingStart: '12px', paddingEnd: '12px',
-            contents: [{ type: 'text', text: '師門關係', size: 'xs', color: '#080808', weight: 'bold' }],
+            contents: [{ type: 'text', text: '我的師門', size: 'xs', color: '#080808', weight: 'bold' }],
           },
         ],
       },
       body: {
-        type: 'box', layout: 'vertical', paddingAll: '16px', spacing: 'md',
+        type: 'box', layout: 'vertical', paddingAll: '16px', spacing: 'none',
         contents: [
-          // 玩家名稱
-          { type: 'text', text: name, size: 'xl', color: '#ffffff', weight: 'bold', align: 'center' },
-          { type: 'separator', color: '#222222' },
-          // 師父
+          // 掌門（自己）
           {
-            type: 'box', layout: 'horizontal', alignItems: 'center', paddingAll: '4px',
+            type: 'box', layout: 'horizontal', alignItems: 'center',
+            paddingAll: '10px', backgroundColor: 'rgba(212,175,55,0.08)', cornerRadius: '8px',
             contents: [
-              { type: 'text', text: '師父', size: 'sm', color: '#666666', flex: 1 },
-              { type: 'text', text: master || '無師自通', size: 'sm', color: master ? '#ffffff' : '#555555', weight: master ? 'bold' : 'regular', align: 'end' },
+              { type: 'text', text: '👑', size: 'md', flex: 0 },
+              { type: 'text', text: name, size: 'lg', color: GOLD, weight: 'bold', margin: 'md', flex: 1 },
+              {
+                type: 'box', layout: 'vertical', flex: 0,
+                backgroundColor: 'rgba(212,175,55,0.15)', cornerRadius: '10px',
+                paddingTop: '2px', paddingBottom: '2px', paddingStart: '8px', paddingEnd: '8px',
+                contents: [{ type: 'text', text: `門下 ${disciples.length} 人`, size: 'xxs', color: GOLD, weight: 'bold' }],
+              },
             ],
           },
-          // 徒弟人數
-          {
-            type: 'box', layout: 'horizontal', alignItems: 'center', paddingAll: '4px',
-            contents: [
-              { type: 'text', text: '門下弟子', size: 'sm', color: '#666666', flex: 1 },
-              { type: 'text', text: `${discipleCount} 人`, size: 'sm', color: discipleCount > 0 ? GOLD : '#555555', weight: 'bold', align: 'end' },
-            ],
-          },
+          // 徒弟列表
+          disciples.length > 0
+            ? {
+                type: 'box', layout: 'vertical', paddingStart: '12px', paddingTop: '8px', spacing: 'none',
+                contents: discipleRows,
+              }
+            : { type: 'text', text: '尚無門下弟子，快去召募吧！', size: 'xs', color: '#444444', align: 'center', margin: 'lg' },
         ],
       },
       ...(referral ? {
@@ -669,19 +687,13 @@ const handleEvents = async (events: Record<string, unknown>[]) => {
       continue
     }
     if (isSect) {
-      const [masterData, disciplesData] = await Promise.all([
-        user.referred_by
-          ? dbGet(`users?my_referral_code=eq.${user.referred_by}&select=display_name&limit=1`)
-          : Promise.resolve([]),
-        user.my_referral_code
-          ? dbGet(`users?referred_by=eq.${user.my_referral_code}&select=display_name`)
-          : Promise.resolve([]),
-      ])
+      const disciplesData = user.my_referral_code
+        ? await dbGet(`users?referred_by=eq.${user.my_referral_code}&select=display_name`)
+        : []
 
-      const master         = (masterData as Record<string, unknown>[])?.[0]?.display_name as string | null || null
-      const discipleCount  = (disciplesData as unknown[])?.length || 0
+      const disciples = ((disciplesData as Record<string, unknown>[]) || []).map(d => d.display_name as string).filter(Boolean)
 
-      const replyRes = await lineReply(replyToken, [buildSectCard(user, master, discipleCount)])
+      const replyRes = await lineReply(replyToken, [buildLineageCard(user, disciples)])
       console.log('sect reply status:', replyRes.status, await replyRes.text())
     }
   }

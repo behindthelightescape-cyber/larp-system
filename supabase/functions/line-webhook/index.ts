@@ -330,7 +330,7 @@ const buildLineageCard = (
               { type: 'text', text: name, size: 'lg', color: GOLD, weight: 'bold', margin: 'md', flex: 1 },
               {
                 type: 'box', layout: 'vertical', flex: 0,
-                backgroundColor: 'rgba(212,175,55,0.15)', cornerRadius: '10px',
+                backgroundColor: '#D4AF3726', cornerRadius: '10px',
                 paddingTop: '2px', paddingBottom: '2px', paddingStart: '8px', paddingEnd: '8px',
                 contents: [{ type: 'text', text: `門下 ${disciples.length} 人`, size: 'xxs', color: GOLD, weight: 'bold' }],
               },

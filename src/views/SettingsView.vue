@@ -145,7 +145,9 @@ const showQrModal      = ref(false)
 
 const LIFF_URL   = 'https://liff.line.me/2009161687-icfQU9r6'
 const shareLink  = computed(() => myReferralCode.value ? `${LIFF_URL}?ref=${myReferralCode.value}` : '')
-const urlRefCode = new URLSearchParams(window.location.search).get('ref')?.toUpperCase() || ''
+const urlRefCode = new URLSearchParams(window.location.search).get('ref')?.toUpperCase()
+  || sessionStorage.getItem('pendingRef')
+  || ''
 
 const totalExp = computed(() => store.userData?.total_exp || 0)
 const isNewbie = computed(() => totalExp.value === 0)
@@ -305,6 +307,7 @@ const bindFriendCode = () => withLoading(isBindingCode, async () => {
     : '\n\n(目前官方暫無迎新派發活動，但您的綁定已成功紀錄！)'
 
   alert(`✅ 成功綁定！你是由【${target.display_name || '神秘玩家'}】推薦的！${rewardMsg}`)
+  sessionStorage.removeItem('pendingRef')
   isReferredLocked.value = true
   referredBy.value = code
   await store.initLiff()

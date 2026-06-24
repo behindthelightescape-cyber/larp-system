@@ -1,13 +1,28 @@
 <script setup>
-import { onMounted, computed } from 'vue'
-import { RouterView, useRoute } from 'vue-router'
+import { onMounted, computed, watch } from 'vue'
+import { RouterView, useRoute, useRouter } from 'vue-router'
 import { useUserStore } from './stores/user'
 import BottomNav from './components/BottomNav.vue'
 
 const userStore = useUserStore()
-const route = useRoute()
+const route    = useRoute()
+const router   = useRouter()
 
 const showNav = computed(() => !userStore.isLoading && !route.meta.hideNav)
+
+// 偵測推坑碼並存入 sessionStorage（防 LIFF 重導向後 URL 參數消失）
+const pendingRef = new URLSearchParams(window.location.search).get('ref')?.toUpperCase() || ''
+if (pendingRef) sessionStorage.setItem('pendingRef', pendingRef)
+
+// LIFF 載入完成後，若有推坑碼且是新手，自動跳設定頁
+watch(() => userStore.isLoading, (loading) => {
+  if (!loading && sessionStorage.getItem('pendingRef')) {
+    const u = userStore.userData
+    if (u && (u.total_exp || 0) === 0 && !u.referred_by) {
+      router.push('/settings')
+    }
+  }
+})
 
 onMounted(() => {
   if (window.location.hash.includes('#/admin') || window.location.hash.includes('#/display')) {

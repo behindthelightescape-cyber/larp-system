@@ -509,7 +509,7 @@ const handleEvents = async (events: Record<string, unknown>[]) => {
     const isMascot = cmd === '召喚'
     const isTarot  = cmd === '占卜'
     const isRules  = cmd === '版規'
-    const isSect   = cmd === '師門'
+    const isSect   = cmd === '我的師門'
 
     // 群組訊息且非指令 → 存進 group_messages
     const source = event.source as Record<string, unknown>

@@ -324,7 +324,7 @@ const buildLineageCard = (
           // 掌門（自己）
           {
             type: 'box', layout: 'horizontal', alignItems: 'center',
-            paddingAll: '10px', backgroundColor: 'rgba(212,175,55,0.08)', cornerRadius: '8px',
+            paddingAll: '10px', backgroundColor: '#D4AF3714', cornerRadius: '8px',
             contents: [
               { type: 'text', text: '👑', size: 'md', flex: 0 },
               { type: 'text', text: name, size: 'lg', color: GOLD, weight: 'bold', margin: 'md', flex: 1 },

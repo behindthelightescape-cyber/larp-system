@@ -355,11 +355,11 @@ const buildLineageCard = (
         footer: {
           type: 'box', layout: 'vertical', paddingAll: '12px',
           contents: [{
-            type: 'box', layout: 'vertical',
-            backgroundColor: GOLD, cornerRadius: '8px',
-            paddingTop: '12px', paddingBottom: '12px',
-            action: { type: 'uri', uri: shareUrl },
-            contents: [{ type: 'text', text: '點我拜師 ⚔️', size: 'sm', color: '#080808', weight: 'bold', align: 'center' }],
+            type: 'button',
+            action: { type: 'uri', label: '點我拜師 ⚔️', uri: shareUrl },
+            style: 'primary',
+            color: GOLD,
+            height: 'sm',
           }],
         },
       } : {}),

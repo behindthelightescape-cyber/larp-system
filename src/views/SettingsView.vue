@@ -45,6 +45,8 @@ watch(
 )
 
 const save = () => withLoading(isSaving, async () => {
+  const name = form.value.name?.trim()
+  if (name && name.includes('@')) return alert('⚠️ 暱稱不能是 Email 格式喔！請填寫你的名字或暱稱。')
   const phone = form.value.phone?.trim()
   if (!phone)           return alert('⚠️ 請填寫您的手機號碼喔！這是必填欄位。')
   if (phone.length < 8) return alert('⚠️ 請填寫有效的手機號碼格式喔！')

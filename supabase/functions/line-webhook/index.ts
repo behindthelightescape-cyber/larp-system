@@ -79,6 +79,12 @@ const getLevelInfo = (exp: number) => {
 // 品牌主色（金色）
 const GOLD = '#D4AF37'
 
+// 過濾 email 格式的 display_name，避免顯示個資
+const safeName = (n: unknown): string => {
+  const s = String(n || '').trim()
+  return s.includes('@') || !s ? '冒險者' : s
+}
+
 // ── 組裝「冒險者名片」Flex Message ────────────────────────────────────────
 // 觸發指令：!我的名片
 // 顯示玩家名稱、等級稱號、EXP、參加場數、資歷天數、推坑人數、推薦碼
@@ -91,7 +97,7 @@ const buildCard = (user: Record<string, unknown>, stats: { games: number; days: 
   const expPct   = Math.min(Math.round((exp / info.nextExp) * 100), 100) // EXP 進度百分比（上限 100%）
   const filled   = Math.max(expPct, 1)       // 進度條已填滿寬度（最小 1，避免 flex 為 0 報錯）
   const empty    = Math.max(100 - expPct, 1) // 進度條空白寬度
-  const name     = (user.display_name as string) || '冒險者'
+  const name     = safeName(user.display_name)
   const referral = user.my_referral_code as string | undefined
 
   return {
@@ -275,7 +281,7 @@ const buildLineageCard = (
   user: Record<string, unknown>,
   disciples: string[],
 ) => {
-  const name     = (user.display_name as string) || '冒險者'
+  const name     = safeName(user.display_name)
   const referral = user.my_referral_code as string | undefined
   const shareUrl = referral ? `${LIFF_URL}?ref=${referral}` : LIFF_URL
 
@@ -583,7 +589,7 @@ const handleEvents = async (events: Record<string, unknown>[]) => {
         }
       }
 
-      const name     = (user.display_name as string) || '冒險者'
+      const name     = safeName(user.display_name)
       const exp      = (user.total_exp as number) || 0
       const info     = getLevelInfo(exp)
       const level    = (user.level as number) || info.level
@@ -691,7 +697,7 @@ const handleEvents = async (events: Record<string, unknown>[]) => {
         ? await dbGet(`users?referred_by=eq.${user.my_referral_code}&select=display_name`)
         : []
 
-      const disciples = ((disciplesData as Record<string, unknown>[]) || []).map(d => d.display_name as string).filter(Boolean)
+      const disciples = ((disciplesData as Record<string, unknown>[]) || []).map(d => safeName(d.display_name))
 
       const replyRes = await lineReply(replyToken, [buildLineageCard(user, disciples)])
       console.log('sect reply status:', replyRes.status, await replyRes.text())

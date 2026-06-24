@@ -149,6 +149,7 @@ const claimReward = async (ach) => {
       const currentExp = store.userData.total_exp || 0
       const newExp = currentExp + ach.reward_exp
       await supabase.from('users').update({ total_exp: newExp }).eq('id', store.userData.id)
+      store.userData.total_exp = newExp
       successMsg += `\n✨ 獲得成就獎勵：+${ach.reward_exp} 經驗值！`
     }
 
@@ -156,6 +157,7 @@ const claimReward = async (ach) => {
       const currentPoints = store.userData.points || 0
       const newPoints = currentPoints + ach.reward_points
       await supabase.from('users').update({ points: newPoints }).eq('id', store.userData.id)
+      store.userData.points = newPoints
       successMsg += `\n💎 獲得成就獎勵：+${ach.reward_points} 冒險點數！`
     }
 

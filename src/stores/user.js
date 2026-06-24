@@ -13,6 +13,7 @@ export const useUserStore = defineStore('user', () => {
 
   const history = ref([])
   const coupons = ref([])
+  const levelUpData = ref(null)
   const daysJoined = ref(0)
 
   // 🚀 精準等級與稱號計算機 
@@ -263,7 +264,8 @@ export const useUserStore = defineStore('user', () => {
       let isLeveledUp = newLevel > currentLevelInfo.level
 
       // 1. 寫入參與紀錄
-      await supabase.from('game_participants').insert([{ game_id: gameId, user_id: userData.value.id, exp_gained: earnedExp }])
+      const { error: insertErr } = await supabase.from('game_participants').insert([{ game_id: gameId, user_id: userData.value.id, exp_gained: earnedExp }])
+      if (insertErr) throw insertErr
       // 2. 更新總經驗值與等級
       await supabase.from('users').update({ total_exp: newTotalExp, level: newLevel }).eq('id', userData.value.id)
 
@@ -300,18 +302,16 @@ export const useUserStore = defineStore('user', () => {
       // ==========================================
       if (isLeveledUp) {
         let allGrantedTitles = []
-        // 支援「跳級」：如果從 LV1 跳 LV3，會把 LV2 跟 LV3 的獎勵一起發給他！
         for (let lvl = currentLevelInfo.level + 1; lvl <= newLevel; lvl++) {
           const granted = await grantSystemRewards(userData.value.id, 'level_up', lvl)
           allGrantedTitles = allGrantedTitles.concat(granted)
         }
-
-        let alertMsg = `🎉 恭喜升級！\n獲得經驗值 +${earnedExp} PT\n目前等級：LV.${newLevel}`
-        if (allGrantedTitles.length > 0) {
-          alertMsg += `\n\n🎁 獲得升級大禮包：\n- ` + allGrantedTitles.join('\n- ')
+        levelUpData.value = {
+          level: newLevel,
+          title: newLevelInfo.title,
+          exp: earnedExp,
+          grantedTitles: allGrantedTitles,
         }
-        alert(alertMsg)
-
       } else {
         alert(`✅ 成功加入遊戲！\n獲得經驗值 +${earnedExp} PT`)
       }
@@ -416,7 +416,7 @@ export const useUserStore = defineStore('user', () => {
 
   return {
     lineProfile, userData, isLoggedIn, isLoading, error,
-    history, coupons, daysJoined, userTitle,
+    history, coupons, daysJoined, userTitle, levelUpData,
     initLiff, updateProfile, getLevelInfo, grantPoints, joinGame, redeemPromoCode
   }
 })

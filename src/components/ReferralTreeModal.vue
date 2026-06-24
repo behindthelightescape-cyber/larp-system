@@ -188,7 +188,7 @@ const closeModal = () => emit('close')
             <div class="tree-section">
               <div class="section-header-flex">
                 <h3 class="section-title" style="border:none;margin:0"><Swords :size="14" :stroke-width="1.8" class="sec-icon" /> 直系弟子列表</h3>
-                <button v-if="directDisciples.length > 0" class="btn-panorama" @click="fetchPanoramaTree">
+                <button v-if="directDisciples.length > 0" class="btn-panorama" @click="fetchPanoramaTree" :disabled="isFetchingPanorama">
                   <Network :size="13" :stroke-width="1.8" class="btn-icon" /> 宗門全景
                 </button>
               </div>

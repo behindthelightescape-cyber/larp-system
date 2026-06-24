@@ -268,6 +268,139 @@ const buildDollCard = (
   }
 }
 
+// ── 組裝「師門關係」Flex Message ───────────────────────────────────────────
+// 觸發指令：!師門
+// 顯示師父名稱、門下弟子列表、推坑碼、召募徒弟按鈕
+const buildSectCard = (
+  user: Record<string, unknown>,
+  master: string | null,
+  disciples: string[],
+) => {
+  const name     = (user.display_name as string) || '冒險者'
+  const referral = user.my_referral_code as string | undefined
+  const shareUrl = referral ? `${LIFF_URL}?ref=${referral}` : LIFF_URL
+
+  const MAX_SHOW = 10
+  const shown = disciples.slice(0, MAX_SHOW)
+  const extra = disciples.length - shown.length
+  const discipleText = disciples.length === 0
+    ? '尚未推坑任何人'
+    : shown.join('・') + (extra > 0 ? ` … 另 +${extra} 人` : '')
+
+  return {
+    type: 'flex',
+    altText: `⚔️ ${name} 的師門關係`,
+    contents: {
+      type: 'bubble',
+      size: 'mega',
+      styles: {
+        header: { backgroundColor: '#080808' },
+        body:   { backgroundColor: '#0d0d0d' },
+        footer: { backgroundColor: '#080808' },
+      },
+      header: {
+        type: 'box', layout: 'horizontal', paddingAll: '12px', alignItems: 'center',
+        contents: [
+          { type: 'text', text: 'SPOTLIGHT LARP', size: 'xs', color: GOLD, weight: 'bold', flex: 1 },
+          {
+            type: 'box', layout: 'vertical', flex: 0,
+            backgroundColor: GOLD, cornerRadius: '20px',
+            paddingTop: '4px', paddingBottom: '4px', paddingStart: '12px', paddingEnd: '12px',
+            contents: [{ type: 'text', text: '師門關係', size: 'xs', color: '#080808', weight: 'bold' }],
+          },
+        ],
+      },
+      body: {
+        type: 'box', layout: 'vertical', paddingAll: '16px', spacing: 'md',
+        contents: [
+          // 師父區塊
+          {
+            type: 'box', layout: 'vertical', backgroundColor: '#141414',
+            cornerRadius: '8px', paddingAll: '12px',
+            contents: [
+              { type: 'text', text: '⚔️  師父', size: 'xs', color: '#555555' },
+              {
+                type: 'text',
+                text: master || '無師自通',
+                size: 'md',
+                color: master ? '#ffffff' : '#555555',
+                weight: master ? 'bold' : 'regular',
+                margin: 'sm',
+              },
+            ],
+          },
+          // 徒弟區塊
+          {
+            type: 'box', layout: 'vertical', backgroundColor: '#141414',
+            cornerRadius: '8px', paddingAll: '12px',
+            contents: [
+              {
+                type: 'box', layout: 'horizontal', alignItems: 'center',
+                contents: [
+                  { type: 'text', text: '👥  門下弟子', size: 'xs', color: '#555555', flex: 1 },
+                  {
+                    type: 'box', layout: 'vertical', flex: 0,
+                    backgroundColor: disciples.length > 0 ? GOLD : '#2a2a2a',
+                    cornerRadius: '10px',
+                    paddingTop: '2px', paddingBottom: '2px', paddingStart: '8px', paddingEnd: '8px',
+                    contents: [{
+                      type: 'text',
+                      text: `${disciples.length} 人`,
+                      size: 'xxs',
+                      color: disciples.length > 0 ? '#080808' : '#555',
+                      weight: 'bold',
+                    }],
+                  },
+                ],
+              },
+              {
+                type: 'text',
+                text: discipleText,
+                size: 'sm',
+                color: disciples.length > 0 ? '#dddddd' : '#444444',
+                wrap: true,
+                margin: 'sm',
+              },
+            ],
+          },
+          // 推坑碼區塊
+          referral
+            ? {
+                type: 'box', layout: 'horizontal', backgroundColor: '#141414',
+                cornerRadius: '8px', paddingAll: '12px', alignItems: 'center',
+                contents: [
+                  {
+                    type: 'box', layout: 'vertical', flex: 1,
+                    contents: [
+                      { type: 'text', text: '推坑碼', size: 'xxs', color: '#444444' },
+                      { type: 'text', text: referral, size: 'lg', color: GOLD, weight: 'bold', margin: 'xs' },
+                    ],
+                  },
+                ],
+              }
+            : {
+                type: 'text',
+                text: '🔒 完成首場遊戲後可解鎖推坑碼',
+                size: 'xs', color: '#444444', align: 'center',
+              },
+        ],
+      },
+      ...(referral ? {
+        footer: {
+          type: 'box', layout: 'vertical', paddingAll: '12px',
+          contents: [{
+            type: 'box', layout: 'vertical',
+            backgroundColor: GOLD, cornerRadius: '8px',
+            paddingTop: '12px', paddingBottom: '12px',
+            action: { type: 'uri', uri: shareUrl },
+            contents: [{ type: 'text', text: '召募徒弟 ⚔️', size: 'sm', color: '#080808', weight: 'bold', align: 'center' }],
+          }],
+        },
+      } : {}),
+    },
+  }
+}
+
 // ── 組裝「群組規則」Flex Message ───────────────────────────────────────────
 // 觸發時機：memberJoined 事件（有人加入群組）
 // 從 group_settings 表讀取規則內容後組裝 Flex 回傳
@@ -330,7 +463,7 @@ const lineReply = (replyToken: string, messages: unknown[]) =>
 // 非指令文字直接跳過，不做任何回應
 const handleEvents = async (events: Record<string, unknown>[]) => {
   // 一次撈所有功能開關，預設全開（讀取失敗時不影響正常運作）
-  const featureKeys = ['feature_rules', 'feature_tarot', 'feature_summon', 'feature_card']
+  const featureKeys = ['feature_rules', 'feature_tarot', 'feature_summon', 'feature_card', 'feature_sect']
   const features: Record<string, boolean> = {}
   featureKeys.forEach(k => { features[k] = true })
   try {
@@ -376,10 +509,11 @@ const handleEvents = async (events: Record<string, unknown>[]) => {
     const isMascot = cmd === '召喚'
     const isTarot  = cmd === '占卜'
     const isRules  = cmd === '版規'
+    const isSect   = cmd === '師門'
 
     // 群組訊息且非指令 → 存進 group_messages
     const source = event.source as Record<string, unknown>
-    if (source.type === 'group' && !isCard && !isMascot && !isTarot && !isRules) {
+    if (source.type === 'group' && !isCard && !isMascot && !isTarot && !isRules && !isSect) {
       dbInsert('group_messages', {
         line_user_id: source.userId as string,
         group_id:     source.groupId as string,
@@ -388,7 +522,7 @@ const handleEvents = async (events: Record<string, unknown>[]) => {
       })
     }
 
-    if (!isCard && !isMascot && !isTarot && !isRules) continue
+    if (!isCard && !isMascot && !isTarot && !isRules && !isSect) continue
 
     // ── 版規指令：回傳群組規則 ─────────────────────────────────────────────
     if (isRules) {
@@ -585,6 +719,30 @@ const handleEvents = async (events: Record<string, unknown>[]) => {
 
       const tarotRes = await lineReply(replyToken, [flexMsg])
       console.log('tarot reply status:', tarotRes.status, await tarotRes.text())
+    }
+
+    // ── 師門指令：顯示師父、徒弟、推坑碼 ─────────────────────────────────
+    if (isSect && !features['feature_sect']) {
+      console.log('feature_sect is off, skip')
+      continue
+    }
+    if (isSect) {
+      const [masterData, disciplesData] = await Promise.all([
+        user.referred_by
+          ? dbGet(`users?my_referral_code=eq.${user.referred_by}&select=display_name&limit=1`)
+          : Promise.resolve([]),
+        user.my_referral_code
+          ? dbGet(`users?referred_by=eq.${user.my_referral_code}&select=display_name`)
+          : Promise.resolve([]),
+      ])
+
+      const master    = (masterData as Record<string, unknown>[])?.[0]?.display_name as string | null || null
+      const disciples = ((disciplesData as Record<string, unknown>[]) || [])
+        .map(d => d.display_name as string)
+        .filter(Boolean)
+
+      const replyRes = await lineReply(replyToken, [buildSectCard(user, master, disciples)])
+      console.log('sect reply status:', replyRes.status, await replyRes.text())
     }
   }
 }

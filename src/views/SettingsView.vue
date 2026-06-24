@@ -171,7 +171,7 @@ const copyMyCode = () => {
 
 const copyShareLink = () => {
   if (!shareLink.value) return
-  const text = `💡加入劇光燈 LARP！
+  const text = `💡加入我在劇光燈的宗門吧！
 
 我在玩劇光燈，快來成為我的徒弟吧！！
 用我的推坑碼「${myReferralCode.value}」加入，新手徒兒可以立刻獲得 $50 折價券喔！

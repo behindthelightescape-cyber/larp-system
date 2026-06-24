@@ -193,14 +193,19 @@ const deleteGame = async (event, game) => {
 }
 
 // ── 移除單一玩家掃碼紀錄 ────────────────────────────────────────────────────
+const removingIds = new Set()
+
 const removeParticipant = async (event, game, participant) => {
   event.stopPropagation()
+  const userId = participant.users?.id
+  if (!userId) return alert('找不到玩家 ID')
+  if (removingIds.has(userId)) return
+
   const name = participant.users?.display_name || '該玩家'
   const exp  = participant.exp_gained || 0
   if (!confirm(`確定要移除「${name}」的掃碼紀錄？\n將扣回 ${exp} EXP，無法復原。`)) return
 
-  const userId = participant.users?.id
-  if (!userId) return alert('找不到玩家 ID')
+  removingIds.add(userId)
 
   // 1. 扣回 EXP 並重算等級
   const { data: userData } = await supabase.from('users').select('total_exp').eq('id', userId).single()
@@ -216,6 +221,7 @@ const removeParticipant = async (event, game, participant) => {
     .delete()
     .eq('game_id', game.id)
     .eq('user_id', userId)
+  removingIds.delete(userId)
   if (error) return alert('刪除失敗：' + error.message)
 
   // 3. 即時更新畫面

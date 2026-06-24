@@ -169,30 +169,36 @@ const sendQuickGift = async () => {
   }
 }
 
+const redeemingIds = new Set()
+
 const redeemCoupon = async (coupon) => {
-  if (!confirm(`⚠️ 確定要核銷這張「${coupon.title}」嗎？核銷後無法復原喔！`)) return 
-  
+  if (redeemingIds.has(coupon.id)) return
+  if (!confirm(`⚠️ 確定要核銷這張「${coupon.title}」嗎？核銷後無法復原喔！`)) return
+
+  redeemingIds.add(coupon.id)
   try {
     const { error } = await supabase
       .from('coupons')
-      .update({ status: 'used' }) 
+      .update({ status: 'used' })
       .eq('id', coupon.id)
 
     if (error) throw error
 
     coupon.status = 'used'
     alert('✅ 核銷成功！')
-    
-    emit('update-stats') 
+    emit('update-stats')
   } catch (error) {
     alert('核銷失敗：' + error.message)
+  } finally {
+    redeemingIds.delete(coupon.id)
   }
 }
 
 const deleteCoupon = async (couponId, couponTitle) => {
-  if (!confirm(`⚠️ 確定要強制刪除「${couponTitle}」嗎？`)) return 
+  if (!confirm(`⚠️ 確定要強制刪除「${couponTitle}」嗎？`)) return
   try {
-    await supabase.from('coupons').delete().eq('id', couponId)
+    const { error } = await supabase.from('coupons').delete().eq('id', couponId)
+    if (error) throw error
     memberCoupons.value = memberCoupons.value.filter(c => c.id !== couponId)
     emit('update-stats')
   } catch (error) {

@@ -323,6 +323,7 @@ export const useUserStore = defineStore('user', () => {
 
     } catch (err) {
       console.error('加入遊戲失敗:', err.message)
+      alert('❌ 加入遊戲失敗，請稍後再試！\n' + (err.message || ''))
     }
   }
 

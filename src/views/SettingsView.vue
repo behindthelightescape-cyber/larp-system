@@ -486,18 +486,20 @@ const bindFriendCode = () => withLoading(isBindingCode, async () => {
             <span>推坑碼僅限首次遊玩前填寫</span>
           </div>
 
-          <div v-else class="code-row">
-            <input
-              v-model="friendCodeInput"
-              type="text"
-              inputmode="text"
-              placeholder="輸入朋友的推坑碼…"
-              class="code-input"
-            />
-            <button class="action-btn action-btn--scan" @click="openRefScanner" title="掃描老手的 QR 碼">
-              <ScanLine :size="16" :stroke-width="1.8" />
-            </button>
-            <button class="action-btn action-btn--gold"
+          <div v-else class="ref-input-wrap">
+            <div class="code-row">
+              <input
+                v-model="friendCodeInput"
+                type="text"
+                inputmode="text"
+                placeholder="輸入朋友的推坑碼…"
+                class="code-input"
+              />
+              <button class="action-btn action-btn--scan" @click="openRefScanner" title="掃描老手的 QR 碼">
+                <ScanLine :size="16" :stroke-width="1.8" />
+              </button>
+            </div>
+            <button class="action-btn action-btn--gold action-btn--bind"
                     @click="bindFriendCode" :disabled="isBindingCode">
               {{ isBindingCode ? '綁定中…' : '綁定' }}
             </button>
@@ -914,6 +916,9 @@ const bindFriendCode = () => withLoading(isBindingCode, async () => {
 .action-btn--gold   { background: rgba(212,175,55,0.1); }
 .action-btn--scan   { padding: 0 12px; background: rgba(255,255,255,0.03); border-color: #444; color: #888; flex-shrink: 0; }
 .action-btn--scan:hover { background: rgba(255,255,255,0.08); color: #fff; }
+
+.ref-input-wrap { display: flex; flex-direction: column; gap: 10px; }
+.action-btn--bind { width: 100%; }
 
 /* ══════════════════════════════════════
    推坑計畫

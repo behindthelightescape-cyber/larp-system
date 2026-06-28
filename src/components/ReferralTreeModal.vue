@@ -129,6 +129,9 @@ const fetchPanoramaTree = async () => {
   }
 }
 
+const exportedImageUrl = ref('')
+const showExportModal = ref(false)
+
 const exportImage = async () => {
   if (!treeCanvasRef.value || isExporting.value) return
   isExporting.value = true
@@ -140,10 +143,8 @@ const exportImage = async () => {
       allowTaint: true,
       logging: false,
     })
-    const link = document.createElement('a')
-    link.download = `宗門全景圖-${store.userData?.display_name || '宗主'}.png`
-    link.href = canvas.toDataURL('image/png')
-    link.click()
+    exportedImageUrl.value = canvas.toDataURL('image/png')
+    showExportModal.value = true
   } catch (err) {
     console.error('匯出失敗:', err)
     alert('匯出失敗，請稍後再試')
@@ -269,6 +270,17 @@ const closeModal = () => emit('close')
             <div v-else class="loading-state">哎呀，宗門尚未開枝散葉！</div>
           </div>
 
+        </div>
+      </div>
+    </transition>
+
+    <!-- 匯出預覽 Modal -->
+    <transition name="fade">
+      <div v-if="showExportModal" class="export-overlay" @click.self="showExportModal = false">
+        <div class="export-sheet">
+          <div class="export-hint">📱 長按圖片即可儲存到相簿</div>
+          <img :src="exportedImageUrl" class="export-img" />
+          <button class="export-close-btn" @click="showExportModal = false">關閉</button>
         </div>
       </div>
     </transition>
@@ -415,7 +427,36 @@ const closeModal = () => emit('close')
 .btn-panorama { background: linear-gradient(135deg,#2a1b4d 0%,#1a0b2e 100%); color: #b388ff; border: 1px solid #7c4dff; padding: 6px 12px; border-radius: 20px; font-size: 0.82rem; font-weight: bold; cursor: pointer; white-space: nowrap; }
 .mt-3 { margin-top: 14px; }
 
+/* ── 匯出預覽 ── */
+.export-overlay {
+  position: fixed; inset: 0; z-index: 10001;
+  background: rgba(0,0,0,0.92);
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  padding: 20px;
+}
+.export-sheet {
+  display: flex; flex-direction: column; align-items: center; gap: 16px;
+  max-width: 100%; max-height: 90vh;
+}
+.export-hint {
+  color: #D4AF37; font-size: 0.9rem; font-weight: 700;
+  background: rgba(212,175,55,0.1); border: 1px solid rgba(212,175,55,0.3);
+  padding: 10px 20px; border-radius: 20px; text-align: center;
+}
+.export-img {
+  max-width: 100%; max-height: 70vh;
+  border-radius: 12px; border: 1px solid rgba(212,175,55,0.25);
+  object-fit: contain;
+}
+.export-close-btn {
+  padding: 10px 32px; border-radius: 20px;
+  background: rgba(255,255,255,0.08); border: 1px solid #444;
+  color: #aaa; font-size: 0.9rem; font-weight: 700; font-family: inherit; cursor: pointer;
+}
+
 /* ── 進場動畫 ── */
 .slide-up-enter-active, .slide-up-leave-active { transition: all 0.3s cubic-bezier(0.25,0.8,0.25,1); }
 .slide-up-enter-from, .slide-up-leave-to { opacity: 0; transform: translateY(100%); }
+.fade-enter-active, .fade-leave-active { transition: opacity 0.2s; }
+.fade-enter-from, .fade-leave-to { opacity: 0; }
 </style>

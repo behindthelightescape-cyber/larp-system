@@ -3,7 +3,8 @@ import { ref, onMounted, computed } from 'vue'
 import { useUserStore } from '../stores/user'
 import { supabase } from '../supabase'
 import TreeNode from './TreeNode.vue'
-import { GitBranch, Network, Sparkles, Shield, Swords, ArrowLeft, Loader2, Leaf, CheckCircle2, Clock, ScrollText } from 'lucide-vue-next'
+import { GitBranch, Network, Sparkles, Shield, Swords, ArrowLeft, Loader2, Leaf, CheckCircle2, Clock, ScrollText, Download } from 'lucide-vue-next'
+import html2canvas from 'html2canvas'
 
 const props = defineProps({ show: Boolean })
 const emit = defineEmits(['close'])
@@ -13,6 +14,8 @@ const isLoading = ref(true)
 const hasError = ref(false)
 const viewMode = ref('flat')
 const isFetchingPanorama = ref(false)
+const isExporting = ref(false)
+const treeCanvasRef = ref(null)
 
 const master = ref(null)
 const directDisciples = ref([])
@@ -126,6 +129,29 @@ const fetchPanoramaTree = async () => {
   }
 }
 
+const exportImage = async () => {
+  if (!treeCanvasRef.value || isExporting.value) return
+  isExporting.value = true
+  try {
+    const canvas = await html2canvas(treeCanvasRef.value, {
+      backgroundColor: '#0a0a0a',
+      scale: 2,
+      useCORS: true,
+      allowTaint: true,
+      logging: false,
+    })
+    const link = document.createElement('a')
+    link.download = `宗門全景圖-${store.userData?.display_name || '宗主'}.png`
+    link.href = canvas.toDataURL('image/png')
+    link.click()
+  } catch (err) {
+    console.error('匯出失敗:', err)
+    alert('匯出失敗，請稍後再試')
+  } finally {
+    isExporting.value = false
+  }
+}
+
 const closeModal = () => emit('close')
 </script>
 
@@ -220,6 +246,11 @@ const closeModal = () => emit('close')
             <div class="panorama-header">
               <button class="btn-back" @click="viewMode = 'flat'"><ArrowLeft :size="14" :stroke-width="2" class="btn-icon" /> 返回列表</button>
               <span class="panorama-hint">可上下左右滑動</span>
+              <button class="btn-export" @click="exportImage" :disabled="isExporting || isFetchingPanorama || !treeRoot">
+                <Loader2 v-if="isExporting" :size="13" :stroke-width="2" class="spin-icon-sm" />
+                <Download v-else :size="13" :stroke-width="2" />
+                {{ isExporting ? '匯出中…' : '下載大圖' }}
+              </button>
             </div>
 
             <!-- loading -->
@@ -230,7 +261,7 @@ const closeModal = () => emit('close')
 
             <!-- 雙向捲動畫布 -->
             <div v-else-if="treeRoot" class="panorama-scroll-wrap">
-              <div class="tree-canvas">
+              <div class="tree-canvas" ref="treeCanvasRef">
                 <TreeNode :node="treeRoot" />
               </div>
             </div>
@@ -328,10 +359,20 @@ const closeModal = () => emit('close')
 .btn-back {
   background: transparent; border: 1px solid #333; color: #888;
   padding: 6px 14px; border-radius: 8px; cursor: pointer;
-  font-size: 0.85rem; transition: 0.2s;
+  font-size: 0.85rem; transition: 0.2s; display: flex; align-items: center; gap: 5px;
 }
 .btn-back:active { background: #1e1e1e; color: #fff; }
 .panorama-hint { color: #333; font-size: 0.75rem; letter-spacing: 0.5px; }
+.btn-export {
+  display: flex; align-items: center; gap: 5px;
+  background: rgba(212,175,55,0.08); border: 1px solid rgba(212,175,55,0.3); color: #D4AF37;
+  padding: 6px 12px; border-radius: 8px; cursor: pointer;
+  font-size: 0.82rem; font-weight: 700; font-family: inherit; white-space: nowrap; transition: 0.2s;
+}
+.btn-export:hover:not(:disabled) { background: rgba(212,175,55,0.18); border-color: #D4AF37; }
+.btn-export:disabled { opacity: 0.4; cursor: not-allowed; }
+@keyframes spin-sm { to { transform: rotate(360deg); } }
+.spin-icon-sm { animation: spin-sm 1s linear infinite; }
 
 /* 雙向捲動區：撐滿剩餘高度 */
 .panorama-scroll-wrap {

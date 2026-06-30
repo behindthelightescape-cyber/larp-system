@@ -63,7 +63,7 @@ const save = () => withLoading(isSaving, async () => {
   if (result.success) {
     alert(result.message)
     if (form.value.birthday) isBirthdayLocked.value = true
-    await store.initLiff()
+    await store.refreshCoupons()
   } else {
     alert('儲存失敗：' + result.message)
   }
@@ -131,7 +131,7 @@ const redeemPromoCode = () => withLoading(isRedeeming, async () => {
 
   alert(`🎉 兌換成功！已將【${promo.title}】放入您的票券夾！`)
   promoCodeInput.value = ''
-  await store.initLiff()
+  await store.refreshCoupons()
 })
 
 // ─────────────────────────────────────────
@@ -162,8 +162,8 @@ const generateMyCode = () => withLoading(isGeneratingCode, async () => {
   if (error) throw error
 
   myReferralCode.value = code
+  if (store.userData) store.userData.my_referral_code = code
   alert('✅ 專屬推薦碼生成成功！趕快分享給朋友吧！')
-  await store.initLiff()
 })
 
 const copyMyCode = () => {
@@ -310,7 +310,8 @@ const bindFriendCode = () => withLoading(isBindingCode, async () => {
   sessionStorage.removeItem('pendingRef')
   isReferredLocked.value = true
   referredBy.value = code
-  await store.initLiff()
+  if (store.userData) store.userData.referred_by = code
+  await store.refreshCoupons()
 })
 </script>
 

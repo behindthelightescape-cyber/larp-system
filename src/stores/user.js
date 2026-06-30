@@ -412,9 +412,15 @@ export const useUserStore = defineStore('user', () => {
     return promo.title
   }
 
+  const refreshCoupons = async () => {
+    if (!userData.value?.id) return
+    const { data } = await supabase.from('coupons').select('*').eq('user_id', userData.value.id).order('created_at', { ascending: false })
+    coupons.value = data || []
+  }
+
   return {
     lineProfile, userData, isLoggedIn, isLoading, error,
     history, coupons, daysJoined, userTitle, levelUpData,
-    initLiff, updateProfile, getLevelInfo, grantPoints, joinGame, redeemPromoCode
+    initLiff, updateProfile, getLevelInfo, grantPoints, joinGame, redeemPromoCode, refreshCoupons
   }
 })

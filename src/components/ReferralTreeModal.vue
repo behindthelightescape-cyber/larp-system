@@ -143,7 +143,27 @@ const exportImage = async () => {
       allowTaint: true,
       logging: false,
     })
-    exportedImageUrl.value = canvas.toDataURL('image/png')
+
+    const dataUrl = canvas.toDataURL('image/png')
+    const fileName = `宗門全景圖-${store.userData?.display_name || '宗主'}.png`
+
+    // 優先用 Web Share API（手機原生分享 / 存圖）
+    if (navigator.canShare) {
+      try {
+        const blob = await (await fetch(dataUrl)).blob()
+        const file = new File([blob], fileName, { type: 'image/png' })
+        if (navigator.canShare({ files: [file] })) {
+          await navigator.share({ files: [file] })
+          return
+        }
+      } catch (shareErr) {
+        if (shareErr.name !== 'AbortError') console.warn('share API 失敗，改顯示預覽', shareErr)
+        else return // 用戶主動取消
+      }
+    }
+
+    // fallback：顯示預覽讓用戶長按
+    exportedImageUrl.value = dataUrl
     showExportModal.value = true
   } catch (err) {
     console.error('匯出失敗:', err)

@@ -280,8 +280,15 @@ const closeModal = () => emit('close')
 
             <!-- 雙向捲動畫布 -->
             <div v-else-if="treeRoot" class="panorama-scroll-wrap">
-              <div class="tree-canvas" ref="treeCanvasRef">
-                <TreeNode :node="treeRoot" />
+              <div class="export-wrap" ref="treeCanvasRef">
+                <div class="export-logo-header">
+                  <div class="elh-brand">劇光燈 LARP</div>
+                  <div class="elh-title">{{ store.userData?.display_name }} 的宗門全景圖</div>
+                  <div class="elh-date">{{ new Date().toLocaleDateString('zh-TW') }}</div>
+                </div>
+                <div class="tree-canvas">
+                  <TreeNode :node="treeRoot" />
+                </div>
               </div>
             </div>
 
@@ -429,6 +436,47 @@ const closeModal = () => emit('close')
   min-height: 0;               /* 必要：讓 flex:1 在 overflow 下正確縮放 */
   background: #0a0a0a;
   padding: 28px 20px 60px;     /* 底部多留空間，避免最後一層被截 */
+}
+
+/* Export 外層（html2canvas 捕捉範圍） */
+.export-wrap {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: max-content;
+  background: #0a0a0a;
+  padding-bottom: 32px;
+}
+
+/* Logo Header */
+.export-logo-header {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 28px 40px 22px;
+  border-bottom: 1px solid rgba(212,175,55,0.3);
+  margin-bottom: 28px;
+  box-sizing: border-box;
+}
+.elh-brand {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 5px;
+  color: rgba(212,175,55,0.6);
+  text-transform: uppercase;
+}
+.elh-title {
+  font-size: 20px;
+  font-weight: 900;
+  color: #D4AF37;
+  letter-spacing: 2px;
+}
+.elh-date {
+  font-size: 10px;
+  color: #444;
+  letter-spacing: 1px;
 }
 
 /* 樹畫布：inline-flex 讓內容撐開寬度，橫向可捲 */

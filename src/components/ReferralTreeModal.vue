@@ -160,7 +160,7 @@ const exportImage = async () => {
     showExportModal.value = true
   } catch (err) {
     console.error('匯出失敗:', err)
-    alert('匯出失敗，請稍後再試')
+    alert('匯出失敗：' + (err?.message || JSON.stringify(err)))
   } finally {
     isExporting.value = false
   }

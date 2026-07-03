@@ -3,7 +3,8 @@ import { ref, onMounted, computed } from 'vue'
 import { useUserStore } from '../stores/user'
 import { supabase } from '../supabase'
 import TreeNode from './TreeNode.vue'
-import { GitBranch, Network, Sparkles, Shield, Swords, ArrowLeft, Loader2, Leaf, CheckCircle2, Clock, ScrollText, Camera } from 'lucide-vue-next'
+import { GitBranch, Network, Sparkles, Shield, Swords, ArrowLeft, Loader2, Leaf, CheckCircle2, Clock, ScrollText, Camera, Download } from 'lucide-vue-next'
+import html2canvas from 'html2canvas'
 
 const props = defineProps({ show: Boolean })
 const emit = defineEmits(['close'])
@@ -14,6 +15,9 @@ const hasError = ref(false)
 const viewMode = ref('flat')
 const isFetchingPanorama = ref(false)
 const isScreenshotMode = ref(false)
+const isExporting = ref(false)
+const exportPublicUrl = ref('')
+const showExportModal = ref(false)
 const treeCanvasRef = ref(null)
 
 const master = ref(null)
@@ -131,6 +135,37 @@ const fetchPanoramaTree = async () => {
 const enterScreenshotMode = () => { isScreenshotMode.value = true }
 const exitScreenshotMode = () => { isScreenshotMode.value = false }
 
+const exportImage = async () => {
+  if (!treeCanvasRef.value || isExporting.value) return
+  isExporting.value = true
+  try {
+    const canvas = await html2canvas(treeCanvasRef.value, {
+      backgroundColor: '#0a0a0a',
+      scale: 2,
+      useCORS: true,
+      allowTaint: true,
+      logging: false,
+    })
+
+    const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'))
+    const fileName = `tree-${store.userData?.id}-${Date.now()}.png`
+
+    const { error: uploadErr } = await supabase.storage
+      .from('exports')
+      .upload(fileName, blob, { contentType: 'image/png', upsert: true })
+    if (uploadErr) throw uploadErr
+
+    const { data } = supabase.storage.from('exports').getPublicUrl(fileName)
+    exportPublicUrl.value = data.publicUrl
+    showExportModal.value = true
+  } catch (err) {
+    console.error('匯出失敗:', err)
+    alert('匯出失敗，請稍後再試')
+  } finally {
+    isExporting.value = false
+  }
+}
+
 const closeModal = () => emit('close')
 </script>
 
@@ -225,9 +260,10 @@ const closeModal = () => emit('close')
             <div class="panorama-header">
               <button class="btn-back" @click="viewMode = 'flat'"><ArrowLeft :size="14" :stroke-width="2" class="btn-icon" /> 返回列表</button>
               <span class="panorama-hint">可上下左右滑動</span>
-              <button class="btn-export" @click="enterScreenshotMode" :disabled="isFetchingPanorama || !treeRoot">
-                <Camera :size="13" :stroke-width="2" />
-                截圖模式
+              <button class="btn-export" @click="exportImage" :disabled="isExporting || isFetchingPanorama || !treeRoot">
+                <Loader2 v-if="isExporting" :size="13" :stroke-width="2" class="spin-icon-sm" />
+                <Download v-else :size="13" :stroke-width="2" />
+                {{ isExporting ? '生成中…' : '下載大圖' }}
               </button>
             </div>
 
@@ -247,6 +283,17 @@ const closeModal = () => emit('close')
             <div v-else class="loading-state">哎呀，宗門尚未開枝散葉！</div>
           </div>
 
+        </div>
+      </div>
+    </transition>
+
+    <!-- 下載大圖 Modal -->
+    <transition name="fade">
+      <div v-if="showExportModal" class="export-overlay" @click.self="showExportModal = false">
+        <div class="export-sheet">
+          <div class="export-hint">📱 長按圖片 → 儲存到相簿</div>
+          <img :src="exportPublicUrl" class="export-img" crossorigin="anonymous" />
+          <button class="export-close-btn" @click="showExportModal = false">關閉</button>
         </div>
       </div>
     </transition>
@@ -409,6 +456,35 @@ const closeModal = () => emit('close')
 .status-pending { background: rgba(241,196,15,0.1); color: #f1c40f; border: 1px solid rgba(241,196,15,0.3); }
 .btn-panorama { background: linear-gradient(135deg,#2a1b4d 0%,#1a0b2e 100%); color: #b388ff; border: 1px solid #7c4dff; padding: 6px 12px; border-radius: 20px; font-size: 0.82rem; font-weight: bold; cursor: pointer; white-space: nowrap; }
 .mt-3 { margin-top: 14px; }
+
+/* ── 下載大圖 Modal ── */
+.export-overlay {
+  position: fixed; inset: 0; z-index: 10001;
+  background: rgba(0,0,0,0.92);
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  padding: 20px;
+}
+.export-sheet {
+  display: flex; flex-direction: column; align-items: center; gap: 16px;
+  max-width: 100%; max-height: 90vh;
+}
+.export-hint {
+  color: #D4AF37; font-size: 0.9rem; font-weight: 700;
+  background: rgba(212,175,55,0.1); border: 1px solid rgba(212,175,55,0.3);
+  padding: 10px 20px; border-radius: 20px; text-align: center;
+}
+.export-img {
+  max-width: 100%; max-height: 65vh;
+  border-radius: 12px; border: 1px solid rgba(212,175,55,0.25);
+  object-fit: contain;
+}
+.export-close-btn {
+  padding: 10px 32px; border-radius: 20px;
+  background: rgba(255,255,255,0.08); border: 1px solid #444;
+  color: #aaa; font-size: 0.9rem; font-weight: 700; font-family: inherit; cursor: pointer;
+}
+@keyframes spin-sm { to { transform: rotate(360deg); } }
+.spin-icon-sm { animation: spin-sm 1s linear infinite; }
 
 /* ── 截圖模式 ── */
 .screenshot-overlay {

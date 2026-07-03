@@ -3,8 +3,7 @@ import { ref, onMounted, computed } from 'vue'
 import { useUserStore } from '../stores/user'
 import { supabase } from '../supabase'
 import TreeNode from './TreeNode.vue'
-import { GitBranch, Network, Sparkles, Shield, Swords, ArrowLeft, Loader2, Leaf, CheckCircle2, Clock, ScrollText, Download } from 'lucide-vue-next'
-import html2canvas from 'html2canvas'
+import { GitBranch, Network, Sparkles, Shield, Swords, ArrowLeft, Loader2, Leaf, CheckCircle2, Clock, ScrollText, Camera } from 'lucide-vue-next'
 
 const props = defineProps({ show: Boolean })
 const emit = defineEmits(['close'])
@@ -14,7 +13,7 @@ const isLoading = ref(true)
 const hasError = ref(false)
 const viewMode = ref('flat')
 const isFetchingPanorama = ref(false)
-const isExporting = ref(false)
+const isScreenshotMode = ref(false)
 const treeCanvasRef = ref(null)
 
 const master = ref(null)
@@ -129,58 +128,8 @@ const fetchPanoramaTree = async () => {
   }
 }
 
-const exportedImageUrl = ref('')
-const showExportModal = ref(false)
-let exportBlobUrl = ''
-
-const closeExportModal = () => {
-  showExportModal.value = false
-  if (exportBlobUrl) { URL.revokeObjectURL(exportBlobUrl); exportBlobUrl = '' }
-}
-
-const exportImage = async () => {
-  if (!treeCanvasRef.value || isExporting.value) return
-  isExporting.value = true
-  try {
-    const canvas = await html2canvas(treeCanvasRef.value, {
-      backgroundColor: '#0a0a0a',
-      scale: 2,
-      useCORS: true,
-      allowTaint: true,
-      logging: false,
-    })
-
-    const fileName = `宗門全景圖-${store.userData?.display_name || '宗主'}.png`
-
-    // canvas → Blob
-    const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'))
-
-    // 優先用 Web Share API（手機原生分享 / 存圖）
-    if (navigator.canShare) {
-      try {
-        const file = new File([blob], fileName, { type: 'image/png' })
-        if (navigator.canShare({ files: [file] })) {
-          await navigator.share({ files: [file] })
-          return
-        }
-      } catch (shareErr) {
-        if (shareErr.name !== 'AbortError') console.warn('share API 失敗，改顯示預覽', shareErr)
-        else return // 用戶主動取消
-      }
-    }
-
-    // fallback：用 blob URL 顯示預覽（LINE 瀏覽器可長按儲存）
-    if (exportBlobUrl) URL.revokeObjectURL(exportBlobUrl)
-    exportBlobUrl = URL.createObjectURL(blob)
-    exportedImageUrl.value = exportBlobUrl
-    showExportModal.value = true
-  } catch (err) {
-    console.error('匯出失敗:', err)
-    alert('匯出失敗，請稍後再試')
-  } finally {
-    isExporting.value = false
-  }
-}
+const enterScreenshotMode = () => { isScreenshotMode.value = true }
+const exitScreenshotMode = () => { isScreenshotMode.value = false }
 
 const closeModal = () => emit('close')
 </script>
@@ -276,10 +225,9 @@ const closeModal = () => emit('close')
             <div class="panorama-header">
               <button class="btn-back" @click="viewMode = 'flat'"><ArrowLeft :size="14" :stroke-width="2" class="btn-icon" /> 返回列表</button>
               <span class="panorama-hint">可上下左右滑動</span>
-              <button class="btn-export" @click="exportImage" :disabled="isExporting || isFetchingPanorama || !treeRoot">
-                <Loader2 v-if="isExporting" :size="13" :stroke-width="2" class="spin-icon-sm" />
-                <Download v-else :size="13" :stroke-width="2" />
-                {{ isExporting ? '匯出中…' : '下載大圖' }}
+              <button class="btn-export" @click="enterScreenshotMode" :disabled="isFetchingPanorama || !treeRoot">
+                <Camera :size="13" :stroke-width="2" />
+                截圖模式
               </button>
             </div>
 
@@ -303,13 +251,21 @@ const closeModal = () => emit('close')
       </div>
     </transition>
 
-    <!-- 匯出預覽 Modal -->
+    <!-- 截圖模式 Overlay -->
     <transition name="fade">
-      <div v-if="showExportModal" class="export-overlay" @click.self="closeExportModal">
-        <div class="export-sheet">
-          <div class="export-hint">📱 長按圖片 → 儲存到相簿</div>
-          <img :src="exportedImageUrl" class="export-img" />
-          <button class="export-close-btn" @click="closeExportModal">關閉</button>
+      <div v-if="isScreenshotMode" class="screenshot-overlay">
+        <div class="screenshot-hint-bar">
+          <span>📸 現在截圖吧！</span>
+          <button class="screenshot-exit-btn" @click="exitScreenshotMode">✕ 離開截圖模式</button>
+        </div>
+        <div class="screenshot-scroll">
+          <div class="screenshot-canvas">
+            <div class="screenshot-title">
+              <span class="sc-brand">劇光燈 LARP</span>
+              <span class="sc-name">{{ store.userData?.display_name }} 的宗門全景圖</span>
+            </div>
+            <TreeNode v-if="treeRoot" :node="treeRoot" />
+          </div>
         </div>
       </div>
     </transition>
@@ -412,8 +368,6 @@ const closeModal = () => emit('close')
 }
 .btn-export:hover:not(:disabled) { background: rgba(212,175,55,0.18); border-color: #D4AF37; }
 .btn-export:disabled { opacity: 0.4; cursor: not-allowed; }
-@keyframes spin-sm { to { transform: rotate(360deg); } }
-.spin-icon-sm { animation: spin-sm 1s linear infinite; }
 
 /* 雙向捲動區：撐滿剩餘高度 */
 .panorama-scroll-wrap {
@@ -456,31 +410,41 @@ const closeModal = () => emit('close')
 .btn-panorama { background: linear-gradient(135deg,#2a1b4d 0%,#1a0b2e 100%); color: #b388ff; border: 1px solid #7c4dff; padding: 6px 12px; border-radius: 20px; font-size: 0.82rem; font-weight: bold; cursor: pointer; white-space: nowrap; }
 .mt-3 { margin-top: 14px; }
 
-/* ── 匯出預覽 ── */
-.export-overlay {
+/* ── 截圖模式 ── */
+.screenshot-overlay {
   position: fixed; inset: 0; z-index: 10001;
-  background: rgba(0,0,0,0.92);
-  display: flex; flex-direction: column; align-items: center; justify-content: center;
-  padding: 20px;
+  background: #080808;
+  display: flex; flex-direction: column;
 }
-.export-sheet {
-  display: flex; flex-direction: column; align-items: center; gap: 16px;
-  max-width: 100%; max-height: 90vh;
+.screenshot-hint-bar {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 12px 16px;
+  background: rgba(212,175,55,0.12);
+  border-bottom: 1px solid rgba(212,175,55,0.3);
+  color: #D4AF37; font-size: 0.88rem; font-weight: 700;
+  flex-shrink: 0;
 }
-.export-hint {
-  color: #D4AF37; font-size: 0.9rem; font-weight: 700;
-  background: rgba(212,175,55,0.1); border: 1px solid rgba(212,175,55,0.3);
-  padding: 10px 20px; border-radius: 20px; text-align: center;
-}
-.export-img {
-  max-width: 100%; max-height: 70vh;
-  border-radius: 12px; border: 1px solid rgba(212,175,55,0.25);
-  object-fit: contain;
-}
-.export-close-btn {
-  padding: 10px 32px; border-radius: 20px;
+.screenshot-exit-btn {
   background: rgba(255,255,255,0.08); border: 1px solid #444;
-  color: #aaa; font-size: 0.9rem; font-weight: 700; font-family: inherit; cursor: pointer;
+  color: #aaa; padding: 6px 14px; border-radius: 16px;
+  font-size: 0.8rem; font-family: inherit; cursor: pointer;
+}
+.screenshot-scroll {
+  flex: 1; overflow: auto; -webkit-overflow-scrolling: touch;
+  padding: 20px 16px 40px;
+}
+.screenshot-canvas {
+  display: inline-flex; flex-direction: column; align-items: center;
+  min-width: max-content; gap: 20px;
+}
+.screenshot-title {
+  display: flex; flex-direction: column; align-items: center; gap: 4px;
+}
+.sc-brand {
+  font-size: 0.7rem; letter-spacing: 3px; color: rgba(212,175,55,0.5); font-weight: 700;
+}
+.sc-name {
+  font-size: 1rem; font-weight: 900; color: #D4AF37; letter-spacing: 1px;
 }
 
 /* ── 進場動畫 ── */

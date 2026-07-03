@@ -282,7 +282,7 @@ const closeModal = () => emit('close')
             <div v-else-if="treeRoot" class="panorama-scroll-wrap">
               <div class="export-wrap" ref="treeCanvasRef">
                 <div class="export-logo-header">
-                  <div class="elh-brand">劇光燈 LARP</div>
+                  <img src="https://meee.com.tw/VInVFKh.png" class="elh-logo" crossorigin="anonymous" />
                   <div class="elh-title">{{ store.userData?.display_name }} 的宗門全景圖</div>
                   <div class="elh-date">{{ new Date().toLocaleDateString('zh-TW') }}</div>
                 </div>
@@ -460,12 +460,9 @@ const closeModal = () => emit('close')
   margin-bottom: 28px;
   box-sizing: border-box;
 }
-.elh-brand {
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 5px;
-  color: rgba(212,175,55,0.6);
-  text-transform: uppercase;
+.elh-logo {
+  height: 48px;
+  object-fit: contain;
 }
 .elh-title {
   font-size: 20px;

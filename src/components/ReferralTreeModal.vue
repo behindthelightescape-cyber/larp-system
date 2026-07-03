@@ -135,10 +135,32 @@ const fetchPanoramaTree = async () => {
 const enterScreenshotMode = () => { isScreenshotMode.value = true }
 const exitScreenshotMode = () => { isScreenshotMode.value = false }
 
+const LOGO_URL = 'https://meee.com.tw/VInVFKh.png'
+
+const toBase64 = (url) => new Promise((resolve) => {
+  const img = new Image()
+  img.crossOrigin = 'anonymous'
+  img.onload = () => {
+    const c = document.createElement('canvas')
+    c.width = img.naturalWidth; c.height = img.naturalHeight
+    c.getContext('2d').drawImage(img, 0, 0)
+    resolve(c.toDataURL('image/png'))
+  }
+  img.onerror = () => resolve('')
+  img.src = url + '?t=' + Date.now()
+})
+
 const exportImage = async () => {
   if (!treeCanvasRef.value || isExporting.value) return
   isExporting.value = true
   try {
+    // 先把 logo 轉成 base64，避免 html2canvas CORS 問題
+    const logoEl = treeCanvasRef.value.querySelector('.elh-logo')
+    if (logoEl) {
+      const b64 = await toBase64(LOGO_URL)
+      if (b64) logoEl.src = b64
+    }
+
     const canvas = await html2canvas(treeCanvasRef.value, {
       backgroundColor: '#0a0a0a',
       scale: 2,

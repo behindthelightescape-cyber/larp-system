@@ -131,6 +131,12 @@ const fetchPanoramaTree = async () => {
 
 const exportedImageUrl = ref('')
 const showExportModal = ref(false)
+let exportBlobUrl = ''
+
+const closeExportModal = () => {
+  showExportModal.value = false
+  if (exportBlobUrl) { URL.revokeObjectURL(exportBlobUrl); exportBlobUrl = '' }
+}
 
 const exportImage = async () => {
   if (!treeCanvasRef.value || isExporting.value) return
@@ -144,13 +150,14 @@ const exportImage = async () => {
       logging: false,
     })
 
-    const dataUrl = canvas.toDataURL('image/png')
     const fileName = `宗門全景圖-${store.userData?.display_name || '宗主'}.png`
+
+    // canvas → Blob
+    const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'))
 
     // 優先用 Web Share API（手機原生分享 / 存圖）
     if (navigator.canShare) {
       try {
-        const blob = await (await fetch(dataUrl)).blob()
         const file = new File([blob], fileName, { type: 'image/png' })
         if (navigator.canShare({ files: [file] })) {
           await navigator.share({ files: [file] })
@@ -162,8 +169,10 @@ const exportImage = async () => {
       }
     }
 
-    // fallback：顯示預覽讓用戶長按
-    exportedImageUrl.value = dataUrl
+    // fallback：用 blob URL 顯示預覽（LINE 瀏覽器可長按儲存）
+    if (exportBlobUrl) URL.revokeObjectURL(exportBlobUrl)
+    exportBlobUrl = URL.createObjectURL(blob)
+    exportedImageUrl.value = exportBlobUrl
     showExportModal.value = true
   } catch (err) {
     console.error('匯出失敗:', err)
@@ -296,11 +305,11 @@ const closeModal = () => emit('close')
 
     <!-- 匯出預覽 Modal -->
     <transition name="fade">
-      <div v-if="showExportModal" class="export-overlay" @click.self="showExportModal = false">
+      <div v-if="showExportModal" class="export-overlay" @click.self="closeExportModal">
         <div class="export-sheet">
-          <div class="export-hint">📱 長按圖片即可儲存到相簿</div>
+          <div class="export-hint">📱 長按圖片 → 儲存到相簿</div>
           <img :src="exportedImageUrl" class="export-img" />
-          <button class="export-close-btn" @click="showExportModal = false">關閉</button>
+          <button class="export-close-btn" @click="closeExportModal">關閉</button>
         </div>
       </div>
     </transition>

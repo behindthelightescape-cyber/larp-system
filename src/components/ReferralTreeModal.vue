@@ -135,7 +135,7 @@ const fetchPanoramaTree = async () => {
 const enterScreenshotMode = () => { isScreenshotMode.value = true }
 const exitScreenshotMode = () => { isScreenshotMode.value = false }
 
-const LOGO_URL = 'https://meee.com.tw/VInVFKh.png'
+const LOGO_URL = '/logo.png'
 
 const toBase64 = (url) => new Promise((resolve) => {
   const img = new Image()
@@ -147,7 +147,7 @@ const toBase64 = (url) => new Promise((resolve) => {
     resolve(c.toDataURL('image/png'))
   }
   img.onerror = () => resolve('')
-  img.src = url + '?t=' + Date.now()
+  img.src = url
 })
 
 const exportImage = async () => {
@@ -304,7 +304,7 @@ const closeModal = () => emit('close')
             <div v-else-if="treeRoot" class="panorama-scroll-wrap">
               <div class="export-wrap" ref="treeCanvasRef">
                 <div class="export-logo-header">
-                  <img src="https://meee.com.tw/VInVFKh.png" class="elh-logo" crossorigin="anonymous" />
+                  <img src="/logo.png" class="elh-logo" />
                   <div class="elh-title">{{ store.userData?.display_name }} 的宗門全景圖</div>
                   <div class="elh-date">{{ new Date().toLocaleDateString('zh-TW') }}</div>
                 </div>

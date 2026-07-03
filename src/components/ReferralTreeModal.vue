@@ -147,16 +147,21 @@ const exportImage = async () => {
       logging: false,
     })
 
-    const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'))
+    const imageData = canvas.toDataURL('image/png')
     const fileName = `tree-${store.userData?.id}-${Date.now()}.png`
 
-    const { error: uploadErr } = await supabase.storage
-      .from('exports')
-      .upload(fileName, blob, { contentType: 'image/png', upsert: true })
-    if (uploadErr) throw uploadErr
+    const res = await fetch(
+      'https://cqbiozfappfwfcahtxfm.supabase.co/functions/v1/export-image',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ imageData, fileName }),
+      }
+    )
+    const json = await res.json()
+    if (!res.ok || json.error) throw new Error(json.error || '上傳失敗')
 
-    const { data } = supabase.storage.from('exports').getPublicUrl(fileName)
-    exportPublicUrl.value = data.publicUrl
+    exportPublicUrl.value = json.publicUrl
     showExportModal.value = true
   } catch (err) {
     console.error('匯出失敗:', err)

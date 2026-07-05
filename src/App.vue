@@ -62,6 +62,10 @@ onMounted(() => {
       <p class="loading-text">連線至劇光燈主機中...</p>
     </div>
 
+    <div v-else-if="userStore.error" class="page-content" style="padding:40px 20px;color:#f87171;font-size:0.9rem;white-space:pre-wrap;">
+      ❌ 初始化錯誤：{{ userStore.error }}
+    </div>
+
     <div v-else class="page-content">
       <router-view v-slot="{ Component }">
         <transition name="fade" mode="out-in">

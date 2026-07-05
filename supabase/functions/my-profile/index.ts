@@ -28,17 +28,19 @@ Deno.serve(async (req) => {
     const userId = await verifyLineToken(lineToken)
     const supabase = createClient(SUPABASE_URL, SERVICE_ROLE_KEY)
 
-    // GET：讀取私人資料
+    // GET：讀取私人資料（從 users_private）
     if (req.method === 'GET') {
       const { data, error } = await supabase
-        .from('users')
+        .from('users_private')
         .select('phone, email, birthday')
-        .eq('id', userId)
+        .eq('user_id', userId)
         .single()
-      if (error) throw error
-      return new Response(JSON.stringify(data), {
-        headers: { ...CORS, 'Content-Type': 'application/json' },
-      })
+      // PGRST116 = 還沒填資料的新用戶，視為全 null
+      if (error && error.code !== 'PGRST116') throw error
+      return new Response(
+        JSON.stringify(data ?? { phone: null, email: null, birthday: null }),
+        { headers: { ...CORS, 'Content-Type': 'application/json' } },
+      )
     }
 
     // POST：更新個人資料
@@ -49,31 +51,40 @@ Deno.serve(async (req) => {
       if (!email) throw new Error('請填寫電子郵件')
       if (name && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(name)) throw new Error('暱稱不能是 Email 格式')
 
-      const isFirstProfile = !!(birthday)
-      const { data: before } = await supabase
-        .from('users')
-        .select('birthday, birthday_claimed_year')
-        .eq('id', userId)
+      // 查舊的 birthday（判斷是否第一次填）
+      const { data: beforePrivate } = await supabase
+        .from('users_private')
+        .select('birthday')
+        .eq('user_id', userId)
         .single()
 
-      const { data, error } = await supabase
+      // 更新 display_name（在 users table）
+      const { data: publicData, error: userError } = await supabase
         .from('users')
-        .update({
-          display_name: name,
-          phone,
-          birthday: birthday || null,
-          email: email || null,
-        })
+        .update({ display_name: name })
         .eq('id', userId)
         .select()
         .single()
-      if (error) throw error
+      if (userError) throw userError
 
-      const firstTimeProfile = birthday && !before?.birthday
+      // 更新 phone / email / birthday（在 users_private table）
+      const { error: privateError } = await supabase
+        .from('users_private')
+        .upsert({ user_id: userId, phone, email: email || null, birthday: birthday || null })
+      if (privateError) throw privateError
 
-      return new Response(JSON.stringify({ ...data, firstTimeProfile }), {
-        headers: { ...CORS, 'Content-Type': 'application/json' },
-      })
+      const firstTimeProfile = !!(birthday && !beforePrivate?.birthday)
+
+      return new Response(
+        JSON.stringify({
+          ...publicData,
+          phone,
+          email: email || null,
+          birthday: birthday || null,
+          firstTimeProfile,
+        }),
+        { headers: { ...CORS, 'Content-Type': 'application/json' } },
+      )
     }
 
     throw new Error('不支援的方法')

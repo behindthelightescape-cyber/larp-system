@@ -180,7 +180,7 @@ export const useUserStore = defineStore('user', () => {
 
     } catch (err) {
       console.error('LIFF 錯誤:', err)
-      error.value = `${err.message}\ncode:${err?.code ?? '-'} hint:${err?.hint ?? '-'}\ndetails:${err?.details ?? '-'}`
+      error.value = err.message
     } finally {
       isLoading.value = false
     }
@@ -190,12 +190,7 @@ export const useUserStore = defineStore('user', () => {
   const checkAndRegisterUser = async (profile) => {
     const { data: existingUser, error: selectErr } = await supabase.from('users').select('*').eq('id', profile.userId).single()
 
-    // PGRST116 = 沒找到，其他才是真正的錯誤
-    if (selectErr && selectErr.code !== 'PGRST116') {
-      const e = new Error(`SELECT失敗:${selectErr.message}`)
-      e.code = selectErr.code; e.hint = selectErr.hint; e.details = selectErr.details
-      throw e
-    }
+    if (selectErr && selectErr.code !== 'PGRST116') throw selectErr
 
     if (existingUser) {
       userData.value = existingUser
@@ -212,11 +207,7 @@ export const useUserStore = defineStore('user', () => {
           .insert([{ id: profile.userId, display_name: profile.displayName, picture_url: profile.pictureUrl, legacy_id: newLegacyId, level: 1, total_exp: 0 }])
           .select().single()
         if (!insertError) { newUser = data; break }
-        if (insertError.code !== '23505') {
-          const e = new Error(`INSERT失敗:${insertError.message}`)
-          e.code = insertError.code; e.hint = insertError.hint; e.details = insertError.details
-          throw e
-        }
+        if (insertError.code !== '23505') throw insertError
       }
       if (!newUser) throw new Error('無法產生會員編號，請稍後再試')
       userData.value = newUser

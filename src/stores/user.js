@@ -99,6 +99,7 @@ export const useUserStore = defineStore('user', () => {
       lineProfile.value = profile
       
       await checkAndRegisterUser(profile)
+      await loadPrivateProfile()
 
       if (userData.value) {
         const correctLevelInfo = getLevelInfo(userData.value.total_exp || 0)
@@ -344,23 +345,60 @@ export const useUserStore = defineStore('user', () => {
   }
 
   // 🌟 E. 更新個人資料 (🚀 串接動態派發引擎！)
+  const EDGE_BASE = 'https://cqbiozfappfwfcahtxfm.supabase.co/functions/v1'
+
+  const loadPrivateProfile = async () => {
+    try {
+      const token = liff.getAccessToken()
+      if (!token) return
+      const res = await fetch(`${EDGE_BASE}/my-profile`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      if (!res.ok) return
+      const priv = await res.json()
+      if (userData.value) {
+        userData.value.phone = priv.phone ?? userData.value.phone
+        userData.value.email = priv.email ?? userData.value.email
+        userData.value.birthday = priv.birthday ?? userData.value.birthday
+      }
+    } catch (err) {
+      console.error('loadPrivateProfile 失敗:', err.message)
+    }
+  }
+
   const updateProfile = async (formData) => {
     if (!userData.value) return { success: false, message: '尚未登入' }
 
     try {
-      const isFirstTimeCompletingProfile = !userData.value.birthday && formData.birthday;
+      const isFirstTimeCompletingProfile = !userData.value.birthday && formData.birthday
 
-      const { data, error: updateError } = await supabase
-        .from('users').update({ display_name: formData.name, phone: formData.phone, birthday: formData.birthday, email: formData.email || null }).eq('id', userData.value.id).select().single()
+      const token = liff.getAccessToken()
+      if (!token) throw new Error('無法取得 LINE Token，請重新登入')
 
-      if (updateError) throw updateError
-      userData.value = data
+      const res = await fetch(`${EDGE_BASE}/my-profile`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          name: formData.name,
+          phone: formData.phone,
+          birthday: formData.birthday,
+          email: formData.email || null,
+        }),
+      })
+
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || '更新失敗')
+
+      userData.value = { ...userData.value, ...data }
 
       // 🚀 核心 3：資料完善禮 - 呼叫引擎
-      if (isFirstTimeCompletingProfile) {
+      if (isFirstTimeCompletingProfile || data.firstTimeProfile) {
         const grantedTitles = await grantSystemRewards(userData.value.id, 'profile_complete')
         await fetchUserExtraData(userData.value.id)
-        
+
         let msg = '資料儲存成功！'
         if (grantedTitles.length > 0) {
           msg += `\n\n🎁 感謝完善資料，獲得：\n- ` + grantedTitles.join('\n- ')
@@ -421,6 +459,6 @@ export const useUserStore = defineStore('user', () => {
   return {
     lineProfile, userData, isLoggedIn, isLoading, error,
     history, coupons, daysJoined, userTitle, levelUpData,
-    initLiff, updateProfile, getLevelInfo, grantPoints, joinGame, redeemPromoCode, refreshCoupons
+    initLiff, updateProfile, loadPrivateProfile, getLevelInfo, grantPoints, joinGame, redeemPromoCode, refreshCoupons
   }
 })

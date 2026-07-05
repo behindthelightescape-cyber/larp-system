@@ -32,8 +32,7 @@ watch(() => userStore.isLoading, (loading) => {
 }, { once: true })
 
 onMounted(() => {
-  if (window.location.hash.includes('#/admin') || window.location.hash.includes('#/display')) {
-    console.log('🕵️‍♂️ 偵測到老闆走後台通道，跳過 LINE 看門狗！')
+  if (window.location.hash.includes('#/display')) {
     userStore.isLoading = false
     return
   }

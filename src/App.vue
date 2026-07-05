@@ -32,7 +32,7 @@ watch(() => userStore.isLoading, (loading) => {
 }, { once: true })
 
 onMounted(() => {
-  if (window.location.hash.includes('#/display')) {
+  if (window.location.hash.includes('#/admin') || window.location.hash.includes('#/display')) {
     userStore.isLoading = false
     return
   }

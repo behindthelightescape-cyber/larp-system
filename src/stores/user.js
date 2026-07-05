@@ -98,20 +98,18 @@ export const useUserStore = defineStore('user', () => {
       const profile = await liff.getProfile()
       lineProfile.value = profile
 
-      // LINE token 換 Supabase authenticated session（失敗時降級為 anon 繼續）
-      try {
-        const lineToken = liff.getAccessToken()
-        const authRes = await fetch(`${EDGE_BASE}/auth-line`, {
-          method: 'POST',
-          headers: { Authorization: `Bearer ${lineToken}` },
-        })
-        if (authRes.ok) {
-          const { token_hash } = await authRes.json()
-          await supabase.auth.verifyOtp({ token_hash, type: 'magiclink' })
-        }
-      } catch (e) {
-        console.warn('auth-line 失敗，降級為 anon 模式:', e.message)
-      }
+      // LINE token 換 Supabase authenticated session（強制要求，失敗即中止）
+      const lineToken = liff.getAccessToken()
+      const authRes = await fetch(`${EDGE_BASE}/auth-line`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${lineToken}` },
+      })
+      if (!authRes.ok) throw new Error(`auth-line HTTP ${authRes.status}`)
+      const authJson = await authRes.json()
+      if (authJson.error) throw new Error(`auth-line: ${authJson.error}`)
+      const { token_hash } = authJson
+      const { error: otpErr } = await supabase.auth.verifyOtp({ token_hash, type: 'magiclink' })
+      if (otpErr) throw new Error(`verifyOtp: ${otpErr.message}`)
 
       await checkAndRegisterUser(profile)
       await loadPrivateProfile()
@@ -196,6 +194,7 @@ export const useUserStore = defineStore('user', () => {
     } catch (err) {
       console.error('LIFF 錯誤:', err)
       error.value = err.message
+      alert(`❌ 初始化錯誤：${err.message}`)
     } finally {
       isLoading.value = false
     }

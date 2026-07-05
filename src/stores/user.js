@@ -351,9 +351,17 @@ export const useUserStore = defineStore('user', () => {
     try {
       const token = liff.getAccessToken()
       if (!token) return
-      const res = await fetch(`${EDGE_BASE}/my-profile`, {
-        headers: { Authorization: `Bearer ${token}` },
-      })
+      const controller = new AbortController()
+      const timer = setTimeout(() => controller.abort(), 5000)
+      let res
+      try {
+        res = await fetch(`${EDGE_BASE}/my-profile`, {
+          headers: { Authorization: `Bearer ${token}` },
+          signal: controller.signal,
+        })
+      } finally {
+        clearTimeout(timer)
+      }
       if (!res.ok) return
       const priv = await res.json()
       if (userData.value) {

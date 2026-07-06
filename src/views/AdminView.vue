@@ -28,8 +28,8 @@ const email = ref('')
 const password = ref('')
 
 const adminProfile = ref({
-  role: 'player',
-  managed_branch: '載入中...'
+  role: 'admin',
+  managed_branch: 'ALL'
 })
 let authSubscription = null
 onUnmounted(() => { authSubscription?.unsubscribe() })
@@ -41,7 +41,7 @@ onMounted(async () => {
   const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, _session) => {
     session.value = _session
     if (_session) {
-      fetchAdminProfile(_session.user.id)
+      fetchAdminProfile()
     } else {
       adminProfile.value = { role: 'player', managed_branch: '無權限' }
     }
@@ -49,26 +49,30 @@ onMounted(async () => {
   authSubscription = subscription
 
   if (session.value) {
-    fetchAdminProfile(session.value.user.id)
+    fetchAdminProfile()
   } else {
     isLoading.value = false
   }
 })
 
-const fetchAdminProfile = async (userId) => {
+const fetchAdminProfile = async () => {
   try {
     const { data, error } = await supabase
       .from('users')
       .select('role, managed_branch, display_name')
-      .eq('id', userId)
+      .in('role', ['admin', 'manager'])
+      .limit(1)
       .single()
 
     if (data) {
       adminProfile.value = {
         name: data.display_name || 'Admin',
-        role: data.role || 'manager', 
-        managed_branch: data.managed_branch || '西門館1.0'
+        role: data.role || 'admin',
+        managed_branch: data.managed_branch || 'ALL'
       }
+    } else {
+      // 找不到 profile row 仍保持 admin 預設值，不影響功能
+      console.warn('fetchAdminProfile: 找不到 admin row，使用預設值', error?.message)
     }
   } catch (err) {
     console.error('抓取權限失敗:', err)

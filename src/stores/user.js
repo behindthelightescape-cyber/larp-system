@@ -289,8 +289,9 @@ export const useUserStore = defineStore('user', () => {
       // 🚀 核心 1：推坑分潤 - 呼叫引擎給老手發券
       // ==========================================
       if (currentExp === 0 && userData.value.referred_by) {
-        // 查詢 L1 推薦人
-        const { data: referrer } = await supabase.from('users').select('id, display_name, referred_by').eq('my_referral_code', userData.value.referred_by).single()
+        // 查詢 L1 推薦人（RPC 繞過 RLS，只回傳 id/display_name/referred_by）
+        const { data: referrerRows } = await supabase.rpc('get_user_by_referral_code', { p_code: userData.value.referred_by })
+        const referrer = Array.isArray(referrerRows) ? referrerRows[0] : null
         if (referrer) {
           // L1：系統票券 + 點數
           await grantSystemRewards(referrer.id, 'referral_veteran')
@@ -302,7 +303,8 @@ export const useUserStore = defineStore('user', () => {
 
           // L2+：查詢師公
           if (referrer.referred_by) {
-            const { data: grandReferrer } = await supabase.from('users').select('id, display_name').eq('my_referral_code', referrer.referred_by).single()
+            const { data: grandRefRows } = await supabase.rpc('get_user_by_referral_code', { p_code: referrer.referred_by })
+            const grandReferrer = Array.isArray(grandRefRows) ? grandRefRows[0] : null
             if (grandReferrer) {
               const { data: ruleL2 } = await supabase.from('referral_point_rules').select('*').eq('tier', 2).eq('is_active', true).single()
               if (ruleL2?.points > 0) {

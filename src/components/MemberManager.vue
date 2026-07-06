@@ -20,6 +20,8 @@ const selectedMember = ref(null)
 const memberCoupons = ref([])
 const memberHistory = ref([])
 const memberAchievements = ref([])
+const memberReferrer = ref(null)
+const memberDisciples = ref([])
 const isSearching = ref(false)
 
 const showQuickGiftForm = ref(false)
@@ -66,7 +68,7 @@ const searchMembers = async () => {
   if (!q) { searchResults.value = []; return }
   isSearching.value = true
   try {
-    const SELECT = 'id, display_name, legacy_id, picture_url, total_exp, level, created_at, last_birthday_year, birthday_claimed_year, points'
+    const SELECT = 'id, display_name, legacy_id, picture_url, total_exp, level, created_at, last_birthday_year, birthday_claimed_year, points, referred_by, my_referral_code'
     const { data, error } = await supabase
       .from('users')
       .select(SELECT)
@@ -87,8 +89,18 @@ const selectMember = async (user) => {
   searchResults.value = []
   searchQuery.value = ''
   showQuickGiftForm.value = false
+  memberReferrer.value = null
+  memberDisciples.value = []
 
-  const [couponsRes, historyRes, achieveRes, privateRes] = await Promise.all([
+  const referrerPromise = user.referred_by
+    ? supabase.rpc('get_user_by_referral_code', { p_code: user.referred_by })
+    : Promise.resolve({ data: null })
+
+  const disciplesPromise = user.my_referral_code
+    ? supabase.from('users').select('id, display_name, legacy_id, total_exp').eq('referred_by', user.my_referral_code).order('created_at')
+    : Promise.resolve({ data: [] })
+
+  const [couponsRes, historyRes, achieveRes, privateRes, referrerRes, disciplesRes] = await Promise.all([
     supabase.from('coupons').select('*').eq('user_id', user.id).order('created_at', { ascending: false }),
     supabase.from('game_participants')
       .select('id, created_at, character_name, exp_gained, games ( play_time, gm_name, story_memory, scripts ( title ) )')
@@ -98,13 +110,17 @@ const selectMember = async (user) => {
       .select('unlocked_at, achievements(title)')
       .eq('user_id', user.id)
       .order('unlocked_at', { ascending: false }),
-    supabase.from('users_private').select('birthday').eq('user_id', user.id).single()
+    supabase.from('users_private').select('birthday').eq('user_id', user.id).single(),
+    referrerPromise,
+    disciplesPromise,
   ])
 
   memberCoupons.value = couponsRes.data || []
   memberHistory.value = historyRes.data || []
   memberAchievements.value = achieveRes.data || []
   if (privateRes.data) selectedMember.value = { ...selectedMember.value, birthday: privateRes.data.birthday }
+  memberReferrer.value = Array.isArray(referrerRes.data) ? referrerRes.data[0] : null
+  memberDisciples.value = disciplesRes.data || []
 }
 
 // 🚀 新增：手動預先核銷本年度生日優惠
@@ -343,6 +359,36 @@ const calculateDays = (dateString) => {
         </div>
       </div>
 
+      <!-- 師徒關係 -->
+      <div class="referral-section">
+        <div class="referral-row">
+          <span class="ref-label">我的推薦碼</span>
+          <span class="ref-value code">{{ selectedMember.my_referral_code || '未設定' }}</span>
+        </div>
+        <div class="referral-row">
+          <span class="ref-label">師父</span>
+          <span class="ref-value">
+            <template v-if="memberReferrer">
+              {{ memberReferrer.display_name }}
+              <span class="ref-code">（{{ selectedMember.referred_by }}）</span>
+            </template>
+            <template v-else-if="selectedMember.referred_by">
+              查無此碼：{{ selectedMember.referred_by }}
+            </template>
+            <template v-else>無</template>
+          </span>
+        </div>
+        <div class="referral-row">
+          <span class="ref-label">徒弟 ({{ memberDisciples.length }} 人)</span>
+          <span class="ref-value">
+            <template v-if="memberDisciples.length === 0">無</template>
+            <span v-for="d in memberDisciples" :key="d.id" class="disciple-chip" @click="openMember(d.legacy_id)">
+              {{ d.display_name }} <span class="dc-exp">{{ d.total_exp || 0 }} exp</span>
+            </span>
+          </span>
+        </div>
+      </div>
+
       <div class="privilege-section">
         <p class="privilege-title">👑 櫃台特權操作區</p>
         <button
@@ -494,6 +540,15 @@ const calculateDays = (dateString) => {
 .member-stats { display: flex; gap: 15px; flex-wrap: wrap; margin-bottom: 25px; }
 .stat-box { background: #1a1a1a; padding: 15px; border-radius: 8px; flex: 1; min-width: 120px; border: 1px solid #222; text-align: center; }
 .stat-label { font-size: 0.85rem; color: #888; margin-bottom: 5px; }
+.referral-section { background: #0d0d0d; border: 1px solid #2a2a2a; border-radius: 8px; padding: 14px 16px; margin: 16px 0; display: flex; flex-direction: column; gap: 10px; }
+.referral-row { display: flex; align-items: flex-start; gap: 12px; }
+.ref-label { font-size: 0.78rem; color: #888; width: 90px; flex-shrink: 0; padding-top: 2px; }
+.ref-value { font-size: 0.88rem; color: #ddd; flex: 1; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.ref-value.code { font-family: monospace; color: #D4AF37; font-size: 0.95rem; letter-spacing: .05em; }
+.ref-code { font-size: 0.78rem; color: #666; }
+.disciple-chip { display: inline-flex; align-items: center; gap: 5px; background: #1a1a1a; border: 1px solid #333; border-radius: 999px; padding: 2px 10px; font-size: 0.8rem; cursor: pointer; transition: border-color .15s; }
+.disciple-chip:hover { border-color: #D4AF37; color: #D4AF37; }
+.dc-exp { font-size: 0.72rem; color: #888; }
 .stat-value { font-size: 1.5rem; font-weight: bold; color: #D4AF37; }
 
 /* 🚀 櫃檯特權專區的霸氣紅邊框設計 */

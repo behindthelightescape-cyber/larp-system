@@ -240,6 +240,17 @@ export const useUserStore = defineStore('user', () => {
       const { data: historyData } = await supabase.from('game_participants').select(`id, exp_gained, comment, games ( play_time, gm_name, story_memory, branch_name, scripts ( title, cover_url ) )`).eq('user_id', userId).order('created_at', { ascending: false })
 
       if (historyData) {
+        // 自動修復：game_participants 總和 > total_exp 時呼叫 SECURITY DEFINER 函數修正
+        const gpSum = historyData.reduce((sum, item) => sum + (item.exp_gained || 0), 0)
+        if (gpSum > (userData.value?.total_exp || 0)) {
+          console.warn(`⚠️ EXP 不一致（DB: ${userData.value?.total_exp}, 場次合計: ${gpSum}），自動修復中...`)
+          const { data: syncData } = await supabase.rpc('sync_my_exp')
+          if (syncData?.[0]) {
+            userData.value.total_exp = syncData[0].new_total_exp
+            userData.value.level = syncData[0].new_level
+          }
+        }
+
         history.value = historyData.map(item => {
           const rawCover = item.games?.scripts?.cover_url;
           const finalCover = (rawCover && rawCover.trim() !== '') ? rawCover : 'https://images.unsplash.com/photo-1514467953502-5a7820e3efb4?w=600&q=80';
@@ -282,8 +293,9 @@ export const useUserStore = defineStore('user', () => {
       // 1. 寫入參與紀錄
       const { error: insertErr } = await supabase.from('game_participants').insert([{ game_id: gameId, user_id: userData.value.id, exp_gained: earnedExp }])
       if (insertErr) throw insertErr
-      // 2. 更新總經驗值與等級
-      await supabase.from('users').update({ total_exp: newTotalExp, level: newLevel }).eq('id', userData.value.id)
+      // 2. 更新總經驗值與等級（若失敗會由 fetchUserExtraData 自動修復）
+      const { error: updateExpErr } = await supabase.from('users').update({ total_exp: newTotalExp, level: newLevel }).eq('id', userData.value.id)
+      if (updateExpErr) console.error('⚠️ total_exp 更新失敗，將由自動修復補正:', updateExpErr.message)
 
       // ==========================================
       // 🚀 核心 1：推坑分潤 - 呼叫引擎給老手發券

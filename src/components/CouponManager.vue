@@ -63,7 +63,7 @@ const fetchUsers = async () => {
   try {
     const { data, error } = await supabase
       .from('users')
-      .select('id, display_name, legacy_id, phone')
+      .select('id, display_name, legacy_id')
       .order('legacy_id', { ascending: true })
     
     if (error) throw error

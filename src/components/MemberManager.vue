@@ -48,9 +48,8 @@ const saveBirthday = async () => {
   birthdaySaving.value = true
   try {
     const { error } = await supabase
-      .from('users')
-      .update({ birthday: birthdayValue.value || null })
-      .eq('id', selectedMember.value.id)
+      .from('users_private')
+      .upsert({ user_id: selectedMember.value.id, birthday: birthdayValue.value || null }, { onConflict: 'user_id' })
     if (error) throw error
     selectedMember.value.birthday = birthdayValue.value || null
     editingBirthday.value = false
@@ -67,7 +66,7 @@ const searchMembers = async () => {
   if (!q) { searchResults.value = []; return }
   isSearching.value = true
   try {
-    const SELECT = 'id, display_name, legacy_id, picture_url, total_exp, level, created_at, last_birthday_year, birthday_claimed_year, points, birthday'
+    const SELECT = 'id, display_name, legacy_id, picture_url, total_exp, level, created_at, last_birthday_year, birthday_claimed_year, points'
     const { data, error } = await supabase
       .from('users')
       .select(SELECT)

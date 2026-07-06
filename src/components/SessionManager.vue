@@ -252,7 +252,7 @@ const openPlayerDetail = async (event, user) => {
   const [{ data: userData }, { count: gamesCount }] = await Promise.all([
     supabase
       .from('users')
-      .select('id, display_name, picture_url, legacy_id, total_exp, level, points, phone, created_at')
+      .select('id, display_name, picture_url, legacy_id, total_exp, level, points, created_at')
       .eq('id', user.id)
       .single(),
     supabase

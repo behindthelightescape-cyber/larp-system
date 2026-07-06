@@ -362,13 +362,14 @@ export const useUserStore = defineStore('user', () => {
   // ==========================================
   const grantPoints = async (userId, delta, sourceType, sourceRef = null, note = null) => {
     try {
-      await supabase.from('points_transactions').insert([{
-        user_id: userId, delta, source_type: sourceType,
-        source_ref: sourceRef, note,
-      }])
-      const { data: u } = await supabase.from('users').select('points').eq('id', userId).single()
-      const newPoints = Math.max(0, (u?.points || 0) + delta)
-      await supabase.from('users').update({ points: newPoints }).eq('id', userId)
+      const { data: newPoints, error } = await supabase.rpc('grant_points_to_user', {
+        p_user_id: userId,
+        p_delta: delta,
+        p_source_type: sourceType,
+        p_source_ref: sourceRef,
+        p_note: note,
+      })
+      if (error) throw error
       if (userId === userData.value?.id) userData.value.points = newPoints
     } catch (err) {
       console.error('grantPoints 失敗:', err.message)

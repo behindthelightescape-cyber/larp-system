@@ -84,11 +84,11 @@ const searchMembers = async () => {
 
 const selectMember = async (user) => {
   selectedMember.value = user
-  searchResults.value = [] 
-  searchQuery.value = ''   
-  showQuickGiftForm.value = false 
+  searchResults.value = []
+  searchQuery.value = ''
+  showQuickGiftForm.value = false
 
-  const [couponsRes, historyRes, achieveRes] = await Promise.all([
+  const [couponsRes, historyRes, achieveRes, privateRes] = await Promise.all([
     supabase.from('coupons').select('*').eq('user_id', user.id).order('created_at', { ascending: false }),
     supabase.from('game_participants')
       .select('id, created_at, character_name, exp_gained, games ( play_time, gm_name, story_memory, scripts ( title ) )')
@@ -97,12 +97,14 @@ const selectMember = async (user) => {
     supabase.from('user_achievements')
       .select('unlocked_at, achievements(title)')
       .eq('user_id', user.id)
-      .order('unlocked_at', { ascending: false })
+      .order('unlocked_at', { ascending: false }),
+    supabase.from('users_private').select('birthday').eq('user_id', user.id).single()
   ])
 
   memberCoupons.value = couponsRes.data || []
   memberHistory.value = historyRes.data || []
   memberAchievements.value = achieveRes.data || []
+  if (privateRes.data) selectedMember.value = { ...selectedMember.value, birthday: privateRes.data.birthday }
 }
 
 // 🚀 新增：手動預先核銷本年度生日優惠

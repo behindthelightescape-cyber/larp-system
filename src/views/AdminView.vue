@@ -57,11 +57,13 @@ onMounted(async () => {
 
 const fetchAdminProfile = async () => {
   try {
+    const { data: { session: currentSession } } = await supabase.auth.getSession()
+    if (!currentSession) return
+
     const { data, error } = await supabase
       .from('users')
       .select('role, managed_branch, display_name')
-      .in('role', ['admin', 'manager'])
-      .limit(1)
+      .eq('id', currentSession.user.id)
       .single()
 
     if (data) {
@@ -71,8 +73,7 @@ const fetchAdminProfile = async () => {
         managed_branch: data.managed_branch || 'ALL'
       }
     } else {
-      // 找不到 profile row 仍保持 admin 預設值，不影響功能
-      console.warn('fetchAdminProfile: 找不到 admin row，使用預設值', error?.message)
+      console.warn('fetchAdminProfile: 找不到對應 users row', error?.message)
     }
   } catch (err) {
     console.error('抓取權限失敗:', err)

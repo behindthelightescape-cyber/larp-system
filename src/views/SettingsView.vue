@@ -268,9 +268,9 @@ const bindFriendCode = () => withLoading(isBindingCode, async () => {
   if (!code)                        return alert('請輸入朋友的推薦碼！')
   if (code === myReferralCode.value) return alert('你不能輸入自己的推薦碼啦！')
 
-  const { data: target, error: searchErr } = await supabase
-    .from('users').select('id, display_name')
-    .eq('my_referral_code', code).single()
+  const { data: targetRows, error: searchErr } = await supabase
+    .rpc('get_user_by_referral_code', { p_code: code })
+  const target = Array.isArray(targetRows) ? targetRows[0] : null
   if (searchErr || !target) throw new Error('找不到這組推薦碼，請確認是否打錯！')
 
   const { error: updateErr } = await supabase

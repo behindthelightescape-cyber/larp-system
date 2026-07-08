@@ -457,12 +457,13 @@ export const useUserStore = defineStore('user', () => {
     if (!userData.value) throw new Error('請先確認登入狀態')
     const cleanCode = code.trim().toUpperCase()
 
+    // 取得兌換碼資料（供 per-user 次數檢查與建立票券使用）
     const { data: promo, error: promoErr } = await supabase
       .from('promo_codes').select('*').eq('code', cleanCode).single()
     if (promoErr || !promo) throw new Error('找不到此兌換碼，請確認是否有打錯字')
     if (!promo.is_active) throw new Error('此兌換碼活動已結束或暫停')
-    if (promo.max_uses > 0 && promo.used_count >= promo.max_uses) throw new Error('這組兌換碼已被搶光了')
 
+    // 每人次數限制（在原子操作前先擋掉）
     let countQuery = supabase
       .from('coupons').select('*', { count: 'exact', head: true })
       .eq('user_id', userData.value.id)
@@ -470,6 +471,10 @@ export const useUserStore = defineStore('user', () => {
     if (promo.reuse_after_redeem) countQuery = countQuery.eq('status', 'available')
     const { count: used } = await countQuery
     if (used >= promo.limit_per_user) throw new Error(`這組代碼每人最多領 ${promo.limit_per_user} 次，你已經領滿了`)
+
+    // 原子驗證 max_uses + 計數（server side，避免競態）
+    const { error: rpcErr } = await supabase.rpc('use_promo_code', { p_code: cleanCode })
+    if (rpcErr) throw rpcErr
 
     const expiry = new Date()
     expiry.setDate(expiry.getDate() + (promo.valid_days || 30))
@@ -483,9 +488,6 @@ export const useUserStore = defineStore('user', () => {
       source_promo_code: promo.id,
     }])
     if (insertErr) throw insertErr
-
-    await supabase.from('promo_codes')
-      .update({ used_count: promo.used_count + 1 }).eq('id', promo.id)
 
     return promo.title
   }

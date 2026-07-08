@@ -194,14 +194,16 @@ const redeemCoupon = async (coupon) => {
 
   redeemingIds.add(coupon.id)
   try {
+    const now = new Date().toISOString()
     const { error } = await supabase
       .from('coupons')
-      .update({ status: 'used' })
+      .update({ status: 'used', used_at: now })
       .eq('id', coupon.id)
 
     if (error) throw error
 
     coupon.status = 'used'
+    coupon.used_at = now
     alert('✅ 核銷成功！')
     emit('update-stats')
   } catch (error) {

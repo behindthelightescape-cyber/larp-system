@@ -95,41 +95,8 @@ const redeemPromoCode = () => withLoading(isRedeeming, async () => {
   if (!code)           return alert('⚠️ 請輸入兌換碼喔！')
   if (!store.userData) return alert('⚠️ 請先確認登入狀態！')
 
-  const { data: promo, error: promoErr } =
-    await supabase.from('promo_codes').select('*').eq('code', code).single()
-  if (promoErr || !promo)
-    throw new Error('找不到此兌換碼，請確認是否有打錯字喔！')
-  if (!promo.is_active)
-    throw new Error('此兌換碼活動已經結束或暫停囉！')
-  if (promo.max_uses > 0 && promo.used_count >= promo.max_uses)
-    throw new Error('這組兌換碼已經被搶光了 😭')
-
-  let countQuery = supabase
-    .from('coupons').select('*', { count: 'exact', head: true })
-    .eq('user_id', store.userData.id)
-    .eq('source_promo_code', promo.id)
-  if (promo.reuse_after_redeem) countQuery = countQuery.eq('status', 'available')
-  const { count: used } = await countQuery
-  if (used >= promo.limit_per_user)
-    throw new Error(`這組代碼每人最多領 ${promo.limit_per_user} 次，你已經領滿囉！`)
-
-  const expiry = new Date()
-  expiry.setDate(expiry.getDate() + (promo.valid_days || 30))
-
-  const { error: insertErr } = await supabase.from('coupons').insert([{
-    user_id:           store.userData.id,
-    title:             promo.title,
-    description:       promo.description,
-    status:            'available',
-    expiry_date:       expiry.toISOString(),
-    source_promo_code: promo.id,
-  }])
-  if (insertErr) throw insertErr
-
-  await supabase.from('promo_codes')
-    .update({ used_count: promo.used_count + 1 }).eq('id', promo.id)
-
-  alert(`🎉 兌換成功！已將【${promo.title}】放入您的票券夾！`)
+  const title = await store.redeemPromoCode(code)
+  alert(`🎉 兌換成功！已將【${title}】放入您的票券夾！`)
   promoCodeInput.value = ''
   await store.refreshCoupons()
 })

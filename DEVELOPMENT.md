@@ -90,7 +90,11 @@ UPDATE users SET id = 'auth-uuid-here' WHERE display_name = '管理員名稱';
 |---|---|---|
 | `coupons_select_auth` | SELECT | `jwt.line_user_id = user_id` OR admin |
 | `coupons_insert_auth` | INSERT | `true` |
+| `coupons_update_own` | UPDATE | `jwt.line_user_id = user_id`（用戶自行核銷）|
+| `coupons_update_admin` | UPDATE | admin（`line_user_id IS NULL`，可作廢任何票券）|
 | `coupons_delete_auth` | DELETE | `jwt.line_user_id = user_id` OR admin |
+
+> ⚠️ **注意：** `coupons_update_own` 和 `coupons_update_admin` 需在 Supabase 手動建立，否則核銷/作廢靜默失敗（HTTP 200 但 0 rows affected）。
 
 ### RLS 未啟用的表（完全開放）
 

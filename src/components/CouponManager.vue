@@ -312,7 +312,7 @@ const voidCoupon = async (coupon) => {
               <select v-model="form.user_id" class="admin-input mt-2" size="4" style="height: auto; max-height: 120px;">
                 <option value="" disabled>請選擇一名玩家...</option>
                 <option v-for="user in filteredUsers" :key="user.id" :value="user.id">
-                  [{{ user.legacy_id }}] {{ user.display_name }} ({{ user.phone || '無電話' }})
+                  [{{ user.legacy_id }}] {{ user.display_name }}
                 </option>
               </select>
             </div>

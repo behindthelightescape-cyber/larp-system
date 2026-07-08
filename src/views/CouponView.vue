@@ -56,15 +56,13 @@ const confirmRedeem = async () => {
   isSubmitting.value = true
 
   try {
-    const now = new Date().toISOString()
     const { error } = await supabase
-      .from('coupons')
-      .update({ status: 'used', used_at: now })
-      .eq('id', selectedCoupon.value.id)
+      .rpc('redeem_my_coupon', { p_coupon_id: selectedCoupon.value.id })
 
     if (error) throw error
 
     // 更新本地狀態
+    const now = new Date().toISOString()
     const target = store.coupons.find(c => c.id === selectedCoupon.value.id)
     if (target) {
       target.status = 'used'

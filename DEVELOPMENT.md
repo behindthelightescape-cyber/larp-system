@@ -94,7 +94,7 @@ UPDATE users SET id = 'auth-uuid-here' WHERE display_name = '管理員名稱';
 | `coupons_update_admin` | UPDATE | admin（`line_user_id IS NULL`，可作廢任何票券）|
 | `coupons_delete_auth` | DELETE | `jwt.line_user_id = user_id` OR admin |
 
-> ⚠️ **注意：** `coupons_update_own` 和 `coupons_update_admin` 需在 Supabase 手動建立，否則核銷/作廢靜默失敗（HTTP 200 但 0 rows affected）。
+> 用戶核銷走 `redeem_my_coupon` RPC（不直接 UPDATE），防止玩家自行把 `used` 改回 `available`。
 
 ### RLS 未啟用的表（完全開放）
 
@@ -109,7 +109,7 @@ UPDATE users SET id = 'auth-uuid-here' WHERE display_name = '管理員名稱';
 ### `get_user_by_referral_code(p_code text)`
 
 查詢任意用戶的推薦碼（只回傳 id、display_name、referred_by）。  
-**用途：** `joinGame` 中查詢推薦人時繞過 `users_select_auth`（LINE 用戶只能看自己那筆）。
+**用途：** `joinGame` 和 `bindFriendCode` 中查詢推薦人，繞過 `users_select_auth`。
 
 ### `sync_my_exp()`
 
@@ -131,6 +131,28 @@ if (gpSum > (userData.value?.total_exp || 0)) {
   }
 }
 ```
+
+### `redeem_my_coupon(p_coupon_id bigint)`
+
+玩家自行核銷票券的安全入口。  
+**用途：** `CouponView.vue` 的「確認核銷」按鈕，取代直接 UPDATE `coupons` 表。
+
+- 驗證票券屬於當前 LINE 用戶（`user_id = line_user_id`）
+- 只允許 `available` → `used`（不可逆，防止玩家自行復原已核銷票券）
+- 過期票券也無法核銷
+- 若驗證失敗拋出 EXCEPTION，前端顯示錯誤
+
+### `use_promo_code(p_code text)`
+
+原子化兌換碼驗證與計數。  
+**用途：** `stores/user.js redeemPromoCode` 中，取代非原子的 `used_count + 1` 更新。
+
+- `SELECT FOR UPDATE` 鎖住該 row，避免同時兌換超過 `max_uses`
+- 驗證 `is_active` 和 `max_uses`，失敗拋出 EXCEPTION
+- 原子執行 `used_count = used_count + 1`
+- 回傳兌換碼資料（JSON）
+
+> ⚠️ `use_promo_code` 在 per-user 次數限制**之後**呼叫（`redeemPromoCode` 先 client-side 檢查每人上限，再呼叫 RPC 驗證全域 max_uses）。
 
 ---
 
@@ -204,6 +226,27 @@ if (window.location.hash.includes('#/admin') || window.location.hash.includes('#
 
 ---
 
+## Supabase 專案共用說明
+
+本系統與 **spot-point** 共用同一個 Supabase 專案：
+
+| 應用 | auth.users | 自訂資料表 |
+|---|---|---|
+| LINE app（本系統）| `line_U...@line.invalid` 格式帳號 | `public.users` |
+| spot-point | Google OAuth 真實 email | `spot.profiles` |
+
+各自查詢時需篩選：
+```sql
+-- spot-point 篩除 LINE 假帳號
+WHERE email NOT LIKE '%@line.invalid'
+-- 或
+WHERE app_metadata->>'provider' = 'google'
+```
+
+LINE app 不需要篩選（每個 session JWT 已帶 `line_user_id`，RLS 自動限制範圍）。
+
+---
+
 ## 已知問題 / 待辦
 
 - [ ] `users` 表的 `phone`、`email` 欄位尚未 DROP（`birthday` 已 DROP），資料已在 `users_private`
@@ -213,6 +256,15 @@ if (window.location.hash.includes('#/admin') || window.location.hash.includes('#
 - [ ] `grantPoints` 給第三方用戶（如推薦人）依賴 admin bypass（`line_user_id IS NULL`），但一般用戶執行 `joinGame` 時 JWT 有 `line_user_id`，UPDATE 會被 RLS 擋掉
   - 現象：`points_transactions` 有寫入，但 `users.points` 餘額不更新
   - 根本修法：改用 Edge Function（service role）或 SECURITY DEFINER RPC 處理第三方扣點
+- [ ] `ScanView.vue` 徒弟數（`discipleCount`）永遠為 0
+  - 原因：`users` 表 SELECT `WHERE referred_by = my_referral_code` 被 `users_select_auth` 擋住
+  - 修法：改用 SECURITY DEFINER RPC 查詢徒弟列表
+- [ ] `AchievementsView.vue` 成就獎勵直接 UPDATE `users.total_exp` 和 `users.points`
+  - `users_update_auth` 允許用戶更新自己的 row，技術上用戶可繞過前端直接打 API 竄改數值
+  - `points` 更新完全繞過 `points_transactions` 流水帳
+  - 修法：改用 SECURITY DEFINER RPC 處理成就獎勵發放
+- [ ] `PointsView.vue` 商城庫存競態條件（`shop_items.stock - 1` 非原子）且購買流程非原子
+  - 目前商城路由已封鎖（`redirect: '/'`），開放前需先修正
 
 ---
 

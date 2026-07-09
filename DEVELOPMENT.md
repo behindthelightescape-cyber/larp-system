@@ -47,58 +47,88 @@ export const supabase = createClient(supabaseUrl, supabaseKey, {
 
 > **核心原則：用戶只能讀寫自己的資料，admin（`line_user_id IS NULL`）可存取全部**
 
-### `users` 表
-
-| Policy | 操作 | 條件 |
-|---|---|---|
-| `users_select_auth` | SELECT | `jwt.line_user_id = id` OR `jwt.line_user_id IS NULL`（admin）|
-| `users_insert_self` | INSERT | `jwt.line_user_id = id` |
-| `users_update_auth` | UPDATE | `jwt.line_user_id = id` OR `jwt.line_user_id IS NULL`（admin）|
-
-> ⚠️ **注意：** `phone`、`email` 欄位仍在 `users` 表（`birthday` 已 DROP）。已遷移至 `users_private`，但欄位尚未清除。
-
 ### Admin 帳號識別
 
-Admin 以 email/password 登入，其 `users.id` **必須與 Supabase auth UUID 一致**，`fetchAdminProfile` 用 `session.user.id` 查詢：
-
-```
-auth.users.id == users.id（admin/manager 帳號的要求）
-```
-
-若不一致（如老舊手動建立的帳號），需執行：
-
+Admin 以 email/password 登入，JWT 中無 `line_user_id`，RLS 以 `IS NULL` 辨識：
 ```sql
--- 查出 auth UUID
-SELECT id FROM auth.users WHERE email = '管理員email@gmail.com';
+(auth.jwt()->'user_metadata'->>'line_user_id') IS NULL
+```
 
--- 更新 users.id（確認無 FK 參照後）
+Admin 的 `users.id` **必須與 Supabase auth UUID 一致**（fetchAdminProfile 用 `session.user.id` 查詢）。不一致時執行：
+```sql
+SELECT id FROM auth.users WHERE email = '管理員email';
 UPDATE users SET id = 'auth-uuid-here' WHERE display_name = '管理員名稱';
 ```
 
-### `users_private` 表
+---
 
-敏感欄位（phone、email、birthday）存放處。
+### 有 RLS 的表
 
+#### `users`
+| Policy | 操作 | 條件 |
+|---|---|---|
+| `users_select_auth` | SELECT | `jwt.line_user_id = id` OR admin |
+| `users_insert_self` | INSERT | `jwt.line_user_id = id` |
+| `users_update_auth` | UPDATE | `jwt.line_user_id = id` OR admin |
+
+> ⚠️ `phone`、`email` 欄位仍殘留在此表（資料已在 `users_private`，欄位待 DROP）
+
+#### `users_private`
 | 存取方式 | 說明 |
 |---|---|
-| 一般用戶 | 只能透過 `my-profile` Edge Function（帶 LINE token）讀寫 |
-| Admin 後台 | `private_admin_all` 政策允許 `line_user_id IS NULL` 直接存取 |
+| 一般用戶 | 只能透過 `my-profile` Edge Function 讀寫（帶 LINE token） |
+| Admin | `private_admin_all` policy，`line_user_id IS NULL` 直接存取 |
 
-### `coupons` 表
-
+#### `coupons`
 | Policy | 操作 | 條件 |
 |---|---|---|
 | `coupons_select_auth` | SELECT | `jwt.line_user_id = user_id` OR admin |
-| `coupons_insert_auth` | INSERT | `true` |
-| `coupons_update_own` | UPDATE | `jwt.line_user_id = user_id`（用戶自行核銷）|
-| `coupons_update_admin` | UPDATE | admin（`line_user_id IS NULL`，可作廢任何票券）|
+| `coupons_insert_auth` | INSERT | `true`（authenticated 即可） |
+| `coupons_update_own` | UPDATE | `jwt.line_user_id = user_id` |
+| `coupons_update_admin` | UPDATE | admin |
 | `coupons_delete_auth` | DELETE | `jwt.line_user_id = user_id` OR admin |
 
-> 用戶核銷走 `redeem_my_coupon` RPC（不直接 UPDATE），防止玩家自行把 `used` 改回 `available`。
+> 用戶核銷走 `redeem_my_coupon` RPC，防止玩家把 `used` 改回 `available`。
 
-### RLS 未啟用的表（完全開放）
+#### `promo_codes`
+| 操作 | 存取 |
+|---|---|
+| SELECT | 所有 authenticated 用戶（查詢兌換碼用） |
+| INSERT / UPDATE / DELETE | admin 限定 |
 
-`game_participants`、`games`、`scripts`、`achievements` 等無 RLS，PostgREST 開放存取。
+> `used_count` 更新走 `use_promo_code` RPC（原子操作，防競態超領）。
+
+---
+
+### 無 RLS 的表（PostgREST 完全開放）
+
+以下表無 RLS，任何 authenticated 請求均可讀寫：
+
+| 表名 | 說明 | 風險備註 |
+|---|---|---|
+| `games` | 場次資料 | 低（公開資訊） |
+| `game_participants` | 玩家掃碼紀錄 | 低（公開資訊） |
+| `scripts` | 劇本資料 | 低（公開資訊） |
+| `achievements` | 成就定義 | 低（唯讀參照） |
+| `system_rewards` | 自動派發規則 | 低（用戶只讀不寫） |
+| `referral_point_rules` | 推薦分潤規則 | 低（用戶只讀） |
+| `shop_items` | 商城商品 | 低（商城目前封鎖） |
+| `display_ads` | 展示廣告 | 低（admin 管理） |
+| `display_sessions` | QR 展示 session | 低（暫存資料） |
+| `push_logs` | LINE 推播紀錄 | 低（admin 管理） |
+| `group_settings` | 群組設定 | 低（admin 管理） |
+| `tarot` / `tarot_cards` | 塔羅功能 | 低（admin 管理） |
+| `wardrobe*` | 衣櫃道具目錄 | 低（唯讀參照） |
+| `*_analytics` / `covers` | 分析 view | 低（唯讀） |
+
+#### ⚠️ 需要注意的無 RLS 表
+
+| 表名 | 問題 | 建議 |
+|---|---|---|
+| `points_transactions` | 用戶可查詢所有人的點數流水帳 | 加 `user_id = jwt.line_user_id` OR admin 的 SELECT policy |
+| `user_achievements` | 用戶可 INSERT 任意 `user_id` 的成就（但有 unique 限制） | 加 INSERT policy 限制只能寫自己的 |
+| `user_wardrobe*` | 用戶可讀寫任意人的衣櫃 | 加 RLS 限制 `user_id = jwt.line_user_id` |
+| `point_qr_codes` | 未確認存取範圍 | 需在 Supabase Dashboard 確認 |
 
 ---
 

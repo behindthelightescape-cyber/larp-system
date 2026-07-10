@@ -45,21 +45,15 @@ const fetchDirectFamily = async () => {
     const masterCode = store.userData.referred_by
 
     if (masterCode) {
-      const { data: masterData } = await supabase
-        .from('users')
-        .select('display_name, level, picture_url')
-        .eq('my_referral_code', masterCode)
-        .single()
-      if (masterData) master.value = masterData
+      const { data: masterRows } = await supabase
+        .rpc('get_user_by_referral_code', { p_code: masterCode })
+      if (masterRows?.[0]) master.value = masterRows[0]
     }
 
     if (myCode) {
       const { data: disciplesData } = await supabase
-        .from('users')
-        .select('id, display_name, level, total_exp, created_at, picture_url')
-        .eq('referred_by', myCode)
-        .order('created_at', { ascending: false })
-      if (disciplesData) directDisciples.value = disciplesData
+        .rpc('get_disciples_by_codes', { p_codes: [myCode] })
+      if (disciplesData) directDisciples.value = [...disciplesData].reverse()
     }
   } catch (error) {
     console.error('讀取直系族譜失敗:', error)
@@ -86,10 +80,7 @@ const fetchPanoramaTree = async () => {
 
     while (currentLevelCodes.length > 0 && currentGeneration <= 10) {
       const { data, error } = await supabase
-        .from('users')
-        .select('id, display_name, level, total_exp, picture_url, my_referral_code, referred_by')
-        .in('referred_by', currentLevelCodes)
-        .order('created_at', { ascending: true })
+        .rpc('get_disciples_by_codes', { p_codes: currentLevelCodes })
 
       if (error) { console.error('Supabase error:', error); break }
       if (!data || data.length === 0) break

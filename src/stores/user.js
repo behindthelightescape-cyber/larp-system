@@ -210,23 +210,15 @@ export const useUserStore = defineStore('user', () => {
       userData.value = existingUser
       isLoggedIn.value = true
     } else {
-      let newUser = null
-      let newLegacyId = '00000001'
-      for (let attempt = 0; attempt < 3; attempt++) {
-        const { data: maxUsers } = await supabase.from('users').select('legacy_id').filter('legacy_id', 'match', '^[0-9]').order('legacy_id', { ascending: false }).limit(1)
-        const currentMax = parseInt(maxUsers?.[0]?.legacy_id || '0', 10) || 0
-        newLegacyId = String(currentMax + 1 + attempt).padStart(8, '0')
-        const { data, error: insertError } = await supabase
-          .from('users')
-          .insert([{ id: profile.userId, display_name: profile.displayName, picture_url: profile.pictureUrl, legacy_id: newLegacyId, level: 1, total_exp: 0 }])
-          .select().single()
-        if (!insertError) { newUser = data; break }
-        if (insertError.code !== '23505') throw insertError
-      }
-      if (!newUser) throw new Error('無法產生會員編號，請稍後再試')
+      const { data: newUserData, error: rpcErr } = await supabase.rpc('register_line_user', {
+        p_display_name: profile.displayName,
+        p_picture_url:  profile.pictureUrl,
+      })
+      if (rpcErr) throw rpcErr
+      const newUser = typeof newUserData === 'string' ? JSON.parse(newUserData) : newUserData
       userData.value = newUser
       isLoggedIn.value = true
-      alert(`🎉 註冊成功！歡迎加入，您的專屬會員編號是：${newLegacyId}`)
+      alert(`🎉 註冊成功！歡迎加入，您的專屬會員編號是：${newUser.legacy_id}`)
     }
   }
 

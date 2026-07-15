@@ -214,7 +214,14 @@ export const useUserStore = defineStore('user', () => {
         p_display_name: profile.displayName,
         p_picture_url:  profile.pictureUrl,
       })
-      if (rpcErr) throw rpcErr
+      if (rpcErr) {
+        // 若 RPC 說用戶已存在，代表 SELECT 被 RLS 擋住誤判為新用戶 → 重新查一次
+        if (rpcErr.message?.includes('already exists')) {
+          const { data: retryUser } = await supabase.from('users').select('*').eq('id', profile.userId).single()
+          if (retryUser) { userData.value = retryUser; isLoggedIn.value = true; return }
+        }
+        throw rpcErr
+      }
       const newUser = typeof newUserData === 'string' ? JSON.parse(newUserData) : newUserData
       userData.value = newUser
       isLoggedIn.value = true

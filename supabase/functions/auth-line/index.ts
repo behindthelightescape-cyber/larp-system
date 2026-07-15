@@ -44,9 +44,23 @@ Deno.serve(async (req) => {
       },
     })
 
-    // 若錯誤非「已存在」，才真的拋出
-    if (createErr && !createErr.message.toLowerCase().includes('already')) {
-      throw createErr
+    if (createErr) {
+      if (!createErr.message.toLowerCase().includes('already')) throw createErr
+
+      // 帳號已存在 — 舊帳號可能沒有 line_user_id，找到後補寫 metadata
+      const searchRes = await fetch(
+        `${SUPABASE_URL}/auth/v1/admin/users?filter=${encodeURIComponent(lineUserId)}&per_page=5`,
+        { headers: { apikey: SERVICE_ROLE_KEY, Authorization: `Bearer ${SERVICE_ROLE_KEY}` } }
+      )
+      if (searchRes.ok) {
+        const { users: found = [] } = await searchRes.json() as { users?: Array<{ id: string; email: string; user_metadata?: Record<string, string> }> }
+        const existing = found.find(u => u.email === fakeEmail)
+        if (existing && !existing.user_metadata?.line_user_id) {
+          await supabase.auth.admin.updateUserById(existing.id, {
+            user_metadata: { line_user_id: lineUserId, display_name: displayName, picture_url: pictureUrl },
+          })
+        }
+      }
     }
 
     // 產生 magic link，取出 hashed_token 給前端呼叫 verifyOtp

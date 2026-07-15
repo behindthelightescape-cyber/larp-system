@@ -212,7 +212,7 @@ export const useUserStore = defineStore('user', () => {
     } else {
       const { data: newUserData, error: rpcErr } = await supabase.rpc('register_line_user', {
         p_display_name: profile.displayName,
-        p_picture_url:  profile.pictureUrl,
+        p_picture_url:  profile.pictureUrl ?? null,
       })
       if (rpcErr) {
         // 若 RPC 說用戶已存在，代表 SELECT 被 RLS 擋住誤判為新用戶 → 重新查一次

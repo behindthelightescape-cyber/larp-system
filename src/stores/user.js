@@ -467,7 +467,12 @@ export const useUserStore = defineStore('user', () => {
       .from('coupons').select('*', { count: 'exact', head: true })
       .eq('user_id', userData.value.id)
       .eq('source_promo_code', promo.id)
-    if (promo.reuse_after_redeem) countQuery = countQuery.eq('status', 'available')
+    // 可重複領取：只算「還能用」的券（未使用且未過期）
+    if (promo.reuse_after_redeem) {
+      countQuery = countQuery
+        .eq('status', 'available')
+        .or(`expiry_date.is.null,expiry_date.gt.${new Date().toISOString()}`)
+    }
     const { count: used } = await countQuery
     if (used >= promo.limit_per_user) throw new Error(`這組代碼每人最多領 ${promo.limit_per_user} 次，你已經領滿了`)
 

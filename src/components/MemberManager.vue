@@ -216,8 +216,9 @@ const redeemCoupon = async (coupon) => {
 const deleteCoupon = async (couponId, couponTitle) => {
   if (!confirm(`⚠️ 確定要強制刪除「${couponTitle}」嗎？`)) return
   try {
-    const { error } = await supabase.from('coupons').delete().eq('id', couponId)
+    const { data, error } = await supabase.from('coupons').delete().eq('id', couponId).select('id')
     if (error) throw error
+    if (!data?.length) throw new Error('資料庫沒有刪除任何資料（可能是權限不足）')
     memberCoupons.value = memberCoupons.value.filter(c => c.id !== couponId)
     emit('update-stats')
   } catch (error) {

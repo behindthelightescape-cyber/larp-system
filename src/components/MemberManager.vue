@@ -68,7 +68,7 @@ const searchMembers = async () => {
   if (!q) { searchResults.value = []; return }
   isSearching.value = true
   try {
-    const SELECT = 'id, display_name, legacy_id, picture_url, total_exp, level, created_at, last_birthday_year, birthday_claimed_year, points, referred_by, my_referral_code'
+    const SELECT = 'id, display_name, legacy_id, picture_url, total_exp, level, created_at, last_login_at, last_birthday_year, birthday_claimed_year, points, referred_by, my_referral_code'
     const { data, error } = await supabase
       .from('users')
       .select(SELECT)
@@ -308,6 +308,13 @@ const saveEditExp = async (history) => {
   }
 }
 
+const formatLastLogin = (dateString) => {
+  if (!dateString) return '從未登入'
+  const date = new Date(dateString).toLocaleDateString('zh-TW', { timeZone: 'Asia/Taipei' })
+  const days = calculateDays(dateString)
+  return days === 0 ? `${date}（今天）` : `${date}（${days} 天前）`
+}
+
 const calculateDays = (dateString) => {
   if (!dateString) return 0
   return Math.floor((new Date() - new Date(dateString)) / (1000 * 60 * 60 * 24))
@@ -356,6 +363,10 @@ const calculateDays = (dateString) => {
         <div class="stat-box"><div class="stat-label">冒險點數</div><div class="stat-value">{{ selectedMember.points ?? 0 }} pt</div></div>
         <div class="stat-box"><div class="stat-label">遊玩場次</div><div class="stat-value">{{ memberHistory.length }}</div></div>
         <div class="stat-box"><div class="stat-label">加入天數</div><div class="stat-value">{{ calculateDays(selectedMember.created_at) }} 天</div></div>
+        <div class="stat-box">
+          <div class="stat-label">最後登入</div>
+          <div class="stat-value" style="font-size:1rem;">{{ formatLastLogin(selectedMember.last_login_at) }}</div>
+        </div>
         <div class="stat-box">
           <div class="stat-label">生日</div>
           <div class="stat-value" style="font-size:1rem;">{{ selectedMember.birthday ? selectedMember.birthday.split('T')[0] : '未填寫' }}</div>

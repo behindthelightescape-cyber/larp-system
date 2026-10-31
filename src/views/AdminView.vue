@@ -12,6 +12,7 @@ import AdminAchievements from '../components/AdminAchievements.vue'
 import AdminPromoCodes from '../components/AdminPromoCodes.vue' 
 import AdminAutoRewards from '../components/AdminAutoRewards.vue' // 🚀 1. 引入自動派發中控台
 import AdminPushLogs from '../components/AdminPushLogs.vue'
+import AdminPushMessage from '../components/AdminPushMessage.vue'
 import AdminPaperDoll from '../components/AdminPaperDoll.vue'
 import AdminDisplayAds from '../components/AdminDisplayAds.vue'
 import AdminPoints from '../components/AdminPoints.vue'
@@ -215,6 +216,9 @@ const goToMember = async (legacyId) => {
           <button class="nav-btn" :class="{ active: currentTab === 'push_log' }" @click="changeTab('push_log')">
             <span class="icon">📡</span> 推播監控
           </button>
+          <button v-if="adminProfile.role === 'admin'" class="nav-btn" :class="{ active: currentTab === 'push_message' }" @click="changeTab('push_message')">
+            <span class="icon">✉️</span> 自訂推播
+          </button>
         </template>
 
         <button class="nav-group-label" @click="toggleGroup('display')">
@@ -303,6 +307,7 @@ const goToMember = async (legacyId) => {
               currentTab === 'coupon' ? '發送票券 (導彈系統)' : 
               currentTab === 'promo_code' ? '萬用兌換碼印鈔機' :
               currentTab === 'auto_reward' ? '全自動派發中控台' : 
+              currentTab === 'push_message' ? '自訂推播' :
               currentTab === 'achievement' ? '成就鑄造廠' :
               currentTab === 'paperdoll' ? '燈燈造型室' :
               currentTab === 'display_ads' ? '電視廣告管理' :
@@ -328,6 +333,7 @@ const goToMember = async (legacyId) => {
       </div>
 
 <div v-if="currentTab === 'push_log'" class="panel active"><AdminPushLogs /></div>
+<div v-if="currentTab === 'push_message' && adminProfile.role === 'admin'" class="panel active"><AdminPushMessage /></div>
 
       <div v-if="currentTab === 'analytics'" class="panel active">
         <AnalyticsManager />

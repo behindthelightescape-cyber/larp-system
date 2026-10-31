@@ -1,0 +1,712 @@
+<script setup>
+import { ref, computed, onMounted, watch } from 'vue'
+import { supabase } from '../supabase'
+
+const MAX_TEXT = 5000
+const CATEGORIES = ['情感沉浸', '推理還原', '歡樂有趣', '驚悚恐怖', '機制陣營']
+
+// 對象模式：'filter' 條件篩選（批量廣告）/ 'pick' 指定會員
+const mode = ref('filter')
+
+// --- 指定會員 ---
+const searchQuery = ref('')
+const searchResults = ref([])
+const isSearching = ref(false)
+const selected = ref([]) // [{ id, display_name, legacy_id, level }]
+const pasteIds = ref('')
+const pasteMsg = ref('')
+
+// --- 條件篩選 ---
+const emptyFilter = () => ({
+  level_min: '', level_max: '', points_min: '',
+  joined_after: '', joined_before: '', birthday_month: '',
+  login_status: '', last_login_after: '', last_login_before: '',
+  play_count_min: '', play_count_max: '',
+  last_played_after: '', last_played_before: '',
+  played_scripts: [], played_scripts_min: '', not_played_scripts: [],
+  achievement_id: '', achievement_missing_max: '',
+  categories: [], branches: [], has_coupon: false,
+})
+const MISSING_TAG = '{缺少劇本}'
+const filter = ref(emptyFilter())
+const scripts = ref([]) // [{ id, title, is_archived }]
+const branchList = ref([])
+const achievements = ref([]) // [{ id, title, script_ids }]
+const scriptSearch = ref({ played_scripts: '', not_played_scripts: '' })
+const SCRIPT_PICKERS = [
+  { field: 'played_scripts', label: '玩過（任一）' },
+  { field: 'not_played_scripts', label: '沒玩過（全部都沒玩過）' },
+]
+
+// --- 訊息 ---
+const title = ref('')
+const message = ref('')
+
+// --- 狀態 ---
+const quota = ref(null) // { limit, used, remaining }
+const previewCount = ref(null)
+const previewSample = ref([])
+const isPreviewing = ref(false)
+const isSending = ref(false)
+const showConfirm = ref(false)
+const result = ref(null)
+const errorMsg = ref('')
+
+const invoke = async (body) => {
+  const { data, error } = await supabase.functions.invoke('admin-push', { body })
+  if (error) {
+    let msg = error.message
+    try { msg = (await error.context.json()).error || msg } catch { /* ignore */ }
+    throw new Error(msg)
+  }
+  return data
+}
+
+const loadQuota = async () => {
+  try { quota.value = await invoke({ action: 'quota' }) }
+  catch (err) { errorMsg.value = `讀取額度失敗：${err.message}` }
+}
+
+const loadOptions = async () => {
+  const [{ data: s }, { data: g }, { data: a }] = await Promise.all([
+    supabase.from('scripts').select('id, title, is_archived').order('title'),
+    supabase.from('games').select('branch_name').not('branch_name', 'is', null)
+      .order('play_time', { ascending: false }).limit(1000),
+    supabase.from('achievements').select('id, title, condition_type, condition_value, status')
+      .eq('condition_type', 'script').order('title'),
+  ])
+  achievements.value = (a || []).map(x => ({
+    id: x.id,
+    title: x.title,
+    inactive: x.status !== 'active',
+    script_ids: x.condition_value?.script_ids || [],
+  }))
+  scripts.value = s || []
+  branchList.value = [...new Set((g || []).map(x => x.branch_name))].sort()
+}
+
+onMounted(() => { loadQuota(); loadOptions() })
+
+// ===== 指定會員 =====
+let searchTimer = null
+watch(searchQuery, (kw) => {
+  clearTimeout(searchTimer)
+  const q = kw.trim().replace(/[,()%*\\]/g, '')
+  if (!q) { searchResults.value = []; return }
+  searchTimer = setTimeout(async () => {
+    isSearching.value = true
+    const { data, error } = await supabase
+      .from('users')
+      .select('id, display_name, legacy_id, level')
+      .or(`display_name.ilike.%${q}%,legacy_id.ilike.%${q}%`)
+      .limit(20)
+    isSearching.value = false
+    searchResults.value = error ? [] : (data || [])
+  }, 300)
+})
+
+const selectedIds = computed(() => new Set(selected.value.map(u => u.id)))
+const addUser = (u) => { if (!selectedIds.value.has(u.id)) selected.value.push(u) }
+const removeUser = (id) => { selected.value = selected.value.filter(u => u.id !== id) }
+
+const addPasted = async () => {
+  const list = [...new Set(pasteIds.value.split(/[\s,，、]+/).map(s => s.trim()).filter(Boolean))]
+  if (list.length === 0) return
+  const found = []
+  for (let i = 0; i < list.length; i += 200) {
+    const { data, error } = await supabase
+      .from('users')
+      .select('id, display_name, legacy_id, level')
+      .in('legacy_id', list.slice(i, i + 200))
+    if (error) { pasteMsg.value = `查詢失敗：${error.message}`; return }
+    found.push(...(data || []))
+  }
+  found.forEach(addUser)
+  const foundSet = new Set(found.map(u => u.legacy_id))
+  const missing = list.filter(x => !foundSet.has(x))
+  pasteMsg.value = `已加入 ${found.length} 人` + (missing.length ? `，找不到：${missing.join('、')}` : '')
+  pasteIds.value = ''
+}
+
+// ===== 條件篩選 =====
+const scriptTitle = (id) => scripts.value.find(x => x.id === id)?.title ?? `#${id}`
+const scriptOptions = (field) => {
+  const kw = scriptSearch.value[field].trim().toLowerCase()
+  const chosen = new Set(filter.value[field])
+  return scripts.value
+    .filter(x => !chosen.has(x.id) && (!kw || (x.title || '').toLowerCase().includes(kw)))
+    .slice(0, 8)
+}
+const addScript = (field, id) => {
+  if (!filter.value[field].includes(id)) filter.value[field].push(id)
+  scriptSearch.value[field] = ''
+}
+const removeScript = (field, id) => { filter.value[field] = filter.value[field].filter(x => x !== id) }
+const toggleIn = (field, v) => {
+  const arr = filter.value[field]
+  filter.value[field] = arr.includes(v) ? arr.filter(x => x !== v) : [...arr, v]
+}
+
+// 台灣時間 N 天前的 YYYY-MM-DD
+const daysAgo = (n) => new Date(Date.now() + 8 * 3600e3 - n * 86400e3).toISOString().slice(0, 10)
+const LAST_PLAYED_PRESETS = [
+  { label: '30 天內有來', after: 30 },
+  { label: '3 個月內有來', after: 90 },
+  { label: '半年內有來', after: 180 },
+  { label: '一年內有來', after: 365 },
+  { label: '超過 3 個月沒來', before: 90 },
+  { label: '超過半年沒來', before: 180 },
+  { label: '超過 1 年沒來', before: 365 },
+]
+const applyPreset = (p) => {
+  filter.value.last_played_after = p.after ? daysAgo(p.after) : ''
+  filter.value.last_played_before = p.before ? daysAgo(p.before) : ''
+}
+const clearLastPlayed = () => { filter.value.last_played_after = ''; filter.value.last_played_before = '' }
+const resetFilter = () => { filter.value = emptyFilter() }
+// 選「從未登入」時，最後登入日期沒有意義，清掉避免篩出 0 人
+watch(() => filter.value.login_status, (v) => {
+  if (v === 'never') { filter.value.last_login_after = ''; filter.value.last_login_before = '' }
+})
+
+const selectedAchievement = computed(() => achievements.value.find(a => a.id === filter.value.achievement_id))
+const insertMissingTag = () => { message.value += MISSING_TAG }
+const useAchievementTemplate = () => {
+  const a = selectedAchievement.value
+  if (!a) return
+  message.value = `🔮 你離【${a.title}】成就只差一步了！
+
+只要再玩 ${MISSING_TAG} 就能解鎖，快揪團來劇光燈完成收集吧！`
+}
+// 確認視窗用：把 {缺少劇本} 換成抽樣第一位的內容
+const exampleMessage = computed(() => {
+  const ex = previewSample.value.find(u => u.missing)?.missing
+  return ex ? message.value.replaceAll(MISSING_TAG, ex) : message.value
+})
+const tagWithoutAchievement = computed(() =>
+  message.value.includes(MISSING_TAG) && !(mode.value === 'filter' && filter.value.achievement_id)
+)
+
+const isSet = (v) => (Array.isArray(v) ? v.length > 0 : v !== '' && v !== false && v !== null)
+const activeFilterCount = computed(() => Object.values(filter.value).filter(isSet).length)
+
+const buildTarget = () => {
+  if (mode.value === 'pick') return { mode: 'ids', ids: selected.value.map(u => u.id) }
+  const target = { mode: 'filter' }
+  for (const [k, v] of Object.entries(filter.value)) if (isSet(v)) target[k] = v
+  return target
+}
+
+// ===== 預估 / 發送 =====
+watch([mode, selected, filter], () => {
+  previewCount.value = null
+  previewSample.value = []
+  result.value = null
+}, { deep: true })
+
+const preview = async () => {
+  errorMsg.value = ''
+  if (mode.value === 'pick' && selected.value.length === 0) {
+    errorMsg.value = '請先加入至少一位會員'
+    return
+  }
+  isPreviewing.value = true
+  try {
+    const res = await invoke({ action: 'preview', target: buildTarget() })
+    previewCount.value = res.count
+    previewSample.value = res.sample || []
+  } catch (err) {
+    errorMsg.value = err.message
+  } finally {
+    isPreviewing.value = false
+  }
+}
+
+const overQuota = computed(() =>
+  quota.value?.remaining != null && previewCount.value != null && previewCount.value > quota.value.remaining
+)
+
+const canSend = computed(() =>
+  previewCount.value > 0 && message.value.trim() && message.value.length <= MAX_TEXT && !overQuota.value && !isSending.value && !tagWithoutAchievement.value
+)
+
+// ===== 發送方式：立即 / 預約 =====
+const sendMode = ref('now') // 'now' | 'schedule'
+// datetime-local 的值（台灣時間 YYYY-MM-DDTHH:mm），預設明天 12:00
+const twNow = () => new Date(Date.now() + 8 * 3600e3).toISOString()
+const defaultSendAt = () => `${new Date(Date.now() + 8 * 3600e3 + 86400e3).toISOString().slice(0, 10)}T12:00`
+const sendAt = ref(defaultSendAt())
+const minSendAt = computed(() => twNow().slice(0, 16))
+const sendAtIso = computed(() => (sendAt.value ? `${sendAt.value}:00+08:00` : ''))
+const sendAtValid = computed(() => {
+  const t = Date.parse(sendAtIso.value)
+  return !isNaN(t) && t > Date.now() + 60e3
+})
+const sendAtLabel = computed(() => sendAt.value.replace('T', ' '))
+
+const canSubmit = computed(() => canSend.value && (sendMode.value === 'now' || sendAtValid.value))
+
+const resetMessage = () => { message.value = ''; title.value = '' }
+
+const send = async () => {
+  showConfirm.value = false
+  isSending.value = true
+  errorMsg.value = ''
+  try {
+    if (sendMode.value === 'schedule') {
+      const r = await invoke({
+        action: 'schedule', target: buildTarget(), message: message.value, title: title.value, send_at: sendAtIso.value,
+      })
+      result.value = { scheduled: true, at: sendAtLabel.value, count: r.estimated_count }
+      resetMessage()
+      await loadScheduled()
+    } else {
+      result.value = await invoke({ action: 'send', target: buildTarget(), message: message.value, title: title.value })
+      if (result.value.fail === 0) resetMessage()
+      await loadQuota()
+    }
+  } catch (err) {
+    errorMsg.value = err.message
+  } finally {
+    isSending.value = false
+  }
+}
+
+// ===== 預約清單 =====
+const scheduled = ref([])
+const loadScheduled = async () => {
+  try { scheduled.value = (await invoke({ action: 'list_scheduled' })).items }
+  catch (err) { console.error('讀取預約失敗', err) }
+}
+const cancelScheduled = async (item) => {
+  if (!window.confirm(`確定取消「${item.title}」的預約？`)) return
+  try {
+    await invoke({ action: 'cancel', id: item.id })
+    await loadScheduled()
+  } catch (err) {
+    errorMsg.value = err.message
+  }
+}
+const fmtTime = (iso) => iso
+  ? new Date(iso).toLocaleString('zh-TW', { timeZone: 'Asia/Taipei', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false })
+  : '--'
+const SCHEDULE_STATUS = {
+  pending: { text: '⏳ 等待發送', cls: 'badge-warning' },
+  sending: { text: '🔄 發送中', cls: 'badge-primary' },
+  sent: { text: '🟢 已發送', cls: 'badge-success' },
+  failed: { text: '🔴 失敗', cls: 'badge-danger' },
+  cancelled: { text: '已取消', cls: 'badge-secondary' },
+}
+onMounted(loadScheduled)
+</script>
+
+<template>
+  <div class="push-msg">
+    <div class="manager-header">
+      <div>
+        <h3 style="color: #eee; margin: 0;">✉️ 自訂推播</h3>
+        <p class="hint">發 LINE 訊息給篩選出來的會員或指定會員。每發給 1 人用掉 1 則額度，已封鎖的會員會自動略過。</p>
+      </div>
+      <div class="quota" v-if="quota">
+        <div class="quota-label">本月額度</div>
+        <div class="quota-value">
+          <template v-if="quota.limit === null">無上限（已用 {{ quota.used }}）</template>
+          <template v-else>剩 <b>{{ quota.remaining }}</b> / {{ quota.limit }}</template>
+        </div>
+      </div>
+    </div>
+
+    <!-- 1. 對象 -->
+    <section class="card">
+      <h4>1. 選擇對象</h4>
+      <div class="tabs">
+        <button :class="{ active: mode === 'filter' }" @click="mode = 'filter'">條件篩選</button>
+        <button :class="{ active: mode === 'pick' }" @click="mode = 'pick'">指定會員</button>
+      </div>
+
+      <!-- 條件篩選 -->
+      <div v-if="mode === 'filter'" class="filters">
+        <div class="filter-head">
+          <span class="hint">所有條件同時成立才會被選中，沒填的條件不限制。</span>
+          <button class="link" @click="resetFilter">清除全部條件</button>
+        </div>
+
+        <fieldset>
+          <legend>會員資料</legend>
+          <div class="row">
+            <label>等級
+              <span class="range">
+                <input v-model="filter.level_min" type="number" min="1" class="input small" placeholder="最低" />～
+                <input v-model="filter.level_max" type="number" min="1" class="input small" placeholder="最高" />
+              </span>
+            </label>
+            <label>點數至少
+              <input v-model="filter.points_min" type="number" min="0" class="input small" placeholder="不限" />
+            </label>
+            <label>生日月份
+              <select v-model="filter.birthday_month" class="input small">
+                <option value="">不限</option>
+                <option v-for="m in 12" :key="m" :value="m">{{ m }} 月</option>
+              </select>
+            </label>
+          </div>
+          <div class="row">
+            <label>加入會員日期
+              <span class="range">
+                <input v-model="filter.joined_after" type="date" class="input date" />～
+                <input v-model="filter.joined_before" type="date" class="input date" />
+              </span>
+            </label>
+            <label class="check">
+              <input v-model="filter.has_coupon" type="checkbox" /> 有未使用的票券
+            </label>
+          </div>
+          <div class="row">
+            <label>App 登入
+              <select v-model="filter.login_status" class="input" style="width: 140px;">
+                <option value="">不限</option>
+                <option value="logged_in">登入過</option>
+                <option value="never">從未登入</option>
+              </select>
+            </label>
+            <label v-if="filter.login_status !== 'never'">最後登入日期
+              <span class="range">
+                <input v-model="filter.last_login_after" type="date" class="input date" />～
+                <input v-model="filter.last_login_before" type="date" class="input date" />
+              </span>
+            </label>
+          </div>
+        </fieldset>
+
+        <fieldset>
+          <legend>遊玩紀錄</legend>
+          <div class="row">
+            <label>最後遊玩日期
+              <span class="range">
+                <input v-model="filter.last_played_after" type="date" class="input date" />～
+                <input v-model="filter.last_played_before" type="date" class="input date" />
+              </span>
+            </label>
+          </div>
+          <div class="presets">
+            <button v-for="p in LAST_PLAYED_PRESETS" :key="p.label" @click="applyPreset(p)">{{ p.label }}</button>
+            <button class="link" @click="clearLastPlayed">清除</button>
+          </div>
+          <p class="hint" style="margin-top: -6px;">設定最後遊玩日期時，從沒玩過的會員不會被選中。</p>
+          <div class="row">
+            <label>遊玩次數
+              <span class="range">
+                <input v-model="filter.play_count_min" type="number" min="0" class="input small" placeholder="最少" />～
+                <input v-model="filter.play_count_max" type="number" min="0" class="input small" placeholder="最多" />
+              </span>
+            </label>
+          </div>
+          <div v-if="branchList.length" class="group">
+            <div class="group-label">去過的分店（任一）</div>
+            <label v-for="b in branchList" :key="b" class="check">
+              <input type="checkbox" :checked="filter.branches.includes(b)" @change="toggleIn('branches', b)" /> {{ b }}
+            </label>
+          </div>
+          <div class="group">
+            <div class="group-label">玩過的類型（任一）</div>
+            <label v-for="c in CATEGORIES" :key="c" class="check">
+              <input type="checkbox" :checked="filter.categories.includes(c)" @change="toggleIn('categories', c)" /> {{ c }}
+            </label>
+          </div>
+        </fieldset>
+
+        <fieldset>
+          <legend>成就差一點</legend>
+          <div class="row">
+            <label>成就
+              <select v-model="filter.achievement_id" class="input" style="min-width: 220px;">
+                <option value="">不限</option>
+                <option v-for="a in achievements" :key="a.id" :value="a.id">
+                  {{ a.title }}（{{ a.script_ids.length }} 部）{{ a.inactive ? '・未啟用' : '' }}
+                </option>
+              </select>
+            </label>
+            <label v-if="filter.achievement_id">還差
+              <select v-model="filter.achievement_missing_max" class="input small">
+                <option value="">1 部</option>
+                <option v-for="n in [2, 3, 4, 5]" :key="n" :value="n">1～{{ n }} 部</option>
+              </select>
+            </label>
+          </div>
+          <div v-if="selectedAchievement" class="hint">
+            條件劇本：{{ selectedAchievement.script_ids.map(scriptTitle).join('、') }}<br />
+            已解鎖的人會自動排除。訊息裡可以放 <code>{{ MISSING_TAG }}</code>，每個人會看到自己還缺的劇本。
+          </div>
+        </fieldset>
+
+        <fieldset>
+          <legend>劇本</legend>
+          <div class="script-pickers">
+            <div v-for="p in SCRIPT_PICKERS" :key="p.field">
+              <div class="group-label">{{ p.label }}</div>
+              <input v-model="scriptSearch[p.field]" class="input" placeholder="搜尋劇本名稱" />
+              <ul v-if="scriptSearch[p.field]" class="results small">
+                <li v-for="x in scriptOptions(p.field)" :key="x.id" @click="addScript(p.field, x.id)">
+                  {{ x.title }} <span v-if="x.is_archived" class="muted">（已下架）</span>
+                </li>
+              </ul>
+              <div class="chips">
+                <span class="chip" v-for="id in filter[p.field]" :key="id">
+                  {{ scriptTitle(id) }} <button @click="removeScript(p.field, id)" aria-label="移除">×</button>
+                </span>
+              </div>
+              <label v-if="p.field === 'played_scripts' && filter.played_scripts.length > 1" class="min-row">
+                至少玩過其中
+                <input v-model="filter.played_scripts_min" type="number" min="1" :max="filter.played_scripts.length" class="input tiny" placeholder="1" />
+                部
+              </label>
+            </div>
+          </div>
+          <p class="hint">例：新劇本上線，推給「玩過前作」但「還沒玩過新作」的人。</p>
+        </fieldset>
+
+        <p v-if="activeFilterCount === 0" class="hint warn">目前沒有任何條件，會發給全部會員。</p>
+      </div>
+
+      <!-- 指定會員 -->
+      <div v-else>
+        <input v-model="searchQuery" class="input" placeholder="搜尋暱稱或會員編號" />
+        <div v-if="isSearching" class="hint">搜尋中…</div>
+        <ul v-else-if="searchResults.length" class="results">
+          <li v-for="u in searchResults" :key="u.id" @click="addUser(u)" :class="{ added: selectedIds.has(u.id) }">
+            <span>{{ u.display_name || '(無暱稱)' }}</span>
+            <span class="muted">#{{ u.legacy_id }} · LV{{ u.level }}</span>
+            <span class="add">{{ selectedIds.has(u.id) ? '已加入' : '＋ 加入' }}</span>
+          </li>
+        </ul>
+
+        <details class="paste">
+          <summary>一次貼上多個會員編號</summary>
+          <textarea v-model="pasteIds" class="input" rows="3" placeholder="用空白、逗號或換行分隔，例如：00000012, 00000345"></textarea>
+          <button class="btn btn-dark" @click="addPasted">加入</button>
+          <span class="hint">{{ pasteMsg }}</span>
+        </details>
+
+        <div class="chips" v-if="selected.length">
+          <span class="chip" v-for="u in selected" :key="u.id">
+            {{ u.display_name || u.legacy_id }}
+            <button @click="removeUser(u.id)" aria-label="移除">×</button>
+          </span>
+          <button class="link" @click="selected = []">全部清除</button>
+        </div>
+        <div v-else class="hint">還沒有加入任何會員</div>
+      </div>
+
+      <div class="preview-row">
+        <button class="btn btn-dark" @click="preview" :disabled="isPreviewing">
+          {{ isPreviewing ? '計算中…' : '計算人數' }}
+        </button>
+        <span v-if="previewCount !== null" class="count">
+          預計發送 <b>{{ previewCount }}</b> 人
+          <span v-if="overQuota" class="danger">（超過本月剩餘額度）</span>
+        </span>
+      </div>
+      <div v-if="previewSample.length" class="sample">
+        <div class="group-label">名單抽樣（前 {{ previewSample.length }} 位）</div>
+        <span v-for="u in previewSample" :key="u.legacy_id" class="sample-item">
+          {{ u.display_name || '(無暱稱)' }}
+          <span class="muted">#{{ u.legacy_id }} · LV{{ u.level }}<template v-if="u.last_played"> · 最後 {{ u.last_played }}</template><template v-if="u.missing"> · 缺 {{ u.missing }}</template></span>
+        </span>
+      </div>
+    </section>
+
+    <!-- 2. 訊息 -->
+    <section class="card">
+      <h4>2. 訊息內容</h4>
+      <input v-model="title" class="input" placeholder="紀錄標題（選填，只顯示在推播監控）" maxlength="40" />
+      <div v-if="mode === 'filter' && filter.achievement_id" class="tag-bar">
+        <button class="btn-chip" @click="insertMissingTag">插入 {{ MISSING_TAG }}</button>
+        <button class="btn-chip" @click="useAchievementTemplate">套用成就範本</button>
+      </div>
+      <textarea v-model="message" class="input" rows="7" placeholder="輸入要發送的訊息"></textarea>
+      <div v-if="tagWithoutAchievement" class="hint danger">訊息裡有 {{ MISSING_TAG }}，但沒有設定「成就差一點」條件。</div>
+      <div class="hint" :class="{ danger: message.length > MAX_TEXT }">{{ message.length }} / {{ MAX_TEXT }}</div>
+    </section>
+
+    <!-- 3. 發送方式 -->
+    <section class="card">
+      <h4>3. 發送時間</h4>
+      <div class="tabs">
+        <button :class="{ active: sendMode === 'now' }" @click="sendMode = 'now'">立即發送</button>
+        <button :class="{ active: sendMode === 'schedule' }" @click="sendMode = 'schedule'">預約發送</button>
+      </div>
+      <div v-if="sendMode === 'schedule'" class="row">
+        <label>發送時間（台灣時間）
+          <input v-model="sendAt" type="datetime-local" :min="minSendAt" class="input" style="width: 230px; color-scheme: dark;" />
+        </label>
+      </div>
+      <p v-if="sendMode === 'schedule'" class="hint">
+        系統每 5 分鐘檢查一次，實際送達可能晚幾分鐘。名單會在發送當下依條件重新計算，人數可能跟現在略有不同。
+        <span v-if="sendAt && !sendAtValid" class="danger">請選擇 1 分鐘後的時間。</span>
+      </p>
+    </section>
+
+    <div v-if="errorMsg" class="alert danger">{{ errorMsg }}</div>
+    <div v-if="result?.scheduled" class="alert success">
+      已預約：{{ result.at }} 發送，目前預估 {{ result.count }} 人。可以在下方「預約清單」取消。
+    </div>
+    <div v-else-if="result" class="alert" :class="result.fail ? 'danger' : 'success'">
+      發送完成：成功 {{ result.success }} 人<span v-if="result.fail">，失敗 {{ result.fail }} 人</span>
+      <div v-for="e in result.errors" :key="e" class="muted">{{ e }}</div>
+    </div>
+
+    <button class="btn btn-gold send" :disabled="!canSubmit" @click="showConfirm = true">
+      <template v-if="isSending">{{ sendMode === 'schedule' ? '預約中…' : '發送中…' }}</template>
+      <template v-else-if="previewCount === null">請先計算人數</template>
+      <template v-else-if="sendMode === 'schedule'">預約 {{ sendAtLabel }} 發送給 {{ previewCount }} 人</template>
+      <template v-else>發送給 {{ previewCount }} 人</template>
+    </button>
+
+    <!-- 預約清單 -->
+    <section class="card" style="margin-top: 24px;">
+      <div class="filter-head">
+        <h4 style="margin: 0;">📅 預約清單</h4>
+        <button class="link" @click="loadScheduled">重新整理</button>
+      </div>
+      <div v-if="!scheduled.length" class="hint">目前沒有預約（只顯示近 30 天）。</div>
+      <table v-else class="sched-table">
+        <thead>
+          <tr><th>發送時間</th><th>標題</th><th>人數</th><th>狀態</th><th></th></tr>
+        </thead>
+        <tbody>
+          <tr v-for="s in scheduled" :key="s.id">
+            <td>{{ fmtTime(s.send_at) }}</td>
+            <td>
+              <div>{{ s.title }}</div>
+              <div class="muted msg-snippet" :title="s.message">{{ s.message }}</div>
+              <div v-if="s.error_msg" class="danger" style="font-size: 0.8rem;">{{ s.error_msg }}</div>
+            </td>
+            <td>
+              <template v-if="s.result">{{ s.result.success }}<span class="muted"> / {{ s.result.count }}</span></template>
+              <template v-else><span class="muted">約</span> {{ s.estimated_count }}</template>
+            </td>
+            <td><span class="status-badge" :class="SCHEDULE_STATUS[s.status]?.cls">{{ SCHEDULE_STATUS[s.status]?.text ?? s.status }}</span></td>
+            <td><button v-if="s.status === 'pending'" class="link danger" @click="cancelScheduled(s)">取消</button></td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <!-- 確認視窗 -->
+    <div v-if="showConfirm" class="modal-mask" @click.self="showConfirm = false">
+      <div class="modal">
+        <h4>{{ sendMode === 'schedule' ? '確認預約' : '確認發送' }}</h4>
+        <p v-if="sendMode === 'schedule'">將在 <b>{{ sendAtLabel }}</b> 發給約 <b>{{ previewCount }}</b> 人（會用掉同樣數量的額度）。</p>
+        <p v-else>將發給 <b>{{ previewCount }}</b> 人，會用掉 {{ previewCount }} 則額度<span v-if="quota?.remaining != null">（發送後剩 {{ quota.remaining - previewCount }} 則）</span>。</p>
+        <div v-if="exampleMessage !== message" class="hint">範例（第一位收到的內容）：</div>
+        <pre class="msg-preview">{{ exampleMessage }}</pre>
+        <p class="hint warn">LINE 訊息送出後無法收回。</p>
+        <div class="modal-actions">
+          <button class="btn btn-dark" @click="showConfirm = false">取消</button>
+          <button class="btn btn-gold" @click="send">{{ sendMode === 'schedule' ? '確定預約' : '確定發送' }}</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</template>
+
+<style scoped>
+.push-msg { padding: 5px; max-width: 860px; }
+.sched-table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+.sched-table th { text-align: left; color: #D4AF37; padding: 8px; border-bottom: 1px solid #333; white-space: nowrap; font-weight: normal; }
+.sched-table td { padding: 10px 8px; border-bottom: 1px solid #1d1d1d; color: #ddd; vertical-align: top; }
+.msg-snippet { max-width: 360px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.status-badge { padding: 4px 10px; border-radius: 20px; font-size: 0.78rem; font-weight: bold; white-space: nowrap; }
+.badge-warning { background: rgba(241, 196, 15, 0.1); color: #f1c40f; border: 1px solid rgba(241, 196, 15, 0.3); }
+.badge-primary { background: rgba(52, 152, 219, 0.1); color: #3498db; border: 1px solid rgba(52, 152, 219, 0.3); }
+.badge-success { background: rgba(46, 204, 113, 0.1); color: #2ecc71; border: 1px solid rgba(46, 204, 113, 0.3); }
+.badge-danger { background: rgba(231, 76, 60, 0.1); color: #e74c3c; border: 1px solid rgba(231, 76, 60, 0.3); }
+.badge-secondary { background: #333; color: #aaa; border: 1px solid #444; }
+.manager-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 20px; margin-bottom: 20px; border-bottom: 1px solid #222; padding-bottom: 15px; }
+.hint { color: #888; font-size: 0.85rem; margin-top: 6px; }
+.hint.warn { color: #f1c40f; }
+.muted { color: #777; font-size: 0.85rem; }
+.danger { color: #e74c3c; }
+
+.quota { background: #111; border: 1px solid #333; border-radius: 10px; padding: 10px 16px; text-align: right; white-space: nowrap; }
+.quota-label { color: #888; font-size: 0.8rem; }
+.quota-value { color: #eee; }
+.quota-value b { color: #D4AF37; font-size: 1.2rem; }
+
+.card { background: #111; border: 1px solid #222; border-radius: 12px; padding: 18px; margin-bottom: 16px; }
+.card h4 { color: #D4AF37; margin: 0 0 12px; }
+
+.tabs { display: flex; gap: 8px; margin-bottom: 14px; }
+.tabs button { background: #1a1a1a; color: #aaa; border: 1px solid #333; border-radius: 8px; padding: 8px 16px; cursor: pointer; }
+.tabs button.active { background: #D4AF37; color: #000; border-color: #D4AF37; font-weight: bold; }
+
+.input { width: 100%; box-sizing: border-box; background: #0b0b0b; color: #eee; border: 1px solid #333; border-radius: 8px; padding: 9px 12px; font-size: 0.95rem; margin-top: 6px; font-family: inherit; }
+.input:focus { outline: none; border-color: #D4AF37; }
+.input.small { width: 100px; }
+.input.date { width: 155px; color-scheme: dark; }
+.input.tiny { width: 64px; margin: 0 4px; padding: 5px 8px; }
+.min-row { color: #ccc; font-size: 0.85rem; display: flex; align-items: center; margin-top: 8px; }
+.tag-bar { display: flex; gap: 8px; margin-top: 8px; }
+.btn-chip { background: #1a1a1a; color: #D4AF37; border: 1px solid #5a4a14; border-radius: 14px; padding: 4px 12px; font-size: 0.8rem; cursor: pointer; }
+.btn-chip:hover { background: #241f0d; }
+code { background: #222; padding: 1px 5px; border-radius: 4px; color: #D4AF37; }
+
+/* 篩選 */
+.filters fieldset { border: 1px solid #222; border-radius: 10px; padding: 12px 14px 14px; margin: 0 0 12px; }
+.filters legend { color: #D4AF37; font-size: 0.9rem; padding: 0 6px; }
+.filter-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+.filter-head .hint { margin: 0; }
+.row { display: flex; flex-wrap: wrap; gap: 18px; align-items: flex-end; margin-bottom: 10px; }
+.row > label:not(.check) { color: #ccc; font-size: 0.9rem; display: flex; flex-direction: column; }
+.range { display: flex; align-items: center; gap: 6px; color: #666; }
+.check { color: #ccc; font-size: 0.9rem; display: inline-flex; align-items: center; gap: 6px; margin-right: 14px; cursor: pointer; padding-bottom: 8px; }
+.group { margin-bottom: 8px; }
+.group-label { color: #999; font-size: 0.85rem; margin-bottom: 6px; }
+.presets { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-bottom: 10px; }
+.presets button:not(.link) { background: #1a1a1a; color: #ccc; border: 1px solid #333; border-radius: 14px; padding: 4px 12px; font-size: 0.8rem; cursor: pointer; }
+.presets button:not(.link):hover { border-color: #D4AF37; color: #D4AF37; }
+.script-pickers { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+@media (max-width: 640px) { .script-pickers { grid-template-columns: 1fr; } }
+
+/* 指定會員 */
+.results { list-style: none; padding: 0; margin: 8px 0 0; border: 1px solid #222; border-radius: 8px; max-height: 260px; overflow-y: auto; }
+.results li { display: flex; gap: 10px; align-items: center; padding: 10px 12px; border-bottom: 1px solid #1d1d1d; cursor: pointer; color: #ddd; }
+.results li:hover { background: #181818; }
+.results li.added { opacity: 0.5; }
+.results .add { margin-left: auto; color: #D4AF37; font-size: 0.85rem; }
+.results.small li { padding: 7px 10px; font-size: 0.9rem; }
+.paste { margin-top: 12px; color: #aaa; }
+.paste summary { cursor: pointer; font-size: 0.9rem; }
+.paste .btn { margin-top: 8px; margin-right: 10px; }
+
+.chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; align-items: center; }
+.chip { background: #222; color: #eee; border-radius: 16px; padding: 4px 6px 4px 12px; font-size: 0.85rem; display: inline-flex; align-items: center; gap: 4px; }
+.chip button { background: none; border: none; color: #888; cursor: pointer; font-size: 1rem; line-height: 1; }
+.chip button:hover { color: #e74c3c; }
+.link { background: none; border: none; color: #888; cursor: pointer; text-decoration: underline; font-size: 0.85rem; }
+
+/* 預估 */
+.preview-row { display: flex; align-items: center; gap: 14px; margin-top: 16px; padding-top: 14px; border-top: 1px solid #1d1d1d; }
+.count { color: #ddd; }
+.count b { color: #3498db; font-size: 1.2rem; }
+.sample { margin-top: 12px; display: flex; flex-wrap: wrap; gap: 6px 16px; color: #ddd; font-size: 0.9rem; }
+.sample .group-label { flex-basis: 100%; margin: 0; }
+
+.btn { padding: 10px 20px; border-radius: 8px; font-weight: bold; cursor: pointer; border: none; transition: 0.2s; white-space: nowrap; }
+.btn-gold { background: #D4AF37; color: #000; }
+.btn-gold:hover:not(:disabled) { background: #e5c358; }
+.btn-gold:disabled, .btn-dark:disabled { background: #444; color: #888; cursor: not-allowed; }
+.btn-dark { background: #2a2a2a; color: #eee; border: 1px solid #444; }
+.btn-dark:hover:not(:disabled) { background: #333; }
+.send { width: 100%; padding: 14px; font-size: 1rem; }
+
+.alert { border-radius: 8px; padding: 12px 14px; margin-bottom: 14px; }
+.alert.danger { background: rgba(231, 76, 60, 0.1); border: 1px solid rgba(231, 76, 60, 0.4); color: #e74c3c; }
+.alert.success { background: rgba(46, 204, 113, 0.1); border: 1px solid rgba(46, 204, 113, 0.4); color: #2ecc71; }
+
+.modal-mask { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.75); display: flex; align-items: center; justify-content: center; z-index: 1000; padding: 20px; }
+.modal { background: #151515; border: 1px solid #333; border-radius: 12px; padding: 22px; width: 100%; max-width: 480px; color: #ddd; }
+.modal h4 { color: #D4AF37; margin: 0 0 10px; }
+.msg-preview { background: #0b0b0b; border: 1px solid #2a2a2a; border-radius: 8px; padding: 12px; white-space: pre-wrap; word-break: break-word; max-height: 240px; overflow-y: auto; font-family: inherit; font-size: 0.9rem; }
+.modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 16px; }
+</style>

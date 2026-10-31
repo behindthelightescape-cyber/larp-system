@@ -72,6 +72,13 @@ Deno.serve(async (req) => {
 
     const token_hash = linkData.properties.hashed_token
 
+    // 記錄最後登入時間（新會員此時可能還沒有 users row，會更新 0 筆；失敗不影響登入）
+    const { error: loginErr } = await supabase
+      .from('users')
+      .update({ last_login_at: new Date().toISOString() })
+      .eq('id', lineUserId)
+    if (loginErr) console.error('更新 last_login_at 失敗:', loginErr.message)
+
     return new Response(
       JSON.stringify({ token_hash, email: fakeEmail }),
       { headers: { ...CORS, 'Content-Type': 'application/json' } },

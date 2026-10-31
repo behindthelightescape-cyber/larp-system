@@ -1,0 +1,341 @@
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.3'
+import { notifyAdmins } from './notify.ts'
+
+// 推播共用邏輯：篩選會員（resolveTarget）、發送（sendPush）、查額度（getQuota）。
+// admin-push（後台立即發送 / 預約）與 scheduled-push-runner（排程執行）共用。
+
+const PAGE_SIZE = 1000
+const PARALLEL_PAGES = 6
+const CHUNK_SIZE = 500
+export const MAX_TEXT = 5000
+const LINE_USER_ID = /^U[0-9a-f]{32}$/
+export const MISSING_TAG = '{缺少劇本}'
+
+export type Filter = {
+  level_min?: number
+  level_max?: number
+  points_min?: number
+  joined_after?: string   // YYYY-MM-DD
+  joined_before?: string  // YYYY-MM-DD
+  birthday_month?: number
+  login_status?: 'logged_in' | 'never'  // 登入過 App / 從未登入
+  last_login_after?: string             // 最後登入日期 >=（YYYY-MM-DD）
+  last_login_before?: string            // 最後登入日期 <=
+  play_count_min?: number
+  play_count_max?: number
+  last_played_after?: string   // 最後遊玩日期 >= （YYYY-MM-DD，台灣時間；從沒玩過的不算）
+  last_played_before?: string  // 最後遊玩日期 <=
+  played_scripts?: number[]     // 玩過其中至少 played_scripts_min 部（預設 1 = 任一）
+  played_scripts_min?: number
+  not_played_scripts?: number[] // 這些都沒玩過
+  achievement_id?: string       // 成就差一點：還沒解鎖、只差 1～achievement_missing_max 部劇本
+  achievement_missing_max?: number
+  categories?: string[]         // 玩過其中任一類型
+  branches?: string[]           // 去過其中任一分店
+  has_coupon?: boolean          // 有未使用、未過期的票券
+}
+
+export type Target = { mode: 'ids'; ids: string[] } | ({ mode: 'filter' } & Filter)
+
+export const LINE_TOKEN = Deno.env.get('LINE_CHANNEL_ACCESS_TOKEN') ?? ''
+export const supabase = createClient(
+  Deno.env.get('SUPABASE_URL') ?? '',
+  Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
+)
+
+const num = (v: unknown) => (v === '' || v === null || v === undefined || isNaN(Number(v)) ? null : Number(v))
+const nonEmpty = <T>(a?: T[]) => (Array.isArray(a) && a.length > 0 ? a : null)
+
+// 分頁抓完整張表（PostgREST 單次上限 1000 筆）：每輪平行抓 PARALLEL_PAGES 頁，直到某頁不滿為止
+// build() 必須含 .order()，分頁結果才會穩定
+// deno-lint-ignore no-explicit-any
+async function fetchAll<T>(build: () => any, label: string): Promise<T[]> {
+  const out: T[] = []
+  for (let page = 0; ; page += PARALLEL_PAGES) {
+    const batch = await Promise.all(
+      Array.from({ length: PARALLEL_PAGES }, (_, k) => {
+        const from = (page + k) * PAGE_SIZE
+        return build().range(from, from + PAGE_SIZE - 1)
+      }),
+    )
+    for (const { data, error } of batch) {
+      if (error) throw new Error(`讀取${label}失敗: ${error.message}`)
+      out.push(...(data ?? []))
+      if (!data || data.length < PAGE_SIZE) return out
+    }
+  }
+}
+
+export async function getQuota() {
+  const headers = { Authorization: `Bearer ${LINE_TOKEN}` }
+  const [q, c] = await Promise.all([
+    fetch('https://api.line.me/v2/bot/message/quota', { headers }).then((r) => r.json()),
+    fetch('https://api.line.me/v2/bot/message/quota/consumption', { headers }).then((r) => r.json()),
+  ])
+  const limit = q.type === 'limited' ? Number(q.value) : null // null = 無上限
+  const used = Number(c.totalUsage ?? 0)
+  return { limit, used, remaining: limit === null ? null : Math.max(limit - used, 0) }
+}
+
+async function resolveIds(ids: string[]) {
+  const unique = [...new Set((ids ?? []).map(String))]
+  const out: string[] = []
+  for (let i = 0; i < unique.length; i += PAGE_SIZE) {
+    const { data, error } = await supabase
+      .from('users').select('id').in('id', unique.slice(i, i + PAGE_SIZE)).eq('is_blocked', false)
+    if (error) throw new Error(`讀取會員失敗: ${error.message}`)
+    for (const r of data ?? []) if (LINE_USER_ID.test(r.id)) out.push(r.id)
+  }
+  return out
+}
+
+export type Resolved = {
+  ids: string[]
+  lastPlayed: Map<string, number> | null // 最後遊玩時間（預覽用；沒用到遊玩條件時為 null）
+  missing: Map<string, number[]> | null  // 成就還缺的劇本 id（有選成就時才有）
+}
+
+async function resolveFilter(f: Filter): Promise<Resolved> {
+  let lastPlayed: Map<string, number> | null = null
+  let missing: Map<string, number[]> | null = null
+  // 1. users 表本身的條件
+  const levelMin = num(f.level_min), levelMax = num(f.level_max), pointsMin = num(f.points_min)
+  const users = await fetchAll<{ id: string }>(() => {
+    let q = supabase.from('users').select('id').eq('is_blocked', false).order('id')
+    if (levelMin !== null) q = q.gte('level', levelMin)
+    if (levelMax !== null) q = q.lte('level', levelMax)
+    if (pointsMin !== null) q = q.gte('points', pointsMin)
+    if (f.joined_after) q = q.gte('created_at', `${f.joined_after}T00:00:00+08:00`)
+    if (f.joined_before) q = q.lte('created_at', `${f.joined_before}T23:59:59+08:00`)
+    if (f.login_status === 'never') q = q.is('last_login_at', null)
+    if (f.login_status === 'logged_in') q = q.not('last_login_at', 'is', null)
+    if (f.last_login_after) q = q.gte('last_login_at', `${f.last_login_after}T00:00:00+08:00`)
+    if (f.last_login_before) q = q.lte('last_login_at', `${f.last_login_before}T23:59:59+08:00`)
+    return q
+  }, '會員')
+  let ids = users.map((u) => u.id).filter((id) => LINE_USER_ID.test(id))
+
+  // 2. 生日月份
+  const month = num(f.birthday_month)
+  if (month !== null && month >= 1 && month <= 12) {
+    const rows = await fetchAll<{ user_id: string; birthday: string }>(
+      () => supabase.from('users_private').select('user_id, birthday').not('birthday', 'is', null).order('user_id'),
+      '生日',
+    )
+    const set = new Set(rows.filter((r) => Number(String(r.birthday).slice(5, 7)) === month).map((r) => r.user_id))
+    ids = ids.filter((id) => set.has(id))
+  }
+
+  // 3. 遊玩紀錄相關條件
+  const playCountMin = num(f.play_count_min), playCountMax = num(f.play_count_max)
+  const lastAfter = f.last_played_after ? Date.parse(`${f.last_played_after}T00:00:00+08:00`) : null
+  const lastBefore = f.last_played_before ? Date.parse(`${f.last_played_before}T23:59:59+08:00`) : null
+  const played = nonEmpty(f.played_scripts)?.map(Number)
+  const playedMin = Math.max(1, num(f.played_scripts_min) ?? 1)
+  const notPlayed = nonEmpty(f.not_played_scripts)?.map(Number)
+  const categories = nonEmpty(f.categories)
+  const branches = nonEmpty(f.branches)
+
+  // 成就：條件是「玩過 script_ids 全部」
+  let achScripts: number[] | null = null
+  let achUnlocked = new Set<string>()
+  const achMissingMax = Math.max(1, num(f.achievement_missing_max) ?? 1)
+  if (f.achievement_id) {
+    const { data: ach, error } = await supabase
+      .from('achievements').select('condition_type, condition_value').eq('id', f.achievement_id).single()
+    if (error || !ach) throw new Error('找不到這個成就')
+    if (ach.condition_type !== 'script') throw new Error(`不支援的成就條件類型：${ach.condition_type}`)
+    achScripts = (ach.condition_value?.script_ids ?? []).map(Number)
+    const unlocked = await fetchAll<{ user_id: string }>(
+      () => supabase.from('user_achievements').select('user_id').eq('achievement_id', f.achievement_id).order('id'),
+      '成就解鎖紀錄',
+    )
+    achUnlocked = new Set(unlocked.map((r) => r.user_id))
+  }
+
+  const needPlays = playCountMin !== null || playCountMax !== null || lastAfter !== null ||
+    lastBefore !== null || played || notPlayed || categories || branches || achScripts
+
+  if (needPlays) {
+    const rows = await fetchAll<{
+      user_id: string
+      created_at: string
+      games: { play_time: string | null; branch_name: string | null; script_id: number | null; scripts: { category: string | null } | null } | null
+    }>(
+      () => supabase
+        .from('game_participants')
+        .select('user_id, created_at, games(play_time, branch_name, script_id, scripts(category))')
+        .order('id'),
+      '遊玩紀錄',
+    )
+
+    const lp = (lastPlayed = new Map<string, number>())
+    type Stat = { count: number; last: number; scripts: Set<number>; cats: Set<string>; branches: Set<string> }
+    const stats = new Map<string, Stat>()
+    for (const r of rows) {
+      let s = stats.get(r.user_id)
+      if (!s) stats.set(r.user_id, (s = { count: 0, last: 0, scripts: new Set(), cats: new Set(), branches: new Set() }))
+      s.count++
+      const t = Date.parse(r.games?.play_time ?? r.created_at)
+      if (t > s.last) s.last = t
+      if (r.games?.script_id != null) s.scripts.add(Number(r.games.script_id))
+      if (r.games?.branch_name) s.branches.add(r.games.branch_name)
+      for (const c of (r.games?.scripts?.category ?? '').split(',')) if (c.trim()) s.cats.add(c.trim())
+    }
+
+    ids = ids.filter((id) => {
+      const s = stats.get(id)
+      const count = s?.count ?? 0
+      if (playCountMin !== null && count < playCountMin) return false
+      if (playCountMax !== null && count > playCountMax) return false
+      if (lastAfter !== null && (!s || s.last < lastAfter)) return false
+      if (lastBefore !== null && (!s || s.last > lastBefore)) return false
+      if (played && played.filter((x) => s?.scripts.has(x)).length < playedMin) return false
+      if (notPlayed && notPlayed.some((x) => s?.scripts.has(x))) return false
+      if (categories && !categories.some((c) => s?.cats.has(c))) return false
+      if (branches && !branches.some((b) => s?.branches.has(b))) return false
+      if (achScripts) {
+        if (achUnlocked.has(id)) return false
+        const miss = achScripts.filter((x) => !s?.scripts.has(x)).length
+        if (miss < 1 || miss > achMissingMax) return false
+      }
+      return true
+    })
+    for (const id of ids) { const s = stats.get(id); if (s?.last) lp.set(id, s.last) }
+    if (achScripts) {
+      const m = (missing = new Map<string, number[]>())
+      for (const id of ids) m.set(id, achScripts.filter((x) => !stats.get(id)?.scripts.has(x)))
+    }
+  }
+
+  // 4. 持有未使用票券
+  if (f.has_coupon === true) {
+    const rows = await fetchAll<{ user_id: string }>(
+      () => supabase.from('coupons').select('user_id').eq('status', 'available')
+        .or(`expiry_date.is.null,expiry_date.gt.${new Date().toISOString()}`).order('id'),
+      '票券',
+    )
+    const set = new Set(rows.map((r) => r.user_id))
+    ids = ids.filter((id) => set.has(id))
+  }
+
+  return { ids, lastPlayed, missing }
+}
+
+export async function resolveTarget(target: Target): Promise<Resolved> {
+  if (target?.mode === 'ids') return { ids: await resolveIds(target.ids), lastPlayed: null, missing: null }
+  if (target?.mode === 'filter') return resolveFilter(target)
+  throw new Error('target.mode 必須是 ids 或 filter')
+}
+
+/** 把成就缺少的劇本 id 轉成「《A》、《B》」 */
+export async function missingTextFn(missing: Map<string, number[]> | null) {
+  if (!missing) return (_id: string) => ''
+  const all = [...new Set([...missing.values()].flat())]
+  const { data } = await supabase.from('scripts').select('id, title').in('id', all)
+  const map = new Map((data ?? []).map((s) => [Number(s.id), s.title as string]))
+  return (id: string) => (missing.get(id) ?? []).map((x) => `《${map.get(x) ?? `#${x}`}》`).join('、')
+}
+
+export class PushError extends Error {}
+
+/** 驗證訊息是否可發（不含對象），不合法就丟 PushError */
+export function validateMessage(message: string, target: Target) {
+  if (!message) throw new PushError('訊息不能空白')
+  if (message.length > MAX_TEXT) throw new PushError(`訊息最多 ${MAX_TEXT} 字`)
+  if (message.includes(MISSING_TAG) && !(target?.mode === 'filter' && target.achievement_id)) {
+    throw new PushError(`訊息裡有 ${MISSING_TAG}，但沒有設定「成就差一點」條件`)
+  }
+}
+
+/** 記錄一批收件人（寫入失敗只印 log，不影響發送） */
+export async function recordRecipients(
+  logId: string, userIds: string[], status: 'sent' | 'failed', personalized: string | null,
+) {
+  const rows = userIds.map((user_id) => ({ log_id: logId, user_id, status, message: personalized }))
+  for (let i = 0; i < rows.length; i += CHUNK_SIZE) {
+    const { error } = await supabase.from('push_log_recipients').insert(rows.slice(i, i + CHUNK_SIZE))
+    if (error) console.error('寫入 push_log_recipients 失敗:', error.message)
+  }
+}
+
+/** 篩選對象並發送，結果寫入 push_logs 與 push_log_recipients */
+export async function sendPush(opts: {
+  target: Target
+  message: string
+  taskName: string
+  source: 'custom' | 'scheduled'
+  createdByName?: string
+}) {
+  const message = opts.message.trim()
+  validateMessage(message, opts.target)
+
+  const { ids, missing } = await resolveTarget(opts.target)
+  if (ids.length === 0) throw new PushError('沒有符合條件的會員')
+
+  const quota = await getQuota()
+  if (quota.remaining !== null && ids.length > quota.remaining) {
+    throw new PushError(`本月剩餘額度 ${quota.remaining} 則，不夠發給 ${ids.length} 人`)
+  }
+
+  // 依實際訊息內容分組：有 {缺少劇本} 時，缺同一組劇本的人一起發
+  const missingText = await missingTextFn(missing)
+  const groups = new Map<string, string[]>()
+  for (const id of ids) {
+    const text = message.includes(MISSING_TAG) ? message.replaceAll(MISSING_TAG, missingText(id)) : message
+    const g = groups.get(text)
+    if (g) g.push(id)
+    else groups.set(text, [id])
+  }
+
+  const base = { task_name: opts.taskName, status: 'processing', target_count: ids.length }
+  const insertLog = (row: Record<string, unknown>) => supabase.from('push_logs').insert([row]).select().single()
+  let { data: log, error: logErr } = await insertLog(
+    { ...base, source: opts.source, message, created_by_name: opts.createdByName ?? null },
+  )
+  // 還沒跑 setup_push.sql（沒有新欄位）時退回舊格式
+  if (logErr) ({ data: log, error: logErr } = await insertLog(base))
+  if (logErr || !log) throw new Error(`寫入 push_logs 失敗: ${logErr?.message}`)
+
+  let success = 0
+  let fail = 0
+  const errors: string[] = []
+  for (const [text, groupIds] of groups) {
+    for (let i = 0; i < groupIds.length; i += CHUNK_SIZE) {
+      const chunk = groupIds.slice(i, i + CHUNK_SIZE)
+      const res = await fetch('https://api.line.me/v2/bot/message/multicast', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${LINE_TOKEN}` },
+        body: JSON.stringify({ to: chunk, messages: [{ type: 'text', text: text.slice(0, MAX_TEXT) }] }),
+      })
+      if (res.ok) {
+        success += chunk.length
+      } else {
+        fail += chunk.length
+        errors.push(`${chunk.length} 人發送失敗 LINE ${res.status}: ${await res.text()}`)
+      }
+      await recordRecipients(log.id, chunk, res.ok ? 'sent' : 'failed', text === message ? null : text)
+    }
+  }
+
+  await supabase.from('push_logs').update({
+    success_count: success,
+    fail_count: fail,
+    status: fail > 0 ? 'failed' : 'completed',
+    error_msg: errors.length ? errors.join(' | ').slice(0, 2000) : null,
+    completed_at: new Date().toISOString(),
+  }).eq('id', log.id)
+
+  await notifyAdmins({
+    source: opts.source,
+    taskName: opts.taskName,
+    createdByName: opts.createdByName,
+    count: ids.length,
+    success,
+    fail,
+    message,
+    error: errors.length ? errors.join(' | ') : null,
+  })
+
+  return { count: ids.length, success, fail, errors, logId: log.id as string }
+}

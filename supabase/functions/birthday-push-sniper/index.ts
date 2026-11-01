@@ -2,7 +2,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.3'
 import { notifyAdmins } from '../_shared/notify.ts'
 
 // 每月 1 號由 pg_cron 呼叫；後台「戰情室」也可手動觸發。
-// 通知「下個月」生日的會員，讓他們提前到會員中心領生日禮（領取邏輯在 src/stores/user.js）。
+// 通知「下個月」生日的會員，讓他們提前打開成就系統（LIFF）領生日禮（領取邏輯在 src/stores/user.js）。
 // 防重複：發送成功後把 users.last_birthday_year 設為目標年份，同一年不會再推第二次。
 
 const corsHeaders = {
@@ -21,8 +21,8 @@ const SETTING_NEXT = 'birthday_msg_next'       // 下個月壽星（每月 1 號
 const SETTING_CURRENT = 'birthday_msg_current' // 本月壽星（補發）
 const SETTING_AUTO = 'birthday_auto_enabled'   // 'off' = 關閉每月自動發送
 const MONTH_TAG = '{月}'
-const DEFAULT_NEXT = `🎉 {月}月壽星請提前出列！\n\n為了讓您有充足的時間揪團，專屬您的【階梯式生日大禮包】已經提前派發囉！最高可享『免費暢玩』！\n\n現在立刻點擊下方選單打開「會員中心」，系統就會自動把禮物塞進您的票券夾！趕快來劇光燈預約生日局吧！🎂`
-const DEFAULT_CURRENT = `🎉 {月}月壽星生日快樂！\n\n專屬您的【階梯式生日大禮包】已經準備好囉！最高可享『免費暢玩』！票券效期到本月底，別錯過了！\n\n現在立刻點擊下方選單打開「會員中心」，系統就會自動把禮物塞進您的票券夾！趕快來劇光燈預約生日局吧！🎂`
+const DEFAULT_NEXT = `🎉 {月}月壽星請提前出列！\n\n為了讓您有充足的時間揪團，專屬您的【階梯式生日大禮包】已經提前派發囉！最高可享『免費暢玩』！\n\n現在立刻點擊下方選單打開「成就系統」，系統就會自動把禮物塞進您的票券夾！趕快來劇光燈預約生日局吧！🎂`
+const DEFAULT_CURRENT = `🎉 {月}月壽星生日快樂！\n\n專屬您的【階梯式生日大禮包】已經準備好囉！最高可享『免費暢玩』！票券效期到本月底，別錯過了！\n\n現在立刻點擊下方選單打開「成就系統」，系統就會自動把禮物塞進您的票券夾！趕快來劇光燈預約生日局吧！🎂`
 
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), {

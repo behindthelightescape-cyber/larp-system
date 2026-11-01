@@ -214,12 +214,12 @@ const buildDollCard = (
     .filter((l): l is { slot: string; url: string } => !!l)
 
   // 建立絕對定位的圖層 box，覆蓋在底圖上方
-  // 每個服裝圖片都需要跟底圖一樣大小才能正確對齊
+  // 每個服裝圖片都需要跟底圖一樣大小才能正確對齊（目前素材都是 400×600，所以用 2:3）
   const absLayer = (url: string) => ({
     type: 'box', layout: 'vertical',
     position: 'absolute', offsetTop: '0px', offsetStart: '0px',
     width: '100%', height: '100%',
-    contents: [{ type: 'image', url, size: 'full', aspectRatio: '1:1', aspectMode: 'cover' }],
+    contents: [{ type: 'image', url, size: 'full', aspectRatio: '2:3', aspectMode: 'cover' }],
   })
 
   return {
@@ -256,7 +256,7 @@ const buildDollCard = (
             type: 'box', layout: 'vertical', paddingAll: '0px',
             contents: [
               // 角色底圖（最底層）
-              { type: 'image', url: baseUrl, size: 'full', aspectRatio: '1:1', aspectMode: 'cover' },
+              { type: 'image', url: baseUrl, size: 'full', aspectRatio: '2:3', aspectMode: 'cover' },
               // 服裝圖層（絕對定位，依序疊加在底圖上方）
               ...orderedLayers.map(l => absLayer(l.url)),
             ],

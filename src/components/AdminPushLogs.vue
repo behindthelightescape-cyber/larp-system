@@ -80,6 +80,97 @@ watch(notifyQuery, (kw) => {
   }, 300)
 })
 
+// ---- 生日推播文案與自動發送開關（group_settings）----
+// 預設文案要和 supabase/functions/birthday-push-sniper/index.ts 保持一致
+const BDAY_KEYS = { next: 'birthday_msg_next', current: 'birthday_msg_current', auto: 'birthday_auto_enabled' }
+const MONTH_TAG = '{月}'
+const BDAY_DEFAULTS = {
+  next: `🎉 {月}月壽星請提前出列！\n\n為了讓您有充足的時間揪團，專屬您的【階梯式生日大禮包】已經提前派發囉！最高可享『免費暢玩』！\n\n現在立刻點擊下方選單打開「會員中心」，系統就會自動把禮物塞進您的票券夾！趕快來劇光燈預約生日局吧！🎂`,
+  current: `🎉 {月}月壽星生日快樂！\n\n專屬您的【階梯式生日大禮包】已經準備好囉！最高可享『免費暢玩』！票券效期到本月底，別錯過了！\n\n現在立刻點擊下方選單打開「會員中心」，系統就會自動把禮物塞進您的票券夾！趕快來劇光燈預約生日局吧！🎂`,
+}
+const BDAY_LABELS = { next: '下個月壽星（每月 1 號自動發送）', current: '本月壽星（手動補發用）' }
+const bdayOpen = ref(false)
+const bdayTab = ref('next') // next | current
+const bdayText = ref({ next: '', current: '' })
+const bdaySaved = ref({ next: '', current: '' })
+const bdayAuto = ref(true)
+const bdayMsg = ref('')
+const bdayBusy = ref(false)
+
+// 以台灣時間算出「下個月／本月」是幾月，給預覽用
+const twMonth = (offset) => (new Date(Date.now() + 8 * 3600 * 1000).getUTCMonth() + offset) % 12 + 1
+const bdayPreview = (key) => (bdayText.value[key] || '').replaceAll(MONTH_TAG, String(twMonth(key === 'next' ? 1 : 0)))
+const bdayDirty = (key) => bdayText.value[key] !== bdaySaved.value[key]
+const flashBday = (m) => { bdayMsg.value = m; setTimeout(() => { if (bdayMsg.value === m) bdayMsg.value = '' }, 3000) }
+
+const loadBday = async () => {
+  const { data } = await supabase.from('group_settings').select('key, value').in('key', Object.values(BDAY_KEYS))
+  const get = (k) => (data || []).find(r => r.key === k)?.value
+  for (const key of ['next', 'current']) {
+    const v = (get(BDAY_KEYS[key]) || '').trim() || BDAY_DEFAULTS[key]
+    bdayText.value[key] = v
+    bdaySaved.value[key] = v
+  }
+  bdayAuto.value = get(BDAY_KEYS.auto) !== 'off'
+}
+const saveBdaySetting = async (key, value) => {
+  const { error } = await supabase.from('group_settings').upsert({ key, value, updated_at: new Date().toISOString() })
+  if (error) throw error
+}
+const saveBdayText = async (key) => {
+  const text = bdayText.value[key].trim()
+  if (!text) { flashBday('文案不能是空的'); return }
+  if (text.length > 5000) { flashBday('LINE 單則訊息最多 5000 字'); return }
+  bdayBusy.value = true
+  try {
+    await saveBdaySetting(BDAY_KEYS[key], text)
+    bdayText.value[key] = text
+    bdaySaved.value[key] = text
+    flashBday('已儲存，下次發送會用這份文案')
+  } catch (err) { flashBday(`儲存失敗：${err.message}`) } finally { bdayBusy.value = false }
+}
+const resetBdayText = (key) => {
+  if (!window.confirm('要把編輯框換回系統預設文案嗎？（還沒儲存，按「儲存」才會生效）')) return
+  bdayText.value[key] = BDAY_DEFAULTS[key]
+}
+const toggleBdayAuto = async () => {
+  const next = !bdayAuto.value
+  const msg = next
+    ? '要開啟每月 1 號 10:00 自動發送生日推播嗎？'
+    : '要關閉每月自動發送嗎？\n關閉後每月 1 號不會發送（你會收到一則通知提醒），需要時再手動執行。'
+  if (!window.confirm(msg)) return
+  bdayBusy.value = true
+  try {
+    await saveBdaySetting(BDAY_KEYS.auto, next ? 'on' : 'off')
+    bdayAuto.value = next
+    flashBday(next ? '已開啟自動發送' : '已關閉自動發送')
+  } catch (err) { flashBday(`儲存失敗：${err.message}`) } finally { bdayBusy.value = false }
+}
+// 把目前編輯框的內容（含月份代入）發給「發送通知對象」，在手機上確認實際樣子
+const testBday = async (key) => {
+  if (!notifyUsers.value.length) { flashBday('請先在上方設定發送通知對象，測試訊息會發給他們'); return }
+  const names = notifyUsers.value.map(u => u.display_name || u.legacy_id).join('、')
+  if (!window.confirm(`要把這份文案發給 ${names} 測試嗎？\n會用掉 ${notifyUsers.value.length} 則額度（另加 1 則發送通知）。`)) return
+  bdayBusy.value = true
+  try {
+    const { data, error } = await supabase.functions.invoke('admin-push', {
+      body: {
+        action: 'send',
+        target: { mode: 'ids', ids: notifyUsers.value.map(u => u.id) },
+        message: bdayPreview(key),
+        title: '生日文案測試',
+      },
+    })
+    if (error) {
+      let m = error.message
+      try { m = (await error.context.json()).error || m } catch { /* ignore */ }
+      throw new Error(m)
+    }
+    flashBday(data?.fail ? `測試發送有失敗：${data.fail} 人` : '測試訊息已發出，請看 LINE')
+    await fetchLogs()
+  } catch (err) { flashBday(`測試失敗：${err.message}`) } finally { bdayBusy.value = false }
+}
+
 const formatDate = (s) => s
   ? new Date(s).toLocaleString('zh-TW', { timeZone: 'Asia/Taipei', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false })
   : '--'
@@ -119,7 +210,7 @@ const fetchLogs = async (append = false) => {
   }
 }
 
-onMounted(() => { fetchLogs(); loadNotify() })
+onMounted(() => { fetchLogs(); loadNotify(); loadBday() })
 watch(sourceFilter, () => { expandedId.value = null; fetchLogs() })
 
 // ---- 會員搜尋 ----
@@ -175,13 +266,15 @@ const filteredRecipients = (list) => {
 }
 
 // ---- 手動執行生日推播 ----
-const triggerManualPush = async () => {
-  if (!window.confirm('確定要現在執行「下個月壽星」生日推播嗎？\n今年已推過的人不會重複收到。')) return
+const triggerManualPush = async (key) => {
+  if (bdayDirty(key)) { alert('文案有修改還沒儲存，請先儲存或還原，再發送。'); return }
+  const month = twMonth(key === 'next' ? 1 : 0)
+  if (!window.confirm(`確定要現在發送給「${month} 月壽星」嗎？\n會使用目前儲存的文案；今年已收過生日推播的人不會重複收到。`)) return
   isTriggering.value = true
   try {
     const { data, error } = await supabase.functions.invoke('birthday-push-sniper', {
       method: 'POST',
-      body: { trigger_by: 'admin_manual' },
+      body: { trigger_by: 'admin_manual', month_offset: key === 'next' ? 1 : 0 },
     })
     if (error) throw error
     alert(`✅ ${data?.message || '執行完成'}${data?.success != null ? `：成功 ${data.success} 人，失敗 ${data.fail} 人` : ''}`)
@@ -201,9 +294,48 @@ const triggerManualPush = async () => {
         <h3 style="color: #eee; margin: 0;">📡 推播紀錄</h3>
         <p class="hint">所有 LINE 推播（生日自動推播、自訂、預約）的發送紀錄。點一列可以看訊息內容與收件人。</p>
       </div>
-      <button class="btn btn-gold" @click="triggerManualPush" :disabled="isTriggering">
-        {{ isTriggering ? '執行中...' : '▶️ 手動執行生日推播' }}
-      </button>
+    </div>
+
+    <div class="notify-card">
+      <div class="notify-head bday-head" @click="bdayOpen = !bdayOpen">
+        <span>🎂 生日推播設定</span>
+        <span class="status-badge" :class="bdayAuto ? 'badge-success' : 'badge-secondary'">{{ bdayAuto ? '每月自動發送：開' : '每月自動發送：關' }}</span>
+        <span class="hint" style="margin: 0;">編輯文案、測試發送、手動補發</span>
+        <span class="muted" style="margin-left: auto;">{{ bdayOpen ? '▲ 收起' : '▼ 展開' }}</span>
+      </div>
+      <div v-if="bdayOpen" class="bday-body">
+        <div class="chips">
+          <button v-for="(label, key) in BDAY_LABELS" :key="key" :class="{ active: bdayTab === key }" @click="bdayTab = key">
+            {{ label }}<template v-if="bdayDirty(key)"> ・未儲存</template>
+          </button>
+        </div>
+        <div class="bday-grid">
+          <div>
+            <div class="label">文案（<code>{{ MONTH_TAG }}</code> 會換成月份）</div>
+            <textarea v-model="bdayText[bdayTab]" class="input bday-text" rows="10"></textarea>
+            <div class="muted small">{{ bdayText[bdayTab].length }} / 5000 字</div>
+          </div>
+          <div>
+            <div class="label">預覽（會員收到的樣子，以 {{ twMonth(bdayTab === 'next' ? 1 : 0) }} 月為例）</div>
+            <pre class="msg bday-preview">{{ bdayPreview(bdayTab) }}</pre>
+          </div>
+        </div>
+        <div class="bday-actions">
+          <button class="btn btn-gold" :disabled="bdayBusy || !bdayDirty(bdayTab)" @click="saveBdayText(bdayTab)">💾 儲存文案</button>
+          <button class="btn btn-dark" :disabled="bdayBusy" @click="testBday(bdayTab)">📱 發給通知對象測試</button>
+          <button class="btn btn-dark" :disabled="bdayBusy" @click="resetBdayText(bdayTab)">↺ 換回預設文案</button>
+          <span class="spacer"></span>
+          <button class="btn btn-dark" :disabled="bdayBusy" @click="toggleBdayAuto">{{ bdayAuto ? '⏸️ 關閉每月自動發送' : '▶️ 開啟每月自動發送' }}</button>
+          <button class="btn btn-dark" :disabled="isTriggering || bdayBusy" @click="triggerManualPush(bdayTab)">
+            {{ isTriggering ? '發送中...' : `🚀 立即發送給 ${twMonth(bdayTab === 'next' ? 1 : 0)} 月壽星` }}
+          </button>
+        </div>
+        <div v-if="bdayMsg" class="small" style="color: #D4AF37; margin-top: 8px;">{{ bdayMsg }}</div>
+        <div class="hint">
+          每月 1 號 10:00 會自動用「下個月壽星」文案發給下個月生日的會員。同一位會員一年只會收到一次生日推播。<br />
+          修改文案後建議先按「發給通知對象測試」，在手機上確認再儲存。
+        </div>
+      </div>
     </div>
 
     <div class="notify-card">
@@ -397,6 +529,15 @@ const triggerManualPush = async () => {
 .notify-card { background: #111; border: 1px solid #222; border-radius: 12px; padding: 12px 16px; margin-bottom: 16px; }
 .notify-head { display: flex; flex-wrap: wrap; gap: 10px; align-items: baseline; color: #D4AF37; font-weight: bold; margin-bottom: 10px; }
 .notify-head .hint { font-weight: normal; }
+.bday-head { cursor: pointer; align-items: center; margin-bottom: 0; }
+.bday-body { margin-top: 12px; }
+.bday-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 12px; }
+.bday-text { resize: vertical; min-height: 220px; line-height: 1.5; }
+.bday-preview { min-height: 220px; max-height: 400px; }
+.bday-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; align-items: center; }
+.bday-actions .btn { padding: 8px 14px; font-size: 0.85rem; }
+.spacer { flex: 1; }
+@media (max-width: 800px) { .bday-grid { grid-template-columns: 1fr; } }
 .notify-body { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .n-chip { background: #222; color: #eee; border-radius: 16px; padding: 4px 6px 4px 12px; font-size: 0.85rem; display: inline-flex; align-items: center; gap: 4px; }
 .n-chip button { background: none; border: none; color: #888; cursor: pointer; font-size: 1rem; }

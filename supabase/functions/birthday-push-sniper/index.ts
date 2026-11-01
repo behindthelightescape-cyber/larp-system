@@ -15,6 +15,15 @@ const PAGE_SIZE = 1000   // PostgREST 單次回傳上限
 const CHUNK_SIZE = 500   // LINE multicast 單次上限
 const LINE_USER_ID = /^U[0-9a-f]{32}$/
 
+// 文案存在 group_settings，後台「推播監控」可編輯；沒設定時用下面的預設文案。
+// 前端 src/components/AdminPushLogs.vue 有同一份預設文案，修改時兩邊一起改。
+const SETTING_NEXT = 'birthday_msg_next'       // 下個月壽星（每月 1 號自動）
+const SETTING_CURRENT = 'birthday_msg_current' // 本月壽星（補發）
+const SETTING_AUTO = 'birthday_auto_enabled'   // 'off' = 關閉每月自動發送
+const MONTH_TAG = '{月}'
+const DEFAULT_NEXT = `🎉 {月}月壽星請提前出列！\n\n為了讓您有充足的時間揪團，專屬您的【階梯式生日大禮包】已經提前派發囉！最高可享『免費暢玩』！\n\n現在立刻點擊下方選單打開「會員中心」，系統就會自動把禮物塞進您的票券夾！趕快來劇光燈預約生日局吧！🎂`
+const DEFAULT_CURRENT = `🎉 {月}月壽星生日快樂！\n\n專屬您的【階梯式生日大禮包】已經準備好囉！最高可享『免費暢玩』！票券效期到本月底，別錯過了！\n\n現在立刻點擊下方選單打開「會員中心」，系統就會自動把禮物塞進您的票券夾！趕快來劇光燈預約生日局吧！🎂`
+
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), {
     status,
@@ -33,11 +42,19 @@ Deno.serve(async (req) => {
   )
 
   // body.month_offset：1 = 下個月壽星（預設，每月排程用）；0 = 本月壽星（補發用）
+  // body.trigger_by：'pg_cron' 開頭 = 自動排程；其他 = 後台手動
   let monthOffset = 1
+  let isAuto = false
   try {
     const body = await req.json()
     if (body?.month_offset === 0) monthOffset = 0
+    isAuto = String(body?.trigger_by ?? '').startsWith('pg_cron')
   } catch { /* 沒帶 body 就用預設 */ }
+
+  // 後台可調整的設定（group_settings）：文案、自動發送開關
+  const { data: settingRows } = await supabase
+    .from('group_settings').select('key, value').in('key', [SETTING_NEXT, SETTING_CURRENT, SETTING_AUTO])
+  const setting = (k: string) => (settingRows ?? []).find((r) => r.key === k)?.value as string | undefined
 
   // 以台灣時間判斷月份（Edge Function 跑在 UTC）
   const tw = new Date(Date.now() + 8 * 60 * 60 * 1000)
@@ -48,9 +65,16 @@ Deno.serve(async (req) => {
   const taskName = monthOffset === 0
     ? `${targetYear}年${targetMonth}月 壽星當月推播`
     : `${targetYear}年${targetMonth}月 壽星提前預熱推播`
-  const messageText = monthOffset === 0
-    ? `🎉 ${targetMonth}月壽星生日快樂！\n\n專屬您的【階梯式生日大禮包】已經準備好囉！最高可享『免費暢玩』！票券效期到本月底，別錯過了！\n\n現在立刻點擊下方選單打開「會員中心」，系統就會自動把禮物塞進您的票券夾！趕快來劇光燈預約生日局吧！🎂`
-    : `🎉 ${targetMonth}月壽星請提前出列！\n\n為了讓您有充足的時間揪團，專屬您的【階梯式生日大禮包】已經提前派發囉！最高可享『免費暢玩』！\n\n現在立刻點擊下方選單打開「會員中心」，系統就會自動把禮物塞進您的票券夾！趕快來劇光燈預約生日局吧！🎂`
+  const template = (monthOffset === 0 ? setting(SETTING_CURRENT) : setting(SETTING_NEXT))?.trim() ||
+    (monthOffset === 0 ? DEFAULT_CURRENT : DEFAULT_NEXT)
+  const messageText = template.replaceAll(MONTH_TAG, String(targetMonth))
+
+  // 自動排程被後台關掉時不發送（後台手動執行不受影響）
+  if (isAuto && setting(SETTING_AUTO) === 'off') {
+    console.log(`⏸️ ${taskName}：自動發送已關閉，略過`)
+    await notifyAdmins({ source: 'birthday', taskName, note: '生日自動推播已在後台關閉，這次沒有發送。需要的話請到後台手動執行。' })
+    return json({ message: '自動發送已關閉，未發送', task: taskName })
+  }
 
   const insertLog = (row: Record<string, unknown>) =>
     supabase.from('push_logs').insert([row]).select().single()

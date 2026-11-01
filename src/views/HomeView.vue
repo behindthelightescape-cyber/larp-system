@@ -196,22 +196,23 @@ onMounted(() => {
           </div>
         </div>
 
-        <!-- 燈燈破框而出 (造型室素材準備中，暫時關閉換裝入口) -->
-        <div class="showcase-doll-float" :style="canEditDoll ? null : { cursor: 'default' }" @click="openPaperDoll">
-          <div class="showcase-doll">
-            <img v-if="dollLayers.cape" class="doll-layer doll-clothing" :src="dollLayers.cape" alt="" />
-            <img class="doll-layer doll-base" :src="baseImgUrl || FALLBACK_BASE" alt="燈燈" />
-            <template v-for="slot in dollLayerOrder" :key="slot">
-              <img v-if="dollLayers[slot]" class="doll-layer doll-clothing" :src="dollLayers[slot]" alt="" />
-            </template>
-            <span v-if="canEditDoll" class="doll-edit-badge">換裝</span>
+        <!-- 場景卡：背景完整顯示（4:3，對應 800×600 背景圖），燈燈站在場景裡 -->
+        <div class="showcase-card">
+          <div class="showcase-scene" :style="stageBg">
+            <div class="card-deco-top"></div>
+            <div v-if="!equippedBgUrl" class="showcase-spotlight"></div>
+            <div class="scene-floor"></div>
+            <div class="showcase-doll-float" :style="canEditDoll ? null : { cursor: 'default' }" @click="openPaperDoll">
+              <div class="showcase-doll">
+                <img v-if="dollLayers.cape" class="doll-layer doll-clothing" :src="dollLayers.cape" alt="" />
+                <img class="doll-layer doll-base" :src="baseImgUrl || FALLBACK_BASE" alt="燈燈" />
+                <template v-for="slot in dollLayerOrder" :key="slot">
+                  <img v-if="dollLayers[slot]" class="doll-layer doll-clothing" :src="dollLayers[slot]" alt="" />
+                </template>
+              </div>
+              <span v-if="canEditDoll" class="doll-edit-badge">換裝</span>
+            </div>
           </div>
-        </div>
-
-        <!-- 縮短版卡片：只留背景 + 名字稱號 -->
-        <div class="showcase-card" :style="stageBg">
-          <div class="card-deco-top"></div>
-          <div class="showcase-spotlight"></div>
           <div class="showcase-overlay">
             <h1 class="user-name">{{ store.userData?.display_name || store.lineProfile?.displayName || '未知玩家' }}</h1>
             <div
@@ -488,16 +489,17 @@ onMounted(() => {
 .lv-prefix { color: #888; font-size: 0.5rem; font-weight: 900; letter-spacing: 1.5px; line-height: 1; }
 .lv-num    { color: #D4AF37; font-size: 1rem; font-weight: 900; line-height: 1; }
 
-/* 燈燈：絕對定位，頭部露出卡片上方 */
+/* 燈燈：站在場景底部中央（素材 400×600，2:3） */
 .showcase-doll-float {
   position: absolute;
-  top: 0; left: 50%;
+  bottom: 0; left: 50%;
   transform: translateX(-50%);
-  z-index: 5;
+  height: 92%;
+  z-index: 3;
   cursor: pointer;
 }
 .doll-edit-badge {
-  position: absolute; bottom: 8px; right: 0;
+  position: absolute; bottom: 12px; right: -18px;
   background: rgba(0,0,0,0.65);
   border: 1px solid rgba(212,175,55,0.5);
   border-radius: 20px; padding: 3px 12px;
@@ -509,8 +511,8 @@ onMounted(() => {
 .showcase-doll {
   display: grid;
   position: relative;
-  width: 200px; aspect-ratio: 1;
-  filter: drop-shadow(0 20px 48px rgba(0,0,0,0.9));
+  height: 100%; aspect-ratio: 2 / 3;
+  filter: drop-shadow(0 10px 18px rgba(0,0,0,0.55));
 }
 .doll-base {
   grid-area: 1 / 1;
@@ -523,9 +525,8 @@ onMounted(() => {
   object-fit: contain; pointer-events: none;
 }
 
-/* 縮短版卡片：留出頂部空間讓燈燈的身體進來 */
+/* 場景卡：上方 4:3 場景（背景 + 燈燈），下方名字稱號 */
 .showcase-card {
-  margin-top: 200px;
   width: 100%; position: relative;
   border-radius: 24px; overflow: hidden;
   border: 1px solid rgba(255,255,255,0.08);
@@ -534,6 +535,19 @@ onMounted(() => {
   display: flex; flex-direction: column;
 }
 
+.showcase-scene {
+  position: relative; width: 100%;
+  aspect-ratio: 4 / 3;
+  overflow: hidden;
+  background-size: cover; background-position: center;
+}
+/* 腳下淡淡的陰影，讓燈燈像站在地上 */
+.scene-floor {
+  position: absolute; bottom: 2%; left: 50%; transform: translateX(-50%);
+  width: 34%; height: 7%;
+  background: radial-gradient(ellipse at center, rgba(0,0,0,0.45) 0%, transparent 70%);
+  z-index: 2; pointer-events: none;
+}
 .showcase-spotlight {
   position: absolute; top: -40px; left: 50%; transform: translateX(-50%);
   width: 130%; height: 100%;
@@ -541,11 +555,12 @@ onMounted(() => {
   pointer-events: none;
 }
 
-/* overlay：頂部留空間給燈燈的下半身，名字在下方 */
+/* 名字稱號區：在場景下方，不蓋到背景 */
 .showcase-overlay {
   flex-shrink: 0; position: relative; z-index: 2;
-  background: linear-gradient(to top, rgba(0,0,0,0.95) 0%, rgba(0,0,0,0.7) 55%, transparent 100%);
-  padding: 140px 24px 28px;
+  background: linear-gradient(to bottom, rgba(0,0,0,0.85), rgba(0,0,0,0.95));
+  border-top: 1px solid rgba(212,175,55,0.25);
+  padding: 20px 24px 24px;
   display: flex; flex-direction: column; align-items: center; gap: 18px;
 }
 .user-name {
@@ -883,19 +898,16 @@ onMounted(() => {
 @media (max-width: 360px) {
   .content-layer { padding: 74px 14px 80px; gap: 10px; max-width: 100%; }
   .header-logo { height: 52px; }
-  .showcase-doll { width: 160px; }
   .user-name { font-size: 1.6rem; }
   .stat-num { font-size: 2rem; }
   .exp-cur-big { font-size: 1.7rem; }
-  .showcase-card { margin-top: 160px; }
   .showcase-top-float { top: 12px; padding: 0 14px; }
-  .showcase-overlay { padding: 110px 16px 20px; }
+  .showcase-overlay { padding: 16px 16px 20px; }
 }
 
 @media (min-width: 480px) {
   .content-layer { padding: 74px 24px 80px; }
   .header-logo { height: 78px; }
-  .showcase-doll { width: 220px; }
   .user-name { font-size: 2.2rem; }
   .stat-num { font-size: 2.6rem; }
   .exp-cur-big { font-size: 2.2rem; }

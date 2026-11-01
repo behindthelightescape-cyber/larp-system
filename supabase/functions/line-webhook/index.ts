@@ -14,7 +14,7 @@ const LINE_CHANNEL_SECRET  = Deno.env.get('LINE_CHANNEL_SECRET')!        // LINE
 const LINE_CHANNEL_TOKEN   = Deno.env.get('LINE_CHANNEL_TOKEN')!         // LINE Bot Channel Access Token，用於回覆訊息
 const SUPABASE_URL         = Deno.env.get('SUPABASE_URL')!               // Supabase 專案 URL
 const SUPABASE_SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!  // Service Role Key，有完整 DB 讀寫權限（跳過 RLS）
-const DOLL_FRAME_URL       = 'https://larp-system.vercel.app/flex/spacer-4x5.png' // ！召喚 卡片用的透明 4:5 墊底圖（public/flex）
+const SCENE_FRAME_URL      = 'https://larp-system.vercel.app/flex/spacer-4x3.png' // ！召喚 沒有背景時撐出 4:3 場景的透明圖（public/flex）
 const LIFF_URL             = 'https://liff.line.me/2009161687-icfQU9r6'  // LIFF 入口，用於名片與吉祥物卡的「加入冒險」按鈕
 
 // ── Supabase REST 輔助（不 import SDK，冷啟動更快）────────────────────────
@@ -215,37 +215,23 @@ const buildDollCard = (
     .map(slot => layers.find(l => l.slot === slot))
     .filter((l): l is { slot: string; url: string } => !!l)
 
-  // 素材都是 400×600（2:3），卡片顯示成 4:5、只裁掉上方空白：
-  // LINE 的 image 裁切一律置中，所以改用「透明 4:5 墊底圖撐出高度」，
-  // 再把 2:3 的底圖與服裝圖層以絕對定位「貼齊底部」疊上去，超出的上方會被裁掉。
-  const absLayer = (url: string) => ({
-    type: 'box', layout: 'vertical',
-    position: 'absolute', offsetBottom: '0px', offsetStart: '0px',
-    width: '100%',
-    contents: [{ type: 'image', url, size: 'full', aspectRatio: '2:3', aspectMode: 'cover' }],
-  })
-
-  // 有場景背景時：背景 4:3 完整顯示，燈燈站在場景底部中央（和會員首頁一致）。
-  // 燈燈寬 46% → 高度 = 46% × 1.5 = 69% 卡片寬 ≈ 場景高度（75%）的 92%，不會超出場景。
+  // 場景區固定 4:3（對應 800×600 背景圖），燈燈站在場景底部中央，和會員首頁一致。
+  // 燈燈素材 400×600（2:3）：寬 46% → 高度 = 46% × 1.5 = 69% 卡片寬 ≈ 場景高度（75%）的 92%，不會超出場景。
   const sceneLayer = (url: string) => ({
     type: 'box', layout: 'vertical',
     position: 'absolute', offsetBottom: '0px', offsetStart: '27%',
     width: '46%',
     contents: [{ type: 'image', url, size: 'full', aspectRatio: '2:3', aspectMode: 'cover' }],
   })
-  const dollArea = bgUrl
-    ? [
-        { type: 'image', url: bgUrl, size: 'full', aspectRatio: '4:3', aspectMode: 'cover' },
-        sceneLayer(baseUrl),
-        ...orderedLayers.map(l => sceneLayer(l.url)),
-      ]
-    : [
-        // 透明墊底圖：決定顯示區域為 4:5
-        { type: 'image', url: DOLL_FRAME_URL, size: 'full', aspectRatio: '4:5', aspectMode: 'cover' },
-        // 角色底圖 + 服裝圖層（貼齊底部依序疊加）
-        absLayer(baseUrl),
-        ...orderedLayers.map(l => absLayer(l.url)),
-      ]
+  // 有背景：背景圖撐出場景；沒背景：透明 4:3 墊底圖撐出場景，底色用和首頁一樣的暗金漸層
+  const dollArea = [
+    { type: 'image', url: bgUrl || SCENE_FRAME_URL, size: 'full', aspectRatio: '4:3', aspectMode: 'cover' },
+    sceneLayer(baseUrl),
+    ...orderedLayers.map(l => sceneLayer(l.url)),
+  ]
+  const sceneBackground = bgUrl
+    ? undefined
+    : { type: 'linearGradient', angle: '170deg', startColor: '#0f0c05', centerColor: '#1a1507', endColor: '#0a0a0a' }
 
   return {
     type: 'flex',
@@ -279,6 +265,7 @@ const buildDollCard = (
         contents: [
           {
             type: 'box', layout: 'vertical', paddingAll: '0px',
+            ...(sceneBackground ? { background: sceneBackground } : {}),
             contents: dollArea,
           },
         ],

@@ -1,4 +1,5 @@
 <script setup>
+import ImageDropZone from './ImageDropZone.vue'
 import { ref, computed, onMounted, nextTick } from 'vue'
 import { supabase } from '../supabase'
 
@@ -107,6 +108,9 @@ const saveThumbImage = async () => {
     }
   }, 'image/png')
 }
+
+// 拖曳／貼上取得的檔案包成和 <input type="file"> 一樣的形狀，沿用原本的上傳函式
+const asFileEvent = (file) => ({ target: { files: [file], value: '' } })
 
 const handleNoneDefaultUpload = async (event, category) => {
   const file = event.target.files[0]
@@ -628,21 +632,23 @@ const deleteItem = async (item) => {
 
             <div class="form-group full">
               <label>道具圖片</label>
-              <div class="upload-wrapper">
-                <div class="image-preview-box">
-                  <img v-if="form.img_url" :src="form.img_url" class="preview-img" />
-                  <div v-else class="no-image-text">尚未上傳<br><span>600 × 600 px 透明底 PNG</span></div>
+              <ImageDropZone :disabled="isUploading" @file="f => handleFileUpload(asFileEvent(f))">
+                <div class="upload-wrapper">
+                  <div class="image-preview-box">
+                    <img v-if="form.img_url" :src="form.img_url" class="preview-img" />
+                    <div v-else class="no-image-text">尚未上傳<br><span>400 × 600 px 透明底 PNG</span></div>
+                  </div>
+                  <div class="upload-controls">
+                    <input type="file" id="wardrobeUpload" accept="image/*" class="hidden-file-input" @change="handleFileUpload" :disabled="isUploading" />
+                    <label for="wardrobeUpload" class="upload-btn" :class="{ disabled: isUploading }">
+                      <span v-if="isUploading">⏳ 上傳中...</span>
+                      <span v-else-if="form.img_url">🔄 更換圖片</span>
+                      <span v-else>📁 選擇圖片</span>
+                    </label>
+                    <p v-if="form.img_url" class="upload-url">{{ form.img_url }}</p>
+                  </div>
                 </div>
-                <div class="upload-controls">
-                  <input type="file" id="wardrobeUpload" accept="image/*" class="hidden-file-input" @change="handleFileUpload" :disabled="isUploading" />
-                  <label for="wardrobeUpload" class="upload-btn" :class="{ disabled: isUploading }">
-                    <span v-if="isUploading">⏳ 上傳中...</span>
-                    <span v-else-if="form.img_url">🔄 更換圖片</span>
-                    <span v-else>📁 選擇圖片</span>
-                  </label>
-                  <p v-if="form.img_url" class="upload-url">{{ form.img_url }}</p>
-                </div>
-              </div>
+              </ImageDropZone>
             </div>
 
             <div class="form-group full">
@@ -827,21 +833,23 @@ const deleteItem = async (item) => {
 
               <div class="form-group full">
                 <label>背景圖片（建議 800 × 600 px）</label>
-                <div class="upload-wrapper">
-                  <div class="image-preview-box" style="width:160px; height:100px;">
-                    <img v-if="bgForm.img_url" :src="bgForm.img_url" class="preview-img" />
-                    <div v-else class="no-image-text">尚未上傳<br><span>建議 800 × 600 px</span></div>
+                <ImageDropZone :disabled="isBgUploading" @file="f => handleBgUpload(asFileEvent(f))">
+                  <div class="upload-wrapper">
+                    <div class="image-preview-box" style="width:160px; height:100px;">
+                      <img v-if="bgForm.img_url" :src="bgForm.img_url" class="preview-img" />
+                      <div v-else class="no-image-text">尚未上傳<br><span>建議 800 × 600 px</span></div>
+                    </div>
+                    <div class="upload-controls">
+                      <input type="file" id="bgUpload" accept="image/*" class="hidden-file-input" @change="handleBgUpload" :disabled="isBgUploading" />
+                      <label for="bgUpload" class="upload-btn" :class="{ disabled: isBgUploading }">
+                        <span v-if="isBgUploading">⏳ 上傳中...</span>
+                        <span v-else-if="bgForm.img_url">🔄 更換圖片</span>
+                        <span v-else>📁 選擇圖片</span>
+                      </label>
+                      <p v-if="bgForm.img_url" class="upload-url">{{ bgForm.img_url }}</p>
+                    </div>
                   </div>
-                  <div class="upload-controls">
-                    <input type="file" id="bgUpload" accept="image/*" class="hidden-file-input" @change="handleBgUpload" :disabled="isBgUploading" />
-                    <label for="bgUpload" class="upload-btn" :class="{ disabled: isBgUploading }">
-                      <span v-if="isBgUploading">⏳ 上傳中...</span>
-                      <span v-else-if="bgForm.img_url">🔄 更換圖片</span>
-                      <span v-else>📁 選擇圖片</span>
-                    </label>
-                    <p v-if="bgForm.img_url" class="upload-url">{{ bgForm.img_url }}</p>
-                  </div>
-                </div>
+                </ImageDropZone>
               </div>
 
               <div class="form-group full" style="border-top:1px dashed #333; padding-top:15px; margin-top:5px;">
@@ -946,22 +954,24 @@ const deleteItem = async (item) => {
               </div>
 
               <div class="form-group full">
-                <label>角色底圖（建議 600 × 600 px 透明底 PNG）</label>
-                <div class="upload-wrapper">
-                  <div class="image-preview-box" style="width:100px; height:100px;">
-                    <img v-if="baseForm.img_url" :src="baseForm.img_url" class="preview-img" />
-                    <div v-else class="no-image-text">尚未上傳</div>
+                <label>角色底圖（400 × 600 px 透明底 PNG）</label>
+                <ImageDropZone :disabled="isBaseUploading" @file="f => handleBaseUpload(asFileEvent(f))">
+                  <div class="upload-wrapper">
+                    <div class="image-preview-box" style="width:100px; height:100px;">
+                      <img v-if="baseForm.img_url" :src="baseForm.img_url" class="preview-img" />
+                      <div v-else class="no-image-text">尚未上傳</div>
+                    </div>
+                    <div class="upload-controls">
+                      <input type="file" id="baseModalUpload" accept="image/*" class="hidden-file-input" @change="handleBaseUpload" :disabled="isBaseUploading" />
+                      <label for="baseModalUpload" class="upload-btn" :class="{ disabled: isBaseUploading }">
+                        <span v-if="isBaseUploading">⏳ 上傳中...</span>
+                        <span v-else-if="baseForm.img_url">🔄 更換圖片</span>
+                        <span v-else>📁 選擇圖片</span>
+                      </label>
+                      <p v-if="baseForm.img_url" class="upload-url">{{ baseForm.img_url }}</p>
+                    </div>
                   </div>
-                  <div class="upload-controls">
-                    <input type="file" id="baseModalUpload" accept="image/*" class="hidden-file-input" @change="handleBaseUpload" :disabled="isBaseUploading" />
-                    <label for="baseModalUpload" class="upload-btn" :class="{ disabled: isBaseUploading }">
-                      <span v-if="isBaseUploading">⏳ 上傳中...</span>
-                      <span v-else-if="baseForm.img_url">🔄 更換圖片</span>
-                      <span v-else>📁 選擇圖片</span>
-                    </label>
-                    <p v-if="baseForm.img_url" class="upload-url">{{ baseForm.img_url }}</p>
-                  </div>
-                </div>
+                </ImageDropZone>
               </div>
 
               <div class="form-group full">
@@ -997,23 +1007,25 @@ const deleteItem = async (item) => {
             <img v-if="noneDefaults[cat.key]" :src="noneDefaults[cat.key]" :alt="cat.label" />
             <div v-else class="no-image-text">未設定</div>
           </div>
-          <div class="upload-controls" style="flex:1;">
-            <input
-              :id="`noneDefaultUpload_${cat.key}`"
-              type="file" accept="image/*"
-              class="hidden-file-input"
-              :disabled="noneDefaultUploading[cat.key]"
-              @change="handleNoneDefaultUpload($event, cat.key)"
-            />
-            <label :for="`noneDefaultUpload_${cat.key}`" class="upload-btn" :class="{ disabled: noneDefaultUploading[cat.key] }">
-              <span v-if="noneDefaultUploading[cat.key]">⏳ 上傳中...</span>
-              <span v-else-if="noneDefaults[cat.key]">🔄 更換圖片</span>
-              <span v-else>📁 選擇圖片</span>
-            </label>
-            <button v-if="noneDefaults[cat.key]" class="btn btn-danger btn-small" @click="noneDefaults[cat.key] = ''; saveNoneDefault(cat.key)">
-              清除
-            </button>
-          </div>
+          <ImageDropZone style="flex:1;" :disabled="noneDefaultUploading[cat.key]" @file="f => handleNoneDefaultUpload(asFileEvent(f), cat.key)">
+            <div class="upload-controls" style="flex:1;">
+              <input
+                :id="`noneDefaultUpload_${cat.key}`"
+                type="file" accept="image/*"
+                class="hidden-file-input"
+                :disabled="noneDefaultUploading[cat.key]"
+                @change="handleNoneDefaultUpload($event, cat.key)"
+              />
+              <label :for="`noneDefaultUpload_${cat.key}`" class="upload-btn" :class="{ disabled: noneDefaultUploading[cat.key] }">
+                <span v-if="noneDefaultUploading[cat.key]">⏳ 上傳中...</span>
+                <span v-else-if="noneDefaults[cat.key]">🔄 更換圖片</span>
+                <span v-else>📁 選擇圖片</span>
+              </label>
+              <button v-if="noneDefaults[cat.key]" class="btn btn-danger btn-small" @click="noneDefaults[cat.key] = ''; saveNoneDefault(cat.key)">
+                清除
+              </button>
+            </div>
+          </ImageDropZone>
         </div>
       </div>
     </template>

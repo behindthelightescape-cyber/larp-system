@@ -227,6 +227,7 @@ const ownedItemIds  = ref(new Set())  // user_wardrobe
 const ownedBgIds    = ref(new Set())  // user_wardrobe_backgrounds
 const userScriptIds = ref(new Set())  // 玩過的 script id
 const userAchIds    = ref(new Set())  // 達成的 achievement id
+const refNames      = ref({ script: {}, achievement: {} }) // 解鎖條件對應的劇本名／成就名
 
 // ── 背景 ──
 const showBgModal = ref(false)
@@ -292,6 +293,7 @@ const loadAll = async () => {
     loadBaseImage(),
     loadNoneDefaults(),
   ])
+  await loadRefNames()
   isPageLoading.value = false
 }
 
@@ -326,6 +328,22 @@ const loadItems = async () => {
     .eq('is_active', true)
     .order('sort_order')
   if (data) allItems.value = data
+}
+
+// 讀出道具／背景解鎖條件用到的劇本名稱與成就名稱，顯示在「取得方式」
+const loadRefNames = async () => {
+  const all = [...allItems.value, ...backgrounds.value]
+  const ids = (type) => [...new Set(all.filter(x => x.unlock_type === type && x.unlock_ref_id).map(x => String(x.unlock_ref_id)))]
+  const scriptIds = ids('script')
+  const achIds = ids('achievement')
+  const [sRes, aRes] = await Promise.all([
+    scriptIds.length ? supabase.from('scripts').select('id, title').in('id', scriptIds) : { data: [] },
+    achIds.length ? supabase.from('achievements').select('id, title').in('id', achIds) : { data: [] },
+  ])
+  refNames.value = {
+    script: Object.fromEntries((sRes.data || []).map(r => [String(r.id), r.title])),
+    achievement: Object.fromEntries((aRes.data || []).map(r => [String(r.id), r.title])),
+  }
 }
 
 const loadBackgrounds = async () => {
@@ -475,13 +493,20 @@ const selectBg = async (bg) => {
   if (state === 'owned') { activeBgId.value = bg.id; await saveEquipped() }
   else if (state === 'claimable') await claimBg(bg)
   else if (state === 'purchasable') await purchaseBg(bg)
+  else lockedItem.value = { ...bg, state } // 未解鎖：跳出取得方式說明
 }
 
 // 未解鎖說明文字
 const obtainDesc = (item) => {
   if (item.unlock_type === 'points') return `需要 ${item.unlock_cost} 點數`
-  if (item.unlock_type === 'script') return '完成指定劇本後可領取'
-  if (item.unlock_type === 'achievement') return '達成指定成就後可領取'
+  if (item.unlock_type === 'script') {
+    const t = refNames.value.script[String(item.unlock_ref_id)]
+    return t ? `玩過劇本《${t}》後可領取` : '完成指定劇本後可領取'
+  }
+  if (item.unlock_type === 'achievement') {
+    const t = refNames.value.achievement[String(item.unlock_ref_id)]
+    return t ? `解鎖成就「${t}」後可領取` : '達成指定成就後可領取'
+  }
   return ''
 }
 </script>

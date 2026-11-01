@@ -207,6 +207,7 @@ const buildDollCard = (
   layers: { slot: string; url: string }[], // 已收集好的服裝圖層清單（含不裝備預設圖）
   level: number,
   title: string,
+  bgUrl: string | null = null, // 玩家裝備的場景背景（800×600，4:3）
 ) => {
   // 服裝疊加順序（從後到前）：披風最底、表情最頂
   const SLOT_ORDER = ['cape', 'bottom', 'top', 'acc', 'hat', 'expr']
@@ -223,6 +224,28 @@ const buildDollCard = (
     width: '100%',
     contents: [{ type: 'image', url, size: 'full', aspectRatio: '2:3', aspectMode: 'cover' }],
   })
+
+  // 有場景背景時：背景 4:3 完整顯示，燈燈站在場景底部中央（和會員首頁一致）。
+  // 燈燈寬 46% → 高度 = 46% × 1.5 = 69% 卡片寬 ≈ 場景高度（75%）的 92%，不會超出場景。
+  const sceneLayer = (url: string) => ({
+    type: 'box', layout: 'vertical',
+    position: 'absolute', offsetBottom: '0px', offsetStart: '27%',
+    width: '46%',
+    contents: [{ type: 'image', url, size: 'full', aspectRatio: '2:3', aspectMode: 'cover' }],
+  })
+  const dollArea = bgUrl
+    ? [
+        { type: 'image', url: bgUrl, size: 'full', aspectRatio: '4:3', aspectMode: 'cover' },
+        sceneLayer(baseUrl),
+        ...orderedLayers.map(l => sceneLayer(l.url)),
+      ]
+    : [
+        // 透明墊底圖：決定顯示區域為 4:5
+        { type: 'image', url: DOLL_FRAME_URL, size: 'full', aspectRatio: '4:5', aspectMode: 'cover' },
+        // 角色底圖 + 服裝圖層（貼齊底部依序疊加）
+        absLayer(baseUrl),
+        ...orderedLayers.map(l => absLayer(l.url)),
+      ]
 
   return {
     type: 'flex',
@@ -256,13 +279,7 @@ const buildDollCard = (
         contents: [
           {
             type: 'box', layout: 'vertical', paddingAll: '0px',
-            contents: [
-              // 透明墊底圖：決定顯示區域為 4:5
-              { type: 'image', url: DOLL_FRAME_URL, size: 'full', aspectRatio: '4:5', aspectMode: 'cover' },
-              // 角色底圖 + 服裝圖層（貼齊底部依序疊加）
-              absLayer(baseUrl),
-              ...orderedLayers.map(l => absLayer(l.url)),
-            ],
+            contents: dollArea,
           },
         ],
       },
@@ -568,6 +585,10 @@ const handleEvents = async (events: Record<string, unknown>[]) => {
       // equippedMap 格式：{ hat: 'item-uuid', top: 'item-uuid', ... }
       // 未裝備的分類不會出現在 key 中（is_none 時不儲存）
       const equippedMap: Record<string, string> = equippedData?.[0]?.equipped || {}
+      // 裝備中的場景背景（下架的背景不顯示）
+      const bgId = equippedData?.[0]?.background_id as string | null
+      const bgData = bgId ? await dbGet(`wardrobe_backgrounds?id=eq.${bgId}&is_active=eq.true&select=img_url`) : null
+      const bgUrl = (bgData?.[0]?.img_url as string) || null
       const itemIds = Object.values(equippedMap).filter(Boolean) // 過濾掉 null 值
 
       // 查詢已裝備道具的圖片 URL
@@ -598,7 +619,7 @@ const handleEvents = async (events: Record<string, unknown>[]) => {
       const info     = getLevelInfo(exp)
       const level    = (user.level as number) || info.level
       const title    = (user.current_title as string) || info.title
-      const replyRes = await lineReply(replyToken, [buildDollCard(name, baseUrl, layers, level, title)])
+      const replyRes = await lineReply(replyToken, [buildDollCard(name, baseUrl, layers, level, title, bgUrl)])
       console.log('mascot reply status:', replyRes.status, await replyRes.text())
     }
 

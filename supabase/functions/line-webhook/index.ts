@@ -14,6 +14,7 @@ const LINE_CHANNEL_SECRET  = Deno.env.get('LINE_CHANNEL_SECRET')!        // LINE
 const LINE_CHANNEL_TOKEN   = Deno.env.get('LINE_CHANNEL_TOKEN')!         // LINE Bot Channel Access Token，用於回覆訊息
 const SUPABASE_URL         = Deno.env.get('SUPABASE_URL')!               // Supabase 專案 URL
 const SUPABASE_SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!  // Service Role Key，有完整 DB 讀寫權限（跳過 RLS）
+const DOLL_FRAME_URL       = 'https://larp-system.vercel.app/flex/spacer-4x5.png' // ！召喚 卡片用的透明 4:5 墊底圖（public/flex）
 const LIFF_URL             = 'https://liff.line.me/2009161687-icfQU9r6'  // LIFF 入口，用於名片與吉祥物卡的「加入冒險」按鈕
 
 // ── Supabase REST 輔助（不 import SDK，冷啟動更快）────────────────────────
@@ -213,12 +214,13 @@ const buildDollCard = (
     .map(slot => layers.find(l => l.slot === slot))
     .filter((l): l is { slot: string; url: string } => !!l)
 
-  // 建立絕對定位的圖層 box，覆蓋在底圖上方
-  // 每個服裝圖片都需要跟底圖一樣大小才能正確對齊（目前素材都是 400×600，所以用 2:3）
+  // 素材都是 400×600（2:3），卡片顯示成 4:5、只裁掉上方空白：
+  // LINE 的 image 裁切一律置中，所以改用「透明 4:5 墊底圖撐出高度」，
+  // 再把 2:3 的底圖與服裝圖層以絕對定位「貼齊底部」疊上去，超出的上方會被裁掉。
   const absLayer = (url: string) => ({
     type: 'box', layout: 'vertical',
-    position: 'absolute', offsetTop: '0px', offsetStart: '0px',
-    width: '100%', height: '100%',
+    position: 'absolute', offsetBottom: '0px', offsetStart: '0px',
+    width: '100%',
     contents: [{ type: 'image', url, size: 'full', aspectRatio: '2:3', aspectMode: 'cover' }],
   })
 
@@ -255,9 +257,10 @@ const buildDollCard = (
           {
             type: 'box', layout: 'vertical', paddingAll: '0px',
             contents: [
-              // 角色底圖（最底層）
-              { type: 'image', url: baseUrl, size: 'full', aspectRatio: '2:3', aspectMode: 'cover' },
-              // 服裝圖層（絕對定位，依序疊加在底圖上方）
+              // 透明墊底圖：決定顯示區域為 4:5
+              { type: 'image', url: DOLL_FRAME_URL, size: 'full', aspectRatio: '4:5', aspectMode: 'cover' },
+              // 角色底圖 + 服裝圖層（貼齊底部依序疊加）
+              absLayer(baseUrl),
               ...orderedLayers.map(l => absLayer(l.url)),
             ],
           },

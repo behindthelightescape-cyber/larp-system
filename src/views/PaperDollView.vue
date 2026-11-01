@@ -176,8 +176,14 @@ import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { Smile, Crown, Shirt, Wind, Layers, Gem, Image as ImageIcon } from 'lucide-vue-next'
 import { supabase } from '../supabase'
 import { useUserStore } from '../stores/user'
+import { useRouter } from 'vue-router'
+import { canOpenPaperDoll } from '../config/paperdoll'
 
 const userStore = useUserStore()
+const router = useRouter()
+// 測試期間只開放給指定帳號，其他人直接導回首頁
+const allowed = canOpenPaperDoll(userStore.userData?.id)
+if (!allowed) router.replace('/')
 const userId = computed(() => userStore.userData?.id ?? null)
 const userExp = computed(() => userStore.userData?.total_exp ?? 0)
 const userPoints = computed(() => userStore.userData?.points ?? 0)
@@ -272,6 +278,7 @@ const currentItems = computed(() => {
 
 // ── 載入資料 ──
 onMounted(async () => {
+  if (!allowed) return
   await loadAll()
   setTimeout(() => { isLoaded.value = true }, 80)
 })

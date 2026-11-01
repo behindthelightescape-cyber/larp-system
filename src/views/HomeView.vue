@@ -3,10 +3,16 @@ import { computed, onMounted, ref } from 'vue'
 import { useUserStore } from '../stores/user'
 import { supabase } from '../supabase'
 import ReferralTreeModal from '../components/ReferralTreeModal.vue'
+import { useRouter } from 'vue-router'
+import { canOpenPaperDoll } from '../config/paperdoll'
 import { Users, Coins, ChevronRight } from 'lucide-vue-next'
 
 const showTreeModal = ref(false)
 const store = useUserStore()
+const router = useRouter()
+// 燈燈造型室測試中，只有指定帳號看得到入口
+const canEditDoll = computed(() => canOpenPaperDoll(store.userData?.id))
+const openPaperDoll = () => { if (canEditDoll.value) router.push('/paperdoll') }
 const isLoaded = ref(false)
 const avatarError = ref(false)
 
@@ -191,13 +197,14 @@ onMounted(() => {
         </div>
 
         <!-- 燈燈破框而出 (造型室素材準備中，暫時關閉換裝入口) -->
-        <div class="showcase-doll-float">
+        <div class="showcase-doll-float" :style="canEditDoll ? null : { cursor: 'default' }" @click="openPaperDoll">
           <div class="showcase-doll">
             <img v-if="dollLayers.cape" class="doll-layer doll-clothing" :src="dollLayers.cape" alt="" />
             <img class="doll-layer doll-base" :src="baseImgUrl || FALLBACK_BASE" alt="燈燈" />
             <template v-for="slot in dollLayerOrder" :key="slot">
               <img v-if="dollLayers[slot]" class="doll-layer doll-clothing" :src="dollLayers[slot]" alt="" />
             </template>
+            <span v-if="canEditDoll" class="doll-edit-badge">換裝</span>
           </div>
         </div>
 

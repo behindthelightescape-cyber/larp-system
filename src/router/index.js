@@ -22,8 +22,8 @@ const router = createRouter({
     },
     // 🚀 小四特製：加上管理後台的秘密通道
     { path: '/admin', component: AdminView },
-    // 造型室素材準備中，暫時封鎖 (重新開放時改回 component: PaperDollView)
-    { path: '/paperdoll', redirect: '/' },
+    // 造型室測試中：只有 src/config/paperdoll.js 列出的帳號能進入（檢查在 PaperDollView 內）
+    { path: '/paperdoll', component: PaperDollView },
     // 點數取得機制尚未定案，暫時封鎖 (重新開放時改回 component: PointsView)
     { path: '/points', redirect: '/' },
     

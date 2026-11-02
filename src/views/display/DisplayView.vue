@@ -1,6 +1,7 @@
 <script setup>
 import { ref, computed, nextTick, onMounted, onUnmounted, watch } from 'vue'
 import { supabase } from '../../supabase'
+import { DOLL_FRONT_LAYERS } from '../../config/paperdoll'
 
 // ── OLED 防烙印：隨機像素位移 ──
 let _lastSX = 0, _lastSY = 0
@@ -91,7 +92,7 @@ const playPage = () => {
 
 const BRAND_LOGO    = 'https://meee.com.tw/VInVFKh.png'
 const FALLBACK_BASE = 'https://meee.com.tw/hLmrwbm.png'
-const DOLL_LAYER_ORDER = ['bottom', 'top', 'acc', 'hat', 'expr']
+const DOLL_LAYER_ORDER = DOLL_FRONT_LAYERS // 披風另外畫在底圖後面
 
 // 每頁停留毫秒數  0:登場 1:天數 2:場數 3:等級 4:EXP 5:弟子 6:總覽
 const PAGE_DURATIONS = [3800, 3200, 4500, 3600, 3200, 3800, 8000]

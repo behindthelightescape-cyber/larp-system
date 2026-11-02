@@ -234,7 +234,7 @@ UNIQUE 約束：`(user_id, achievement_id)`
 | 欄位 | 說明 |
 |------|------|
 | id | uuid |
-| category | `expr` / `hat` / `top` / `cape` / `bottom` / `acc` |
+| category | `expr` / `hat` / `top` / `cape` / `bottom` / `face`（臉飾）/ `hand`（手持）|
 | name | 名稱 |
 | img_url | 渲染圖 URL（600×600 透明底 PNG，舞台疊圖用） |
 | thumb_url | 預覽圖 URL（300×300，衣櫃縮圖用，可從渲染圖裁切產生） |
@@ -422,7 +422,7 @@ onMounted
 
 **圖層疊加順序（從後到前）：**
 ```
-cape → bottom → top → acc → hat → expr
+cape（底圖後）→ 底圖 → bottom → top → hand → hat → expr → face
 ```
 
 **道具狀態判定（getItemState）：**
@@ -820,7 +820,7 @@ const isTarot  = cmd === '占卜'
 ### 8.4 圖層疊加順序
 
 ```
-cape → bottom → top → acc → hat → expr（最上層）
+cape（底圖後）→ 底圖 → bottom → top → hand → hat → expr → face（最上層）
 ```
 
 ### 8.5 安全機制

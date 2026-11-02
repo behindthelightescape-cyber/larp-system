@@ -36,7 +36,7 @@
           <!-- 底圖 -->
           <img class="layer-img" :src="baseImgUrl || 'https://meee.com.tw/hLmrwbm.png'" alt="角色底圖" />
           <!-- 其餘服裝圖層 -->
-          <template v-for="slot in layerOrder.filter(s => s !== 'cape')" :key="slot">
+          <template v-for="slot in DOLL_FRONT_LAYERS" :key="slot">
             <img v-if="equipped[slot] && equipped[slot].img_url"
               class="layer-img layer-clothing"
               :src="equipped[slot].img_url"
@@ -173,11 +173,11 @@
 
 <script setup>
 import { ref, reactive, computed, onMounted, watch } from 'vue'
-import { Smile, Crown, Shirt, Wind, Layers, Gem, Image as ImageIcon } from 'lucide-vue-next'
+import { Smile, Crown, Shirt, Wind, Layers, Glasses, Wand2, Image as ImageIcon } from 'lucide-vue-next'
 import { supabase } from '../supabase'
 import { useUserStore } from '../stores/user'
 import { useRouter } from 'vue-router'
-import { canOpenPaperDoll } from '../config/paperdoll'
+import { canOpenPaperDoll, WARDROBE_CATEGORIES, DOLL_FRONT_LAYERS } from '../config/paperdoll'
 
 const userStore = useUserStore()
 const router = useRouter()
@@ -192,16 +192,9 @@ const isLoaded = ref(false)
 const isPageLoading = ref(true)
 
 // ── 分類 ──
-const categories = [
-  { key: 'expr',   label: '表情', icon: Smile },
-  { key: 'hat',    label: '帽子', icon: Crown },
-  { key: 'top',    label: '上衣', icon: Shirt },
-  { key: 'cape',   label: '披風', icon: Wind },
-  { key: 'bottom', label: '下身', icon: Layers },
-  { key: 'acc',    label: '配件', icon: Gem },
-]
+const CATEGORY_ICONS = { expr: Smile, hat: Crown, top: Shirt, cape: Wind, bottom: Layers, face: Glasses, hand: Wand2 }
+const categories = WARDROBE_CATEGORIES.map(c => ({ ...c, icon: CATEGORY_ICONS[c.key] }))
 const activeCategory = ref('hat')
-const layerOrder = ['bottom', 'cape', 'top', 'acc', 'hat', 'expr']
 
 // 各分類固定的「不裝備」選項（img_url 由 DB 的 wardrobe_none_defaults 決定）
 const noneItem = (category, label, img_url = null) => ({
@@ -214,7 +207,8 @@ const noneItems = reactive({
   top:    noneItem('top',    '不穿'),
   cape:   noneItem('cape',   '無'),
   bottom: noneItem('bottom', '不穿'),
-  acc:    noneItem('acc',    '無'),
+  face:   noneItem('face',   '無'),
+  hand:   noneItem('hand',   '無'),
 })
 
 // ── 角色底圖 ──
@@ -241,7 +235,7 @@ const currentBg   = computed(() => {
 // ── 裝備狀態 ──
 const equipped = reactive({
   expr: noneItems.expr, hat: noneItems.hat, top: noneItems.top,
-  cape: noneItems.cape, bottom: noneItems.bottom, acc: noneItems.acc,
+  cape: noneItems.cape, bottom: noneItems.bottom, face: noneItems.face, hand: noneItems.hand,
 })
 
 // ── 鎖定彈窗 ──
@@ -614,7 +608,8 @@ const obtainDesc = (item) => {
 .emoji-overlay.cape   { top: 30%; left: 75%; transform: none; }
 .emoji-overlay.bottom { top: 60%; }
 .emoji-overlay.shoes  { top: 80%; }
-.emoji-overlay.acc    { top: 48%; left: 72%; transform: none; }
+.emoji-overlay.face   { top: 22%; }
+.emoji-overlay.hand   { top: 48%; left: 72%; transform: none; }
 
 .stage-shadow {
   width: 120px; height: 12px; margin-top: -15px;

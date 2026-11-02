@@ -4,7 +4,7 @@ import { useUserStore } from '../stores/user'
 import { supabase } from '../supabase'
 import ReferralTreeModal from '../components/ReferralTreeModal.vue'
 import { useRouter } from 'vue-router'
-import { canOpenPaperDoll } from '../config/paperdoll'
+import { canOpenPaperDoll, DOLL_FRONT_LAYERS } from '../config/paperdoll'
 import { Users, Coins, ChevronRight } from 'lucide-vue-next'
 
 const showTreeModal = ref(false)
@@ -21,7 +21,7 @@ const FALLBACK_BASE = 'https://meee.com.tw/hLmrwbm.png'
 const baseImgUrl = ref('')
 const equippedBgUrl = ref('')
 const dollLayers = ref({})
-const dollLayerOrder = ['bottom', 'top', 'acc', 'hat', 'expr']
+const dollLayerOrder = DOLL_FRONT_LAYERS // 披風另外畫在底圖後面
 
 const stageBg = computed(() =>
   equippedBgUrl.value

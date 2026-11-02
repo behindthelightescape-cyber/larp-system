@@ -2,19 +2,13 @@
 import ImageDropZone from './ImageDropZone.vue'
 import { ref, computed, onMounted, nextTick } from 'vue'
 import { supabase } from '../supabase'
+import { WARDROBE_CATEGORIES } from '../config/paperdoll'
 
 // ── 主 Tab ──
 const mainTab = ref('items') // 'items' | 'backgrounds' | 'base' | 'none_defaults'
 
 // ── 預設圖 ──
-const noneDefaultCategories = [
-  { key: 'expr',   label: '表情' },
-  { key: 'hat',    label: '帽子' },
-  { key: 'top',    label: '上衣' },
-  { key: 'cape',   label: '披風' },
-  { key: 'bottom', label: '下身' },
-  { key: 'acc',    label: '配件' },
-]
+const noneDefaultCategories = WARDROBE_CATEGORIES
 const noneDefaults = ref({}) // { hat: 'https://...', ... }
 const isNoneDefaultsSaving = ref(false)
 const noneDefaultUploading = ref({}) // { hat: true, ... }
@@ -161,15 +155,7 @@ const defaultBgForm = () => ({
 })
 const bgForm = ref(defaultBgForm())
 
-const categories = [
-  { key: 'all',    label: '全部' },
-  { key: 'expr',   label: '表情' },
-  { key: 'hat',    label: '帽子' },
-  { key: 'top',    label: '上衣' },
-  { key: 'cape',   label: '披風' },
-  { key: 'bottom', label: '下身' },
-  { key: 'acc',    label: '配件' },
-]
+const categories = [{ key: 'all', label: '全部' }, ...WARDROBE_CATEGORIES]
 
 const defaultForm = () => ({
   id: crypto.randomUUID(),
@@ -621,12 +607,7 @@ const deleteItem = async (item) => {
             <div class="form-group">
               <label>分類</label>
               <select v-model="form.category" class="admin-input">
-                <option value="expr">表情</option>
-                <option value="hat">帽子</option>
-                <option value="top">上衣</option>
-                <option value="cape">披風</option>
-                <option value="bottom">下身</option>
-                <option value="acc">配件</option>
+                <option v-for="c in WARDROBE_CATEGORIES" :key="c.key" :value="c.key">{{ c.label }}</option>
               </select>
             </div>
 

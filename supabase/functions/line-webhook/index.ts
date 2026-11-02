@@ -209,9 +209,11 @@ const buildDollCard = (
   title: string,
   bgUrl: string | null = null, // 玩家裝備的場景背景（800×600，4:3）
 ) => {
-  // 服裝疊加順序（從後到前）：披風最底、表情最頂
-  const SLOT_ORDER = ['cape', 'bottom', 'top', 'acc', 'hat', 'expr']
-  const orderedLayers = SLOT_ORDER
+  // 服裝疊加順序（從後到前），和前端 src/config/paperdoll.js 一致：
+  // 披風畫在底圖後面，其餘畫在底圖前面。修改時兩邊一起改。
+  const BACK_SLOTS = ['cape']
+  const FRONT_SLOTS = ['bottom', 'top', 'hand', 'hat', 'expr', 'face']
+  const pick = (slots: string[]) => slots
     .map(slot => layers.find(l => l.slot === slot))
     .filter((l): l is { slot: string; url: string } => !!l)
 
@@ -226,8 +228,9 @@ const buildDollCard = (
   // 有背景：背景圖撐出場景；沒背景：透明 4:3 墊底圖撐出場景，底色用和首頁一樣的暗金漸層
   const dollArea = [
     { type: 'image', url: bgUrl || SCENE_FRAME_URL, size: 'full', aspectRatio: '4:3', aspectMode: 'cover' },
+    ...pick(BACK_SLOTS).map(l => sceneLayer(l.url)),
     sceneLayer(baseUrl),
-    ...orderedLayers.map(l => sceneLayer(l.url)),
+    ...pick(FRONT_SLOTS).map(l => sceneLayer(l.url)),
   ]
   const sceneBackground = bgUrl
     ? undefined

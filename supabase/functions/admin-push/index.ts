@@ -1,7 +1,13 @@
 import {
-  getQuota, missingTextFn, PushError, resolveTarget, sendPush, supabase, validateMessage, LINE_TOKEN,
-  type Target,
+  getQuota, missingTextFn, normalizeMedia, PushError, resolveTarget, sendPush, supabase, validateMessage, LINE_TOKEN,
+  type Media, type Target,
 } from '../_shared/push.ts'
+
+// 沒填紀錄標題時：卡片用卡片標題，其他用訊息前 20 字
+const defaultTitle = (title: string | undefined, message: string, media: Media) =>
+  (title ?? '').trim() ||
+  (media?.kind === 'card' ? media.card_title : message.slice(0, 20)) ||
+  (media?.kind === 'image' ? '（圖片）' : '')
 
 // 後台自訂推播：發 LINE 訊息給指定會員或篩選出來的會員（批量廣告），可立即發送或預約。
 // 只有 users.role 在 ALLOWED_ROLES 的人可以呼叫（要開放店長就加 'manager'）。
@@ -51,7 +57,7 @@ Deno.serve(async (req) => {
   if (!caller) return json({ error: '沒有權限' }, 403)
   const callerName = caller.display_name ?? caller.id
 
-  let body: { action?: string; target?: Target; message?: string; title?: string; send_at?: string; id?: string }
+  let body: { action?: string; target?: Target; message?: string; title?: string; send_at?: string; id?: string; media?: unknown }
   try {
     body = await req.json()
   } catch {
@@ -66,7 +72,7 @@ Deno.serve(async (req) => {
       case 'list_scheduled': {
         const { data, error } = await supabase
           .from('scheduled_pushes')
-          .select('id, title, message, send_at, status, estimated_count, result, error_msg, created_by_name, created_at, sent_at')
+          .select('id, title, message, media, send_at, status, estimated_count, result, error_msg, created_by_name, created_at, sent_at')
           .or(`status.in.(pending,sending),send_at.gte.${new Date(Date.now() - 30 * 86400e3).toISOString()}`)
           .order('send_at', { ascending: false })
           .limit(50)
@@ -107,9 +113,10 @@ Deno.serve(async (req) => {
       case 'send': {
         if (!body.target) return json({ error: '缺少 target' }, 400)
         const message = (body.message ?? '').trim()
-        const title = (body.title ?? '').trim() || message.slice(0, 20)
+        const media = normalizeMedia(body.media)
+        const title = defaultTitle(body.title, message, media)
         const r = await sendPush({
-          target: body.target, message, taskName: `[自訂] ${title}`, source: 'custom', createdByName: callerName,
+          target: body.target, message, media, taskName: `[自訂] ${title}`, source: 'custom', createdByName: callerName,
         })
         return json({ success: r.success, fail: r.fail, errors: r.errors })
       }
@@ -117,7 +124,8 @@ Deno.serve(async (req) => {
       case 'schedule': {
         if (!body.target) return json({ error: '缺少 target' }, 400)
         const message = (body.message ?? '').trim()
-        validateMessage(message, body.target)
+        const media = normalizeMedia(body.media)
+        validateMessage(message, body.target, media)
         const sendAt = Date.parse(body.send_at ?? '')
         if (isNaN(sendAt)) return json({ error: '預約時間格式錯誤' }, 400)
         if (sendAt < Date.now() + 60 * 1000) return json({ error: '預約時間至少要在 1 分鐘後' }, 400)
@@ -127,8 +135,9 @@ Deno.serve(async (req) => {
         if (ids.length === 0) return json({ error: '沒有符合條件的會員' }, 400)
 
         const { data, error } = await supabase.from('scheduled_pushes').insert([{
-          title: (body.title ?? '').trim() || message.slice(0, 20),
+          title: defaultTitle(body.title, message, media),
           message,
+          media,
           target: body.target,
           send_at: new Date(sendAt).toISOString(),
           estimated_count: ids.length,

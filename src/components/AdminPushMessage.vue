@@ -42,6 +42,95 @@ const SCRIPT_PICKERS = [
 const title = ref('')
 const message = ref('')
 
+// 訊息格式：'text' 純文字 / 'image' 圖片＋文字 / 'card' 圖文卡片
+const MSG_KINDS = [
+  { key: 'text', label: '純文字' },
+  { key: 'image', label: '圖片＋文字' },
+  { key: 'card', label: '圖文卡片' },
+]
+const LIFF_URL = 'https://liff.line.me/2009161687-icfQU9r6'
+const msgKind = ref('text')
+const imageUrl = ref('')
+const imageAspect = ref('20:13') // 卡片大圖比例，上傳時依圖片尺寸自動設定
+const isUploading = ref(false)
+const card = ref({ title: '', button_label: '', button_url: '' })
+const CARD_TEXT_MAX = 1000
+const textMax = computed(() => (msgKind.value === 'card' ? CARD_TEXT_MAX : MAX_TEXT))
+
+// 上傳前先縮圖並轉成 JPEG（最寬 1600px）：LINE 預覽圖上限 1MB，縮過才不會被擋
+const compressImage = (file) => new Promise((resolve, reject) => {
+  const img = new Image()
+  img.onload = () => {
+    const scale = Math.min(1, 1600 / img.width)
+    const w = Math.round(img.width * scale)
+    const h = Math.round(img.height * scale)
+    const canvas = document.createElement('canvas')
+    canvas.width = w; canvas.height = h
+    const ctx = canvas.getContext('2d')
+    ctx.fillStyle = '#ffffff' // 透明 PNG 轉 JPEG 時墊白底
+    ctx.fillRect(0, 0, w, h)
+    ctx.drawImage(img, 0, 0, w, h)
+    URL.revokeObjectURL(img.src)
+    canvas.toBlob(b => (b ? resolve({ blob: b, w, h }) : reject(new Error('圖片轉檔失敗'))), 'image/jpeg', 0.85)
+  }
+  img.onerror = () => reject(new Error('讀不到這張圖片'))
+  img.src = URL.createObjectURL(file)
+})
+
+const uploadImage = async (e) => {
+  const file = e.target.files?.[0]
+  e.target.value = ''
+  if (!file) return
+  if (!file.type.startsWith('image/')) { errorMsg.value = '請選擇圖片檔'; return }
+  isUploading.value = true
+  errorMsg.value = ''
+  try {
+    const { blob, w, h } = await compressImage(file)
+    if (blob.size > 1024 * 1024) throw new Error('圖片壓縮後還是超過 1MB，請換一張小一點的圖')
+    // LINE 卡片大圖高度不能超過寬度的 3 倍
+    imageAspect.value = `${w}:${Math.min(h, w * 3)}`
+    const filePath = `push/${Date.now()}_${Math.random().toString(36).slice(2, 8)}.jpg`
+    const { error } = await supabase.storage.from('wardrobe').upload(filePath, blob, { contentType: 'image/jpeg' })
+    if (error) throw error
+    imageUrl.value = supabase.storage.from('wardrobe').getPublicUrl(filePath).data.publicUrl
+  } catch (err) {
+    errorMsg.value = `上傳失敗：${err.message}`
+  } finally {
+    isUploading.value = false
+  }
+}
+
+const useLiffButton = () => {
+  card.value.button_url = LIFF_URL
+  if (!card.value.button_label.trim()) card.value.button_label = '打開劇光燈'
+}
+
+const buttonUrlValid = computed(() => !card.value.button_url || /^(https:\/\/|line:\/\/|tel:)\S+$/.test(card.value.button_url.trim()))
+const buttonPaired = computed(() => !!card.value.button_label.trim() === !!card.value.button_url.trim())
+
+// 送給 admin-push 的 media（純文字 = null）
+const buildMedia = () => {
+  if (msgKind.value === 'image') return { kind: 'image', image_url: imageUrl.value }
+  if (msgKind.value === 'card') {
+    return {
+      kind: 'card', image_url: imageUrl.value, aspect: imageAspect.value,
+      card_title: card.value.title.trim(),
+      button_label: card.value.button_label.trim(),
+      button_url: card.value.button_url.trim(),
+    }
+  }
+  return null
+}
+
+// 訊息內容是否完整（不含對象）
+const contentReady = computed(() => {
+  if (message.value.length > textMax.value) return false
+  if (msgKind.value === 'text') return !!message.value.trim()
+  if (!imageUrl.value || isUploading.value) return false
+  if (msgKind.value === 'card') return !!card.value.title.trim() && buttonPaired.value && buttonUrlValid.value
+  return true
+})
+
 // --- 狀態 ---
 const quota = ref(null) // { limit, used, remaining }
 const previewCount = ref(null)
@@ -227,7 +316,7 @@ const overQuota = computed(() =>
 )
 
 const canSend = computed(() =>
-  previewCount.value > 0 && message.value.trim() && message.value.length <= MAX_TEXT && !overQuota.value && !isSending.value && !tagWithoutAchievement.value
+  previewCount.value > 0 && contentReady.value && !overQuota.value && !isSending.value && !tagWithoutAchievement.value
 )
 
 // ===== 發送方式：立即 / 預約 =====
@@ -246,7 +335,10 @@ const sendAtLabel = computed(() => sendAt.value.replace('T', ' '))
 
 const canSubmit = computed(() => canSend.value && (sendMode.value === 'now' || sendAtValid.value))
 
-const resetMessage = () => { message.value = ''; title.value = '' }
+const resetMessage = () => {
+  message.value = ''; title.value = ''
+  imageUrl.value = ''; card.value = { title: '', button_label: '', button_url: '' }
+}
 
 const send = async () => {
   showConfirm.value = false
@@ -256,12 +348,15 @@ const send = async () => {
     if (sendMode.value === 'schedule') {
       const r = await invoke({
         action: 'schedule', target: buildTarget(), message: message.value, title: title.value, send_at: sendAtIso.value,
+        media: buildMedia(),
       })
       result.value = { scheduled: true, at: sendAtLabel.value, count: r.estimated_count }
       resetMessage()
       await loadScheduled()
     } else {
-      result.value = await invoke({ action: 'send', target: buildTarget(), message: message.value, title: title.value })
+      result.value = await invoke({
+        action: 'send', target: buildTarget(), message: message.value, title: title.value, media: buildMedia(),
+      })
       if (result.value.fail === 0) resetMessage()
       await loadQuota()
     }
@@ -518,14 +613,66 @@ onMounted(loadScheduled)
     <!-- 2. 訊息 -->
     <section class="card">
       <h4>2. 訊息內容</h4>
+      <div class="tabs">
+        <button v-for="k in MSG_KINDS" :key="k.key" :class="{ active: msgKind === k.key }" @click="msgKind = k.key">{{ k.label }}</button>
+      </div>
+      <p v-if="msgKind !== 'text'" class="hint" style="margin-top: -6px;">圖片和文字算同一則推播，額度一樣是每人 1 則。</p>
+
       <input v-model="title" class="input" placeholder="紀錄標題（選填，只顯示在推播監控）" maxlength="40" />
+
+      <!-- 圖片 -->
+      <div v-if="msgKind !== 'text'" class="media-box">
+        <label class="btn btn-dark upload-btn" :class="{ disabled: isUploading }">
+          {{ isUploading ? '上傳中…' : (imageUrl ? '換一張圖片' : '上傳圖片') }}
+          <input type="file" accept="image/*" hidden :disabled="isUploading" @change="uploadImage" />
+        </label>
+        <span class="hint">JPG／PNG 都可以，會自動縮到 1600px 寬。</span>
+        <button v-if="imageUrl" class="link" @click="imageUrl = ''">移除</button>
+      </div>
+
+      <!-- 卡片欄位 -->
+      <template v-if="msgKind === 'card'">
+        <input v-model="card.title" class="input" placeholder="卡片標題（必填）" maxlength="60" />
+        <div class="row" style="margin: 0;">
+          <label style="flex: 1; min-width: 140px;">按鈕文字
+            <input v-model="card.button_label" class="input" placeholder="例：立即預約" maxlength="20" />
+          </label>
+          <label style="flex: 2; min-width: 220px;">按鈕連結
+            <input v-model="card.button_url" class="input" placeholder="https://…" />
+          </label>
+        </div>
+        <div class="presets" style="margin-top: 6px;">
+          <button @click="useLiffButton">連到劇光燈 App</button>
+        </div>
+        <div v-if="!buttonPaired" class="hint danger">按鈕文字和連結要一起填，或都不填（不要按鈕）。</div>
+        <div v-else-if="!buttonUrlValid" class="hint danger">連結要以 https:// 開頭。</div>
+      </template>
+
       <div v-if="mode === 'filter' && filter.achievement_id" class="tag-bar">
         <button class="btn-chip" @click="insertMissingTag">插入 {{ MISSING_TAG }}</button>
         <button class="btn-chip" @click="useAchievementTemplate">套用成就範本</button>
       </div>
-      <textarea v-model="message" class="input" rows="7" placeholder="輸入要發送的訊息"></textarea>
+      <textarea v-model="message" class="input" rows="7"
+        :placeholder="msgKind === 'text' ? '輸入要發送的訊息' : msgKind === 'image' ? '圖片下方的文字（選填）' : '卡片內文（選填）'"></textarea>
       <div v-if="tagWithoutAchievement" class="hint danger">訊息裡有 {{ MISSING_TAG }}，但沒有設定「成就差一點」條件。</div>
-      <div class="hint" :class="{ danger: message.length > MAX_TEXT }">{{ message.length }} / {{ MAX_TEXT }}</div>
+      <div class="hint" :class="{ danger: message.length > textMax }">{{ message.length }} / {{ textMax }}</div>
+
+      <!-- 預覽 -->
+      <div v-if="msgKind !== 'text' && imageUrl" class="lp-preview">
+        <div class="group-label">LINE 預覽（示意）</div>
+        <template v-if="msgKind === 'image'">
+          <img :src="imageUrl" class="lp-img" alt="" />
+          <div v-if="message.trim()" class="lp-bubble">{{ message }}</div>
+        </template>
+        <div v-else class="lp-card">
+          <img :src="imageUrl" class="lp-card-hero" :style="{ aspectRatio: imageAspect.replace(':', '/') }" alt="" />
+          <div class="lp-card-body">
+            <div class="lp-card-title">{{ card.title || '（卡片標題）' }}</div>
+            <div v-if="message.trim()" class="lp-card-text">{{ message }}</div>
+          </div>
+          <div v-if="card.button_label" class="lp-card-btn">{{ card.button_label }}</div>
+        </div>
+      </div>
     </section>
 
     <!-- 3. 發送方式 -->
@@ -577,7 +724,7 @@ onMounted(loadScheduled)
           <tr v-for="s in scheduled" :key="s.id">
             <td>{{ fmtTime(s.send_at) }}</td>
             <td>
-              <div>{{ s.title }}</div>
+              <div><span v-if="s.media" class="muted">{{ s.media.kind === 'card' ? '🃏 ' : '🖼️ ' }}</span>{{ s.title }}</div>
               <div class="muted msg-snippet" :title="s.message">{{ s.message }}</div>
               <div v-if="s.error_msg" class="danger" style="font-size: 0.8rem;">{{ s.error_msg }}</div>
             </td>
@@ -598,8 +745,10 @@ onMounted(loadScheduled)
         <h4>{{ sendMode === 'schedule' ? '確認預約' : '確認發送' }}</h4>
         <p v-if="sendMode === 'schedule'">將在 <b>{{ sendAtLabel }}</b> 發給約 <b>{{ previewCount }}</b> 人（會用掉同樣數量的額度）。</p>
         <p v-else>將發給 <b>{{ previewCount }}</b> 人，會用掉 {{ previewCount }} 則額度<span v-if="quota?.remaining != null">（發送後剩 {{ quota.remaining - previewCount }} 則）</span>。</p>
+        <p v-if="msgKind !== 'text'" class="hint">格式：{{ MSG_KINDS.find(k => k.key === msgKind).label }}<template v-if="msgKind === 'card'">「{{ card.title }}」<template v-if="card.button_label">，按鈕「{{ card.button_label }}」→ {{ card.button_url }}</template></template></p>
+        <img v-if="msgKind !== 'text' && imageUrl" :src="imageUrl" class="confirm-img" alt="" />
         <div v-if="exampleMessage !== message" class="hint">範例（第一位收到的內容）：</div>
-        <pre class="msg-preview">{{ exampleMessage }}</pre>
+        <pre v-if="message.trim()" class="msg-preview">{{ exampleMessage }}</pre>
         <p class="hint warn">LINE 訊息送出後無法收回。</p>
         <div class="modal-actions">
           <button class="btn btn-dark" @click="showConfirm = false">取消</button>
@@ -708,5 +857,20 @@ code { background: #222; padding: 1px 5px; border-radius: 4px; color: #D4AF37; }
 .modal { background: #151515; border: 1px solid #333; border-radius: 12px; padding: 22px; width: 100%; max-width: 480px; color: #ddd; }
 .modal h4 { color: #D4AF37; margin: 0 0 10px; }
 .msg-preview { background: #0b0b0b; border: 1px solid #2a2a2a; border-radius: 8px; padding: 12px; white-space: pre-wrap; word-break: break-word; max-height: 240px; overflow-y: auto; font-family: inherit; font-size: 0.9rem; }
+.media-box { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin: 10px 0 4px; }
+.media-box .hint { margin: 0; }
+.upload-btn { display: inline-block; }
+.upload-btn.disabled { opacity: 0.5; cursor: wait; }
+.lp-preview { margin-top: 14px; padding: 14px; background: #7494c0; border-radius: 10px; max-width: 320px; }
+.lp-preview .group-label { color: #fff; }
+.lp-img { width: 100%; border-radius: 12px; display: block; }
+.lp-bubble { margin-top: 8px; background: #fff; color: #111; border-radius: 14px; padding: 8px 12px; font-size: 0.85rem; white-space: pre-wrap; word-break: break-word; }
+.lp-card { background: #111; border-radius: 14px; overflow: hidden; }
+.lp-card-hero { width: 100%; object-fit: cover; display: block; }
+.lp-card-body { padding: 14px 16px; }
+.lp-card-title { color: #fff; font-weight: bold; font-size: 1rem; }
+.lp-card-text { color: #ccc; font-size: 0.82rem; margin-top: 8px; white-space: pre-wrap; word-break: break-word; }
+.lp-card-btn { margin: 0 12px 12px; background: #D4AF37; color: #fff; text-align: center; border-radius: 8px; padding: 8px; font-size: 0.85rem; font-weight: bold; }
+.confirm-img { max-width: 100%; max-height: 180px; border-radius: 8px; display: block; margin: 6px 0 10px; }
 .modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 16px; }
 </style>

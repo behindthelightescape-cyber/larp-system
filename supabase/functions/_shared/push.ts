@@ -239,13 +239,82 @@ export async function missingTextFn(missing: Map<string, number[]> | null) {
 
 export class PushError extends Error {}
 
+// 圖片／圖文卡片（null = 純文字）
+export type Media =
+  | { kind: 'image'; image_url: string }
+  | { kind: 'card'; image_url: string; aspect?: string; card_title: string; button_label?: string; button_url?: string }
+  | null
+
+const HTTPS_URL = /^https:\/\/\S+$/
+const BUTTON_URL = /^(https:\/\/|line:\/\/|tel:)\S+$/
+const ASPECT = /^\d{1,4}:\d{1,4}$/
+const GOLD = '#D4AF37'
+
+/** 整理前端傳來的 media，空的或 kind 不認得就當純文字 */
+export function normalizeMedia(raw: unknown): Media {
+  // deno-lint-ignore no-explicit-any
+  const m = raw as any
+  if (!m || (m.kind !== 'image' && m.kind !== 'card')) return null
+  const image_url = String(m.image_url ?? '').trim()
+  if (m.kind === 'image') return { kind: 'image', image_url }
+  const aspect = ASPECT.test(String(m.aspect ?? '')) ? String(m.aspect) : '20:13'
+  return {
+    kind: 'card', image_url, aspect,
+    card_title: String(m.card_title ?? '').trim(),
+    button_label: String(m.button_label ?? '').trim() || undefined,
+    button_url: String(m.button_url ?? '').trim() || undefined,
+  }
+}
+
 /** 驗證訊息是否可發（不含對象），不合法就丟 PushError */
-export function validateMessage(message: string, target: Target) {
-  if (!message) throw new PushError('訊息不能空白')
+export function validateMessage(message: string, target: Target, media: Media = null) {
+  if (!message && !media) throw new PushError('訊息不能空白')
   if (message.length > MAX_TEXT) throw new PushError(`訊息最多 ${MAX_TEXT} 字`)
   if (message.includes(MISSING_TAG) && !(target?.mode === 'filter' && target.achievement_id)) {
     throw new PushError(`訊息裡有 ${MISSING_TAG}，但沒有設定「成就差一點」條件`)
   }
+  if (media) {
+    if (!HTTPS_URL.test(media.image_url)) throw new PushError('請先上傳圖片')
+  }
+  if (media?.kind === 'card') {
+    if (!media.card_title) throw new PushError('圖文卡片需要標題')
+    if (media.card_title.length > 60) throw new PushError('卡片標題最多 60 字')
+    if (message.length > 1000) throw new PushError('圖文卡片的內文最多 1000 字')
+    if (!!media.button_label !== !!media.button_url) throw new PushError('按鈕文字和連結要一起填')
+    if (media.button_label && media.button_label.length > 20) throw new PushError('按鈕文字最多 20 字')
+    if (media.button_url && !BUTTON_URL.test(media.button_url)) throw new PushError('按鈕連結要以 https:// 開頭')
+  }
+}
+
+/** 組出要給 LINE 的 messages（同一次推播，不管幾個泡泡，每人都只算 1 則額度） */
+export function buildMessages(text: string, media: Media): unknown[] {
+  if (!media) return [{ type: 'text', text: text.slice(0, MAX_TEXT) }]
+  if (media.kind === 'image') {
+    const img = { type: 'image', originalContentUrl: media.image_url, previewImageUrl: media.image_url }
+    return text ? [img, { type: 'text', text: text.slice(0, MAX_TEXT) }] : [img]
+  }
+  const body: unknown[] = [{ type: 'text', text: media.card_title, weight: 'bold', size: 'lg', color: '#ffffff', wrap: true }]
+  if (text) body.push({ type: 'text', text, size: 'sm', color: '#cccccc', wrap: true, margin: 'md' })
+  const bubble: Record<string, unknown> = {
+    type: 'bubble',
+    styles: { body: { backgroundColor: '#111111' }, footer: { backgroundColor: '#111111' } },
+    hero: {
+      type: 'image', url: media.image_url, size: 'full', aspectRatio: media.aspect || '20:13', aspectMode: 'cover',
+      ...(media.button_url ? { action: { type: 'uri', uri: media.button_url } } : {}),
+    },
+    body: { type: 'box', layout: 'vertical', paddingAll: '16px', contents: body },
+  }
+  if (media.button_label && media.button_url) {
+    bubble.footer = {
+      type: 'box', layout: 'vertical', paddingAll: '12px',
+      contents: [{
+        type: 'button', style: 'primary', color: GOLD, height: 'sm',
+        action: { type: 'uri', label: media.button_label, uri: media.button_url },
+      }],
+    }
+  }
+  const alt = (media.card_title + (text ? `｜${text}` : '')).replace(/\s+/g, ' ').slice(0, 400)
+  return [{ type: 'flex', altText: alt, contents: bubble }]
 }
 
 /** 記錄一批收件人（寫入失敗只印 log，不影響發送） */
@@ -266,9 +335,11 @@ export async function sendPush(opts: {
   taskName: string
   source: 'custom' | 'scheduled'
   createdByName?: string
+  media?: Media
 }) {
-  const message = opts.message.trim()
-  validateMessage(message, opts.target)
+  const message = (opts.message ?? '').trim()
+  const media = normalizeMedia(opts.media)
+  validateMessage(message, opts.target, media)
 
   const { ids, missing } = await resolveTarget(opts.target)
   if (ids.length === 0) throw new PushError('沒有符合條件的會員')
@@ -290,10 +361,10 @@ export async function sendPush(opts: {
 
   const base = { task_name: opts.taskName, status: 'processing', target_count: ids.length }
   const insertLog = (row: Record<string, unknown>) => supabase.from('push_logs').insert([row]).select().single()
-  let { data: log, error: logErr } = await insertLog(
-    { ...base, source: opts.source, message, created_by_name: opts.createdByName ?? null },
-  )
-  // 還沒跑 setup_push.sql（沒有新欄位）時退回舊格式
+  const full = { ...base, source: opts.source, message, created_by_name: opts.createdByName ?? null }
+  let { data: log, error: logErr } = await insertLog({ ...full, media })
+  // 還沒跑 push_media.sql / setup_push.sql（沒有新欄位）時退回舊格式
+  if (logErr) ({ data: log, error: logErr } = await insertLog(full))
   if (logErr) ({ data: log, error: logErr } = await insertLog(base))
   if (logErr || !log) throw new Error(`寫入 push_logs 失敗: ${logErr?.message}`)
 
@@ -306,7 +377,7 @@ export async function sendPush(opts: {
       const res = await fetch('https://api.line.me/v2/bot/message/multicast', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${LINE_TOKEN}` },
-        body: JSON.stringify({ to: chunk, messages: [{ type: 'text', text: text.slice(0, MAX_TEXT) }] }),
+        body: JSON.stringify({ to: chunk, messages: buildMessages(text, media) }),
       })
       if (res.ok) {
         success += chunk.length
@@ -333,7 +404,8 @@ export async function sendPush(opts: {
     count: ids.length,
     success,
     fail,
-    message,
+    message: media?.kind === 'card' ? `［圖文卡片］${media.card_title}\n${message}`
+      : media?.kind === 'image' ? `［圖片］${message}` : message,
     error: errors.length ? errors.join(' | ') : null,
   })
 

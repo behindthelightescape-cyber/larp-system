@@ -26,7 +26,7 @@ Deno.serve(async () => {
       .update({ status: 'sending' })
       .eq('id', id)
       .eq('status', 'pending')
-      .select('id, title, message, target, created_by_name')
+      .select('id, title, message, media, target, created_by_name')
       .maybeSingle()
     if (!claimed) continue // 被別的執行搶走或已取消
 
@@ -34,6 +34,7 @@ Deno.serve(async () => {
       const r = await sendPush({
         target: claimed.target as Target,
         message: claimed.message,
+        media: claimed.media,
         taskName: `[預約] ${claimed.title}`,
         source: 'scheduled',
         createdByName: claimed.created_by_name ?? undefined,

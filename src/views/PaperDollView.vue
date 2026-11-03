@@ -26,6 +26,10 @@
         <button class="bg-change-btn" @click="showBgModal = true">
           <ImageIcon :size="14" :stroke-width="1.8" /> 換背景
         </button>
+        <!-- 分享到 LINE 聊天室 -->
+        <button class="share-btn" :disabled="isSharing" @click="shareDoll">
+          <Share2 :size="14" :stroke-width="1.8" /> {{ isSharing ? '分享中…' : '分享' }}
+        </button>
 
         <div class="doll-stage">
           <!-- 披風在角色後面 -->
@@ -173,7 +177,9 @@
 
 <script setup>
 import { ref, reactive, computed, onMounted, watch } from 'vue'
-import { Smile, Crown, Shirt, Wind, Layers, Glasses, Wand2, Image as ImageIcon } from 'lucide-vue-next'
+import { Smile, Crown, Shirt, Wind, Layers, Glasses, Wand2, Share2, Image as ImageIcon } from 'lucide-vue-next'
+import liff from '@line/liff'
+import { buildDollFlex } from '../utils/dollFlex'
 import { supabase } from '../supabase'
 import { useUserStore } from '../stores/user'
 import { useRouter } from 'vue-router'
@@ -490,6 +496,40 @@ const selectBg = async (bg) => {
   else lockedItem.value = { ...bg, state } // 未解鎖：跳出取得方式說明
 }
 
+// ── 分享到 LINE 聊天室（shareTargetPicker）──
+// 卡片版面和群組「！召喚」相同；只有圖片的服裝會出現在卡片上（emoji 服裝無法放進 Flex）。
+const isSharing = ref(false)
+const shareDoll = async () => {
+  if (isSharing.value) return
+  if (!liff.isApiAvailable('shareTargetPicker')) {
+    alert('目前無法分享，請在 LINE 裡開啟劇光燈再試一次')
+    return
+  }
+  isSharing.value = true
+  try {
+    const layerUrls = {}
+    for (const [cat, item] of Object.entries(equipped)) {
+      if (item?.img_url) layerUrls[cat] = item.img_url // 含「不裝備」預設圖
+    }
+    const bg = backgrounds.value.find(b => b.id === activeBgId.value)
+    const u = userStore.userData || {}
+    const info = userStore.getLevelInfo(u.total_exp || 0)
+    const message = buildDollFlex({
+      name: u.display_name,
+      baseUrl: baseImgUrl.value || 'https://meee.com.tw/hLmrwbm.png',
+      layerUrls,
+      level: u.level || info.level,
+      title: u.current_title || info.title,
+      bgUrl: bg?.img_url || null,
+    })
+    await liff.shareTargetPicker([message], { isMultiple: true })
+  } catch (err) {
+    alert('分享失敗：' + (err?.message || err))
+  } finally {
+    isSharing.value = false
+  }
+}
+
 // 未解鎖說明文字
 const obtainDesc = (item) => {
   if (item.unlock_type === 'points') return `需要 ${item.unlock_cost} 點數`
@@ -752,6 +792,17 @@ const obtainDesc = (item) => {
   transition: border-color 0.2s, color 0.2s;
 }
 .bg-change-btn:hover { border-color: rgba(212,175,55,0.4); color: #D4AF37; }
+.share-btn {
+  position: absolute; top: 14px; left: 16px;
+  display: flex; align-items: center; gap: 6px;
+  background: rgba(212,175,55,0.18);
+  border: 1px solid rgba(212,175,55,0.45);
+  color: #D4AF37; font-size: 0.75rem; font-weight: 700;
+  padding: 5px 12px; border-radius: 20px;
+  cursor: pointer; z-index: 2;
+  backdrop-filter: blur(6px);
+}
+.share-btn:disabled { opacity: 0.5; cursor: default; }
 
 /* 舞台背景 */
 .stage-card { transition: background 0.5s ease; }

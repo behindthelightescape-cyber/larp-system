@@ -201,6 +201,7 @@ const buildCard = (user: Record<string, unknown>, stats: { games: number; days: 
 // ── 組裝「燈燈吉祥物」Flex Message ────────────────────────────────────────
 // 觸發指令：!召喚
 // 顯示角色底圖 + 依裝備順序疊加服裝圖層，底部顯示名稱與等級
+// 造型室「分享」按鈕用的是前端複製版 src/utils/dollFlex.js，改版面時兩邊一起改。
 const buildDollCard = (
   name: string,
   baseUrl: string,

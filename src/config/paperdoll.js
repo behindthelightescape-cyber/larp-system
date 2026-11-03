@@ -1,13 +1,16 @@
-// 燈燈造型室目前只開放給以下帳號（users.id = LINE userId）測試。
-// 要全面開放時：把首頁與 PaperDollView 的 canOpenPaperDoll 檢查拿掉即可。
+// 燈燈造型室開放設定。
+// PAPERDOLL_OPEN_TO_ALL = true：所有會員都能進造型室；改回 false 就只剩 PAPERDOLL_TESTERS 能進。
+export const PAPERDOLL_OPEN_TO_ALL = true
+
 export const PAPERDOLL_TESTERS = [
   'U65a94308551ccd456aca5e903d98cefd', // 喬 #00000002
 ]
 
-export const canOpenPaperDoll = (userId) => PAPERDOLL_TESTERS.includes(userId)
+export const canOpenPaperDoll = (userId) =>
+  PAPERDOLL_OPEN_TO_ALL ? !!userId : PAPERDOLL_TESTERS.includes(userId)
 
 // ── 服裝分類（造型室、後台共用）──
-// 修改時 supabase/functions/line-webhook/index.ts 的 SLOT_ORDER 也要一起改（Edge Function 無法 import 這裡）。
+// 修改時 supabase/functions/line-webhook/index.ts 的 BACK_SLOTS／FRONT_SLOTS 也要一起改（Edge Function 無法 import 這裡）。
 export const WARDROBE_CATEGORIES = [
   { key: 'expr',   label: '表情' },
   { key: 'hat',    label: '帽子' },

@@ -90,7 +90,7 @@
             <span class="item-name">{{ item.name }}</span>
             <span v-if="getItemState(item) === 'discontinued'" class="item-badge discontinued-badge">已絕版</span>
             <span v-else-if="getItemState(item) === 'purchasable'" class="item-price">{{ item.unlock_cost }} pt</span>
-            <span v-else-if="getItemState(item) === 'claimable' && !item.is_none" class="item-badge claimable">領取</span>
+            <span v-else-if="getItemState(item) === 'claimable' && !item.is_none" class="item-badge claimable">{{ item.unlock_type === 'free' ? '免費領取' : '已解鎖' }}</span>
             <span v-else-if="isSelected(item)" class="item-badge">✔</span>
           </button>
         </div>
@@ -129,7 +129,7 @@
                 </div>
                 <span class="bg-name">{{ bg.name }}</span>
                 <span v-if="getBgState(bg) === 'purchasable'" class="bg-price">{{ bg.unlock_cost }} pt</span>
-                <span v-else-if="getBgState(bg) === 'claimable'" class="bg-price claimable">免費領取</span>
+                <span v-else-if="getBgState(bg) === 'claimable'" class="bg-price claimable">{{ bg.unlock_type === 'free' ? '免費領取' : '已解鎖' }}</span>
               </button>
             </div>
           </div>
@@ -155,7 +155,7 @@
               class="locked-claim"
               :disabled="isClaiming"
               @click="claimItem(lockedItem)"
-            >{{ isClaiming ? '領取中...' : '免費領取' }}</button>
+            >{{ isClaiming ? '領取中...' : (lockedItem.unlock_type === 'free' ? '免費領取' : '已解鎖，點擊領取') }}</button>
             <button
               v-else-if="lockedItem.state === 'purchasable'"
               class="locked-claim"

@@ -60,7 +60,7 @@ on conflict (id) do update set
   sale_start = excluded.sale_start, sale_end = excluded.sale_end, sort_order = excluded.sort_order;
 
 update public.presale_items
-set coupon_desc = '本票券可以折抵《' || script_name || '》劇本單人費用乙次，無法與其他優惠進行並用'
+set coupon_desc = '本票券可以折抵《' || script_name || '》劇本單人費用乙次，無法與其他優惠進行並用。台北館適用，無使用期限，同一場可用多張。預約時仍須依劇本規定付訂金（全團用票券者，訂金於遊戲當日退還）。'
 where coupon_desc is null;
 
 insert into public.presale_tiers (min_qty, discount_per_item) values (2, 50), (4, 100), (7, 150)

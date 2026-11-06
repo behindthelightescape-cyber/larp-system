@@ -129,6 +129,17 @@ Deno.serve(async (req) => {
           utm[k].orders++
           utm[k].revenue += r.total
         }
+        // 金額依狀態：已付款＝已發券；待查帳＝玩家回報已匯款但還沒確認；未付款＝已認領還沒匯款；未認領＝網站建單後沒登入 LINE
+        const sumOf = (st: string) => {
+          const rs = rows.filter((r) => r.status === st)
+          return { orders: rs.length, amount: rs.reduce((s, r) => s + r.total, 0) }
+        }
+        const money = {
+          paid: sumOf('issued'),
+          reviewing: sumOf('reviewing'),
+          unpaid: sumOf('awaiting_payment'),
+          unclaimed: sumOf('unclaimed'),
+        }
         const byDay: Record<string, number> = {}
         for (const r of rows) byDay[twDate(r.created_at)] = (byDay[twDate(r.created_at)] ?? 0) + 1
         return jsonRes(cors, {
@@ -139,6 +150,7 @@ Deno.serve(async (req) => {
             issued: issued.length,
           },
           revenue,
+          money,
           tickets: issued.reduce((s, r) => s + r.items.length * (r.qty ?? 1), 0),
           avg_order: issued.length ? Math.round(revenue / issued.length) : 0,
           qty_dist: qtyDist,

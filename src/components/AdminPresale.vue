@@ -232,6 +232,13 @@ onMounted(() => { loadOrders(); loadSettings() })
           <div class="kpi"><div class="lbl">已發券張數</div><b>{{ stats.tickets }}</b></div>
           <div class="kpi"><div class="lbl">平均客單價</div><b>{{ money(stats.avg_order) }}</b></div>
         </div>
+        <h4>收款狀況</h4>
+        <table v-if="stats.money" class="tbl">
+          <tr><td>✅ 已付款（已發券）</td><td>{{ stats.money.paid.orders }} 單</td><td><b class="gold">{{ money(stats.money.paid.amount) }}</b></td></tr>
+          <tr><td>🔍 已回報匯款，待查帳</td><td>{{ stats.money.reviewing.orders }} 單</td><td>{{ money(stats.money.reviewing.amount) }}</td></tr>
+          <tr><td>⏳ 未付款（已認領）</td><td>{{ stats.money.unpaid.orders }} 單</td><td>{{ money(stats.money.unpaid.amount) }}</td></tr>
+          <tr><td class="muted">未認領（沒登入 LINE）</td><td class="muted">{{ stats.money.unclaimed.orders }} 單</td><td class="muted">{{ money(stats.money.unclaimed.amount) }}</td></tr>
+        </table>
         <h4>漏斗</h4>
         <table class="tbl"><tr v-for="s in funnelSteps" :key="s.label"><td>{{ s.label }}</td><td>{{ s.n }}</td><td class="muted">{{ s.pct }}</td></tr></table>
         <h4>每單本數（已發券）</h4>

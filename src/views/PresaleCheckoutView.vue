@@ -6,6 +6,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { useUserStore } from '../stores/user'
 import { presaleMember, money, groupItems, ticketCount } from '../utils/presaleApi'
 import PresaleBankInfo from '../components/PresaleBankInfo.vue'
+import liff from '@line/liff'
 
 const route = useRoute()
 const router = useRouter()
@@ -17,6 +18,14 @@ const loading = ref(true)
 const submitting = ref(false)
 const errorMsg = ref('')
 const form = ref({ name: '', phone: '', email: '' })
+const justClaimed = ref(false)   // 剛剛在這頁送出（顯示「已傳 LINE 訊息，可以關閉」）
+const pushOk = ref(false)
+
+// 在 LINE 裡就關掉 LIFF；外部瀏覽器關不了，改去「我的訂單」
+const closePage = () => {
+  if (liff.isInClient()) liff.closeWindow()
+  else router.push('/orders')
+}
 
 const code = computed(() => String(route.query.order || ''))
 const lines = computed(() => groupItems(order.value?.items, order.value?.qty || 1))
@@ -51,6 +60,8 @@ const submit = async () => {
     const r = await presaleMember({ action: 'claim', code: code.value, ...form.value })
     order.value = r.order
     bank.value = r.bank
+    justClaimed.value = true
+    pushOk.value = !r.push_error
     window.scrollTo({ top: 0, behavior: 'smooth' })
   } catch (err) {
     errorMsg.value = err.message
@@ -105,6 +116,12 @@ const submit = async () => {
 
       <!-- 已認領：匯款資訊 -->
       <template v-else>
+        <div v-if="justClaimed && order.status === 'awaiting_payment'" class="done">
+          <h3>✅ 訂單已成立</h3>
+          <p v-if="pushOk">我們已經用 <b>LINE 傳了一則訊息</b>給你，裡面有匯款帳號和金額。<br />你可以<b>先關閉這個畫面</b>去匯款，匯完再點 LINE 訊息裡的「填寫匯款資料」回填就好。</p>
+          <p v-else>LINE 訊息沒有送出（可能還沒加官方帳號好友）。請記下下面的匯款資訊，匯款後到「票券 → 我的預售訂單」回填。</p>
+          <button v-if="pushOk" class="btn gold" @click="closePage">關閉畫面，去匯款</button>
+        </div>
         <PresaleBankInfo v-if="order.status === 'awaiting_payment'" :bank="bank" :total="order.total" />
         <div class="card">
           <p v-if="order.status === 'awaiting_payment'">匯款後，請到「我的訂單」填寫匯款日期與帳號後五碼，我們查帳後會把票券放進你的票券匣，並用 LINE 通知你。</p>
@@ -140,5 +157,9 @@ label { display: flex; flex-direction: column; gap: 4px; font-size: 0.85rem; col
 .muted { color: #888; }
 .danger { color: #e74c3c; }
 .ok { color: #5eff8a; }
+.done { background: rgba(46,204,113,0.08); border: 1px solid rgba(46,204,113,0.4); border-radius: 18px; padding: 18px; display: flex; flex-direction: column; gap: 8px; }
+.done h3 { margin: 0; color: #2ecc71; font-size: 1.1rem; }
+.done p { margin: 0; line-height: 1.7; font-size: 0.92rem; color: #ddd; }
+.done b { color: #fff; }
 .test-tag { align-self: flex-start; background: #8e44ad; color: #fff; font-size: 0.75rem; font-weight: 700; padding: 3px 10px; border-radius: 10px; }
 </style>

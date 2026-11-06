@@ -111,7 +111,7 @@ Deno.serve(async (req) => {
 
       case 'stats': {
         const { data, error } = await db.from('presale_orders')
-          .select('status, items, total, utm_source, created_at, claimed_at, remit_reported_at, is_test')
+          .select('status, items, qty, total, utm_source, created_at, claimed_at, remit_reported_at, is_test')
           .eq('is_test', !!body.include_test ? true : false)
         if (error) throw new Error(error.message)
         const rows = data ?? []
@@ -120,6 +120,8 @@ Deno.serve(async (req) => {
         const bucket = (n: number) => (n <= 1 ? '1' : n <= 3 ? '2–3' : n <= 6 ? '4–6' : '7+')
         const qtyDist: Record<string, number> = { '1': 0, '2–3': 0, '4–6': 0, '7+': 0 }
         for (const r of issued) qtyDist[bucket(r.items.length)]++
+        const partyDist: Record<string, number> = {}
+        for (const r of issued) partyDist[String(r.qty ?? 1)] = (partyDist[String(r.qty ?? 1)] ?? 0) + 1
         const utm: Record<string, { orders: number; revenue: number }> = {}
         for (const r of issued) {
           const k = r.utm_source || '（無）'
@@ -137,9 +139,10 @@ Deno.serve(async (req) => {
             issued: issued.length,
           },
           revenue,
-          tickets: issued.reduce((s, r) => s + r.items.length, 0),
+          tickets: issued.reduce((s, r) => s + r.items.length * (r.qty ?? 1), 0),
           avg_order: issued.length ? Math.round(revenue / issued.length) : 0,
           qty_dist: qtyDist,
+          party_dist: partyDist,
           utm,
           by_day: byDay,
         })

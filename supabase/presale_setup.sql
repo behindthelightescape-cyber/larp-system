@@ -76,7 +76,8 @@ create table if not exists public.presale_orders (
   code              text not null unique,           -- 網址用，隨機 32 字元
   order_no          text not null unique,           -- 給人看，例 PS261111-0001
   user_id           text references public.users(id),
-  items             jsonb not null,                 -- [{id,title,price}]，每本一列
+  items             jsonb not null,                 -- [{id,title,price}]，每本一列、不重複
+  qty               int not null default 1 check (qty between 1 and 10),  -- 幾人份：每本都買 qty 張
   subtotal          int not null,
   discount          int not null,
   total             int not null,
@@ -100,6 +101,7 @@ create table if not exists public.presale_orders (
   claimed_at        timestamptz,
   pay_deadline      timestamptz
 );
+alter table public.presale_orders add column if not exists qty int not null default 1 check (qty between 1 and 10);
 create index if not exists presale_orders_user_idx on public.presale_orders (user_id);
 create index if not exists presale_orders_status_idx on public.presale_orders (status, created_at desc);
 
@@ -180,14 +182,16 @@ begin
     raise exception '這張訂單不是「待查帳」狀態，無法發券';
   end if;
 
+  -- 每本發 qty 張；source_order_line＝(第幾本−1)×qty＋第幾份，同一訂單不會重複發
   insert into coupons (user_id, title, description, status, expiry_date, coupon_type, source_order_id, source_order_line)
   select v_order.user_id, pi.coupon_title, pi.coupon_desc, 'available', pi.coupon_expiry_date, 'presale',
-         v_order.id, line.n::int
+         v_order.id, ((line.n - 1) * v_order.qty + k)::int
   from jsonb_array_elements(v_order.items) with ordinality as line(item, n)
-  join presale_items pi on pi.id = line.item ->> 'id';
+  join presale_items pi on pi.id = line.item ->> 'id'
+  cross join generate_series(1, v_order.qty) as k;
   get diagnostics v_count = row_count;
 
-  if v_count <> jsonb_array_length(v_order.items) then
+  if v_count <> jsonb_array_length(v_order.items) * v_order.qty then
     raise exception '有品項找不到，已取消發券';
   end if;
   return v_count;

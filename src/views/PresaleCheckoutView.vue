@@ -4,7 +4,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useUserStore } from '../stores/user'
-import { presaleMember, money, groupItems } from '../utils/presaleApi'
+import { presaleMember, money, groupItems, ticketCount } from '../utils/presaleApi'
 import PresaleBankInfo from '../components/PresaleBankInfo.vue'
 
 const route = useRoute()
@@ -19,7 +19,7 @@ const errorMsg = ref('')
 const form = ref({ name: '', phone: '', email: '' })
 
 const code = computed(() => String(route.query.order || ''))
-const lines = computed(() => groupItems(order.value?.items))
+const lines = computed(() => groupItems(order.value?.items, order.value?.qty || 1))
 const claimed = computed(() => order.value && order.value.status !== 'unclaimed')
 
 const load = async () => {
@@ -80,13 +80,14 @@ const submit = async () => {
       <!-- 明細 -->
       <div class="card">
         <div class="row small"><span>訂單編號</span><span>{{ order.order_no }}</span></div>
+        <div v-if="(order.qty || 1) > 1" class="row small"><span>人份</span><span>{{ order.qty }} 人份（每本 {{ order.qty }} 張）</span></div>
         <div class="divider"></div>
         <div v-for="l in lines" :key="l.id" class="row">
           <span>{{ l.title }}<b v-if="l.qty > 1"> × {{ l.qty }}</b></span>
           <span>{{ money(l.price * l.qty) }}</span>
         </div>
         <div class="divider"></div>
-        <div class="row small"><span>原價小計（{{ order.items.length }} 張）</span><span>{{ money(order.subtotal) }}</span></div>
+        <div class="row small"><span>原價小計（{{ ticketCount(order) }} 張）</span><span>{{ money(order.subtotal) }}</span></div>
         <div v-if="order.discount" class="row small"><span>多本折抵</span><span class="ok">−{{ money(order.discount) }}</span></div>
         <div class="row total"><span>應付金額</span><span>{{ money(order.total) }}</span></div>
       </div>

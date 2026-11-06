@@ -39,12 +39,16 @@ export class UserError extends Error {
 export type Item = { id: string; title: string; price: number }
 export type Tier = { min_qty: number; discount_per_item: number }
 
-/** total = Σ原價 − (符合的最高級距每本折抵 × 本數) */
-export function priceOf(items: Item[], tiers: Tier[]) {
-  const subtotal = items.reduce((s, i) => s + i.price, 0)
-  const tier = [...tiers].sort((a, b) => b.min_qty - a.min_qty).find((t) => items.length >= t.min_qty)
-  const discount = Math.min(subtotal, (tier?.discount_per_item ?? 0) * items.length)
-  return { subtotal, discount, total: subtotal - discount }
+/**
+ * 級距看「不同劇本的本數 n」，每一份都折：
+ * total ＝（各本單價合計 − 每本折扣 × n）× qty
+ */
+export function priceOf(items: Item[], tiers: Tier[], qty = 1) {
+  const n = items.length
+  const perSet = items.reduce((s, i) => s + i.price, 0)
+  const tier = [...tiers].sort((a, b) => b.min_qty - a.min_qty).find((t) => n >= t.min_qty)
+  const perSetDiscount = Math.min(perSet, (tier?.discount_per_item ?? 0) * n)
+  return { subtotal: perSet * qty, discount: perSetDiscount * qty, total: (perSet - perSetDiscount) * qty }
 }
 
 export async function getSettings() {
@@ -73,7 +77,7 @@ export async function lineUserFrom(req: Request): Promise<string> {
 // ── 給玩家看的訂單內容（不含內部欄位）────────────────────────────────────
 // deno-lint-ignore no-explicit-any
 export const publicOrder = (o: any) => ({
-  id: o.id, code: o.code, order_no: o.order_no, status: o.status, items: o.items,
+  id: o.id, code: o.code, order_no: o.order_no, status: o.status, items: o.items, qty: o.qty ?? 1,
   subtotal: o.subtotal, discount: o.discount, total: o.total,
   contact_name: o.contact_name, contact_phone: o.contact_phone, contact_email: o.contact_email,
   remit_date: o.remit_date, remit_last5: o.remit_last5, remit_amount: o.remit_amount,
@@ -84,13 +88,13 @@ export const publicOrder = (o: any) => ({
 // ── LINE 推播（單人）────────────────────────────────────────────────────
 const nt = (n: number) => `$${n.toLocaleString('en-US')}`
 
-/** 品項彙總：同一本買多張時合併成「× N」 */
-export function itemLines(items: Item[]) {
+/** 品項彙總：每本 × 人份（舊格式若同一本重複出現也會合併） */
+export function itemLines(items: Item[], perQty = 1) {
   const m = new Map<string, { title: string; price: number; qty: number }>()
   for (const i of items) {
     const g = m.get(i.id)
-    if (g) g.qty++
-    else m.set(i.id, { title: i.title, price: i.price, qty: 1 })
+    if (g) g.qty += perQty
+    else m.set(i.id, { title: i.title, price: i.price, qty: perQty })
   }
   return [...m.values()]
 }
@@ -130,10 +134,12 @@ function card(altText: string, title: string, body: unknown[], button?: { label:
 
 // deno-lint-ignore no-explicit-any
 export function orderCreatedMsg(o: any, s: Awaited<ReturnType<typeof getSettings>>) {
-  const lines = itemLines(o.items).map((l) => row(`${l.title}${l.qty > 1 ? ` × ${l.qty}` : ''}`, nt(l.price * l.qty)))
+  const qty = o.qty ?? 1
+  const lines = itemLines(o.items, qty).map((l) => row(`${l.title}${l.qty > 1 ? ` × ${l.qty}` : ''}`, nt(l.price * l.qty)))
   const bank = [s.bank_name, s.bank_code ? `(${s.bank_code})` : ''].filter(Boolean).join(' ')
   return card(`訂單已成立 ${o.order_no}，應付 ${nt(o.total)}`, '訂單已成立 🎫', [
     row('訂單編號', o.order_no),
+    ...(qty > 1 ? [row('人份', `${qty} 人份（每本 ${qty} 張）`)] : []),
     { type: 'box', layout: 'vertical', margin: 'md', contents: lines },
     ...(o.discount ? [row('多本折抵', `−${nt(o.discount)}`)] : []),
     row('應付金額', nt(o.total), true),

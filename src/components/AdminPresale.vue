@@ -2,7 +2,7 @@
 // 後台：雙 11 預售訂單（查帳發券、退回、取消、匯款設定、統計）
 import { ref, computed, onMounted } from 'vue'
 import { supabase } from '../supabase'
-import { PRESALE_STATUS, money, groupItems } from '../utils/presaleApi'
+import { PRESALE_STATUS, money, groupItems, ticketCount } from '../utils/presaleApi'
 
 const tab = ref('orders') // orders | settings | stats
 const statusFilter = ref('reviewing')
@@ -73,7 +73,7 @@ const act = async (o, action, extra = {}) => {
   }
 }
 const approve = (o) => {
-  if (!confirm(`確認已收到 ${o.order_no} 的匯款 ${money(o.total)}？\n會發 ${o.items.length} 張預售券給 ${o.contact_name || '會員'}，並用 LINE 通知。`)) return
+  if (!confirm(`確認已收到 ${o.order_no} 的匯款 ${money(o.total)}？\n會發 ${ticketCount(o)} 張預售券給 ${o.contact_name || '會員'}，並用 LINE 通知。`)) return
   act(o, 'approve')
 }
 const reject = (o) => {
@@ -178,8 +178,8 @@ onMounted(() => { loadOrders(); loadSettings() })
             <div v-if="o.contact_name" class="muted">{{ o.contact_name }}・{{ o.contact_phone }}<br />{{ o.contact_email }}</div>
           </div>
           <div>
-            <div class="lbl">品項（{{ o.items.length }} 張）</div>
-            <div v-for="l in groupItems(o.items)" :key="l.id">{{ l.title }}<template v-if="l.qty > 1"> × {{ l.qty }}</template></div>
+            <div class="lbl">品項（{{ o.items.length }} 本<template v-if="(o.qty || 1) > 1"> × {{ o.qty }} 人份</template>＝{{ ticketCount(o) }} 張）</div>
+            <div v-for="l in groupItems(o.items, o.qty || 1)" :key="l.id">{{ l.title }}<template v-if="l.qty > 1"> × {{ l.qty }}</template></div>
           </div>
           <div>
             <div class="lbl">金額</div>
@@ -236,6 +236,11 @@ onMounted(() => { loadOrders(); loadSettings() })
         <table class="tbl"><tr v-for="s in funnelSteps" :key="s.label"><td>{{ s.label }}</td><td>{{ s.n }}</td><td class="muted">{{ s.pct }}</td></tr></table>
         <h4>每單本數（已發券）</h4>
         <table class="tbl"><tr v-for="(n, k) in stats.qty_dist" :key="k"><td>{{ k }} 本</td><td>{{ n }} 單</td></tr></table>
+        <h4>每單人份（已發券）</h4>
+        <table class="tbl">
+          <tr v-for="(n, k) in stats.party_dist" :key="k"><td>{{ k }} 人份</td><td>{{ n }} 單</td></tr>
+          <tr v-if="!Object.keys(stats.party_dist || {}).length"><td class="muted">還沒有資料</td></tr>
+        </table>
         <h4>UTM 來源（已發券）</h4>
         <table class="tbl">
           <tr v-for="(v, k) in stats.utm" :key="k"><td>{{ k }}</td><td>{{ v.orders }} 單</td><td>{{ money(v.revenue) }}</td></tr>

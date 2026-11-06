@@ -67,7 +67,8 @@ const submitRemit = async (o) => {
         <span class="status" :class="PRESALE_STATUS[o.status]?.cls">{{ PRESALE_STATUS[o.status]?.text || o.status }}</span>
       </div>
       <div class="items">
-        <span v-for="l in groupItems(o.items)" :key="l.id">{{ l.title }}<template v-if="l.qty > 1"> × {{ l.qty }}</template></span>
+        <span v-if="(o.qty || 1) > 1" class="party">{{ o.qty }} 人份</span>
+        <span v-for="l in groupItems(o.items, o.qty || 1)" :key="l.id">{{ l.title }}<template v-if="l.qty > 1"> × {{ l.qty }}</template></span>
       </div>
       <div class="row total"><span>應付金額</span><span>{{ money(o.total) }}</span></div>
 
@@ -110,6 +111,7 @@ const submitRemit = async (o) => {
 .st-review { background: rgba(52,152,219,0.12); color: #3498db; }
 .st-done { background: rgba(46,204,113,0.12); color: #2ecc71; }
 .st-off { background: #222; color: #888; }
+.party { color: #D4AF37; font-weight: 700; }
 .items { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 0.88rem; color: #ccc; }
 .row { display: flex; justify-content: space-between; }
 .row.total { font-weight: 800; color: #D4AF37; }

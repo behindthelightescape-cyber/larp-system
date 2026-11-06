@@ -132,7 +132,7 @@ function card(altText: string, title: string, body: unknown[], button?: Btn | Bt
           spacing: 'sm',
           contents: buttons.map((b) => 'copy' in b
             ? { type: 'button', style: 'secondary', height: 'sm', action: { type: 'clipboard', label: b.label, clipboardText: b.copy } }
-            : { type: 'button', style: 'primary', color: GOLD, height: 'sm', action: { type: 'uri', label: b.label, uri: b.uri } }),
+            : { type: 'button', style: 'secondary', color: GOLD, height: 'sm', action: { type: 'uri', label: b.label, uri: b.uri } }),
         },
       } : {}),
     },

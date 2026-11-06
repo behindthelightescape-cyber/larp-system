@@ -47,20 +47,20 @@ create table if not exists public.presale_tiers (
 
 -- 第一檔資料（SPEC §8）。重複執行會覆寫成規格上的數字。
 insert into public.presale_items (id, script_name, title, price, later_price, group_key, coupon_title, coupon_desc, sale_start, sale_end, sort_order) values
-  ('umbrella', '傘靈',           '《傘靈》預售票',           700,  800,  'jianghu,hamster', '雙11｜傘靈',           null, '2026-11-11 00:00+08', '2026-11-17 23:59:59+08', 1),
-  ('acacia',   '相思骨',         '《相思骨》預售票',         750,  800,  'jianghu',         '雙11｜相思骨',         null, '2026-11-11 00:00+08', '2026-11-17 23:59:59+08', 2),
-  ('snow',     '將雪',           '《將雪》預售票',           700,  800,  'jianghu',         '雙11｜將雪',           null, '2026-11-11 00:00+08', '2026-11-17 23:59:59+08', 3),
-  ('bridge',   '二十四橋明月夜', '《二十四橋明月夜》預售票', 1400, 1400, 'jianghu',         '雙11｜二十四橋明月夜', null, '2026-11-11 00:00+08', '2026-11-17 23:59:59+08', 4),
-  ('flower',   '花吃了那女孩',   '《花吃了那女孩》預售票',   750,  750,  'hamster',         '雙11｜花吃了那女孩',   null, '2026-11-11 00:00+08', '2026-11-17 23:59:59+08', 5),
-  ('funeral',  '殯儀館',         '《殯儀館》預售票',         750,  850,  'hamster',         '雙11｜殯儀館',         null, '2026-11-11 00:00+08', '2026-11-17 23:59:59+08', 6),
-  ('kanagawa', '神奈川醫院',     '《神奈川醫院》預售票',     800,  850,  'hamster',         '雙11｜神奈川醫院',     null, '2026-11-11 00:00+08', '2026-11-17 23:59:59+08', 7)
+  ('umbrella', '傘靈',           '《傘靈》預售票',           700,  800,  'jianghu,hamster', '《傘靈》單人抵用券',           null, '2026-11-11 00:00+08', '2026-11-17 23:59:59+08', 1),
+  ('acacia',   '相思骨',         '《相思骨》預售票',         750,  800,  'jianghu',         '《相思骨》單人抵用券',         null, '2026-11-11 00:00+08', '2026-11-17 23:59:59+08', 2),
+  ('snow',     '將雪',           '《將雪》預售票',           700,  800,  'jianghu',         '《將雪》單人抵用券',           null, '2026-11-11 00:00+08', '2026-11-17 23:59:59+08', 3),
+  ('bridge',   '二十四橋明月夜', '《二十四橋明月夜》預售票', 1400, 1400, 'jianghu',         '《二十四橋明月夜》單人抵用券', null, '2026-11-11 00:00+08', '2026-11-17 23:59:59+08', 4),
+  ('flower',   '花吃了那女孩',   '《花吃了那女孩》預售票',   750,  750,  'hamster',         '《花吃了那女孩》單人抵用券',   null, '2026-11-11 00:00+08', '2026-11-17 23:59:59+08', 5),
+  ('funeral',  '殯儀館',         '《殯儀館》預售票',         750,  850,  'hamster',         '《殯儀館》單人抵用券',         null, '2026-11-11 00:00+08', '2026-11-17 23:59:59+08', 6),
+  ('kanagawa', '神奈川醫院',     '《神奈川醫院》預售票',     800,  850,  'hamster',         '《神奈川醫院》單人抵用券',     null, '2026-11-11 00:00+08', '2026-11-17 23:59:59+08', 7)
 on conflict (id) do update set
   script_name = excluded.script_name, title = excluded.title, price = excluded.price, later_price = excluded.later_price,
   group_key = excluded.group_key, coupon_title = excluded.coupon_title,
   sale_start = excluded.sale_start, sale_end = excluded.sale_end, sort_order = excluded.sort_order;
 
 update public.presale_items
-set coupon_desc = '一張票＝一位玩家玩一場，台北館適用，無使用期限。同一場可用多張，不與其他優惠併用。預約時仍須依劇本規定付訂金（全團用票券者，訂金於遊戲當日退還）。'
+set coupon_desc = '本票券可以折抵《' || script_name || '》劇本單人費用乙次，無法與其他優惠進行並用'
 where coupon_desc is null;
 
 insert into public.presale_tiers (min_qty, discount_per_item) values (2, 50), (4, 100), (7, 150)

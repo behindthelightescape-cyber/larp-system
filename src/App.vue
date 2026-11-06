@@ -31,6 +31,34 @@ watch(() => userStore.isLoading, (loading) => {
   }
 }, { once: true })
 
+// 預售結帳（?order=）與推播按鈕（?goto=orders|coupons）：
+// LIFF 第一次開啟時參數會包在 liff.state 裡，init 後才還原，所以啟動時先記住，載入完成後再讀一次。
+const readParam = (name) => {
+  const qs = new URLSearchParams(window.location.search)
+  if (qs.get(name)) return qs.get(name)
+  const state = qs.get('liff.state')
+  if (state) return new URLSearchParams(state.split('?')[1] || state.replace(/^[^?]*/, '')).get(name)
+  return null
+}
+const GOTO_ROUTES = { orders: '/orders', coupons: '/coupons' }
+const rememberLanding = () => {
+  const order = readParam('order')
+  if (order) sessionStorage.setItem('pendingOrder', order)
+  const goto = readParam('goto')
+  if (goto && GOTO_ROUTES[goto]) sessionStorage.setItem('pendingGoto', goto)
+}
+rememberLanding()
+watch(() => userStore.isLoading, (loading) => {
+  if (loading || !userStore.userData) return
+  rememberLanding()
+  const order = sessionStorage.getItem('pendingOrder')
+  const goto = sessionStorage.getItem('pendingGoto')
+  sessionStorage.removeItem('pendingOrder')
+  sessionStorage.removeItem('pendingGoto')
+  if (order) router.replace({ path: '/checkout', query: { order } })
+  else if (goto) router.replace(GOTO_ROUTES[goto])
+}, { once: true })
+
 onMounted(() => {
   if (window.location.hash.includes('#/admin') || window.location.hash.includes('#/display')) {
     userStore.isLoading = false

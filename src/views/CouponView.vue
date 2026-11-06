@@ -91,6 +91,7 @@ const confirmRedeem = async () => {
         {{ displayCoupons.filter(c => c.uiStatus === 'active').length }} 張可用
       </span>
     </div>
+    <router-link to="/orders" class="presale-link">🎫 我的預售訂單 ›</router-link>
 
     <div class="coupon-list">
       <div v-if="store.isLoading" class="loading-state">
@@ -194,6 +195,7 @@ const confirmRedeem = async () => {
 </template>
 
 <style scoped>
+.presale-link { display: block; margin: -4px 0 14px; padding: 10px 14px; border-radius: 12px; background: rgba(212,175,55,0.08); border: 1px solid rgba(212,175,55,0.3); color: #D4AF37; font-size: 0.88rem; font-weight: 700; text-decoration: none; }
 .page-container {
   width: 100%; max-width: 800px; margin: 0 auto;
   box-sizing: border-box;

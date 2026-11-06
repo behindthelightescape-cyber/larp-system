@@ -19,6 +19,7 @@ import AdminPoints from '../components/AdminPoints.vue'
 import AdminGroupSettings from '../components/AdminGroupSettings.vue'
 import AdminLineFeatures from '../components/AdminLineFeatures.vue'
 import AdminTarot from '../components/AdminTarot.vue'
+import AdminPresale from '../components/AdminPresale.vue'
 
 const session = ref(null)
 const isLoading = ref(true)
@@ -203,6 +204,9 @@ const goToMember = async (legacyId) => {
           <button class="nav-btn" :class="{ active: currentTab === 'promo_code' }" @click="changeTab('promo_code')">
             <span class="icon">🎁</span> 兌換碼設定
           </button>
+          <button v-if="adminProfile.role === 'admin'" class="nav-btn" :class="{ active: currentTab === 'presale' }" @click="changeTab('presale')">
+            <span class="icon">🛒</span> 雙11預售訂單
+          </button>
         </template>
 
         <button class="nav-group-label" @click="toggleGroup('auto')">
@@ -308,6 +312,7 @@ const goToMember = async (legacyId) => {
               currentTab === 'promo_code' ? '萬用兌換碼印鈔機' :
               currentTab === 'auto_reward' ? '全自動派發中控台' : 
               currentTab === 'push_message' ? '自訂推播' :
+              currentTab === 'presale' ? '雙11預售訂單' :
               currentTab === 'achievement' ? '成就鑄造廠' :
               currentTab === 'paperdoll' ? '燈燈造型室' :
               currentTab === 'display_ads' ? '電視廣告管理' :
@@ -334,6 +339,7 @@ const goToMember = async (legacyId) => {
 
 <div v-if="currentTab === 'push_log'" class="panel active"><AdminPushLogs /></div>
 <div v-if="currentTab === 'push_message' && adminProfile.role === 'admin'" class="panel active"><AdminPushMessage /></div>
+<div v-if="currentTab === 'presale' && adminProfile.role === 'admin'" class="panel active"><AdminPresale /></div>
 
       <div v-if="currentTab === 'analytics'" class="panel active">
         <AnalyticsManager />

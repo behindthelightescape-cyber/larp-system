@@ -26,7 +26,11 @@ const router = createRouter({
     { path: '/paperdoll', component: PaperDollView },
     // 點數取得機制尚未定案，暫時封鎖 (重新開放時改回 component: PointsView)
     { path: '/points', redirect: '/' },
-    
+
+    // === 雙 11 預售票 ===
+    { path: '/checkout', component: () => import('../views/PresaleCheckoutView.vue') },
+    { path: '/orders',   component: () => import('../views/PresaleOrdersView.vue') },
+
     // === 互動裝置 ===
     { path: '/display', component: () => import('../views/display/DisplayView.vue'), meta: { hideNav: true } },
     { path: '/scan',    component: () => import('../views/display/ScanView.vue'),    meta: { hideNav: true } },

@@ -10,7 +10,8 @@
     "deploy:birthday": "npx supabase functions deploy birthday-push-sniper --no-verify-jwt --project-ref cqbiozfappfwfcahtxfm",
     "deploy:push": "npx supabase functions deploy admin-push scheduled-push-runner birthday-push-sniper --no-verify-jwt --project-ref cqbiozfappfwfcahtxfm",
     "deploy:webhook": "npx supabase functions deploy line-webhook --no-verify-jwt --project-ref cqbiozfappfwfcahtxfm",
-    "sql": "supabase db query --linked -f"
+    "sql": "supabase db query --linked -f",
+    "deploy:presale": "npx supabase functions deploy presale-catalog presale-order-create presale-member presale-admin --no-verify-jwt --project-ref cqbiozfappfwfcahtxfm"
   },
   "dependencies": {
     "@line/liff": "^2.27.3",

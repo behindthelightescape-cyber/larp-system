@@ -118,7 +118,8 @@ const submit = async () => {
 </template>
 
 <style scoped>
-.presale-page { max-width: 480px; margin: 0 auto; padding: 24px 16px 100px; color: #eee; display: flex; flex-direction: column; gap: 14px; }
+.presale-page *, .presale-page *::before, .presale-page *::after { box-sizing: border-box; }
+.presale-page { box-sizing: border-box; width: 100%; max-width: 480px; margin: 0 auto; padding: 24px 16px 100px; color: #eee; display: flex; flex-direction: column; gap: 14px; }
 .head .sub { font-size: 0.7rem; letter-spacing: 3px; color: #D4AF37; font-weight: 700; }
 .head h2 { margin: 4px 0 0; font-size: 1.6rem; color: #fff; }
 .card { background: rgba(18,18,18,0.85); border: 1px solid rgba(255,255,255,0.08); border-radius: 18px; padding: 18px; display: flex; flex-direction: column; gap: 8px; }

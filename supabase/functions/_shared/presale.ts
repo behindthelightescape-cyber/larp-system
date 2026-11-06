@@ -107,7 +107,11 @@ const row = (label: string, value: string, bold = false) => ({
   ],
 })
 
-function card(altText: string, title: string, body: unknown[], button?: { label: string; uri: string }) {
+// 按鈕：uri＝開網頁（金色主按鈕），copy＝複製文字到剪貼簿（LINE clipboard action，次要按鈕）
+type Btn = { label: string; uri: string } | { label: string; copy: string }
+
+function card(altText: string, title: string, body: unknown[], button?: Btn | Btn[]) {
+  const buttons = button ? (Array.isArray(button) ? button : [button]) : []
   return {
     type: 'flex', altText: altText.slice(0, 400),
     contents: {
@@ -122,10 +126,13 @@ function card(altText: string, title: string, body: unknown[], button?: { label:
           ...body,
         ],
       },
-      ...(button ? {
+      ...(buttons.length ? {
         footer: {
           type: 'box', layout: 'vertical', paddingAll: '12px',
-          contents: [{ type: 'button', style: 'primary', color: GOLD, height: 'sm', action: { type: 'uri', label: button.label, uri: button.uri } }],
+          spacing: 'sm',
+          contents: buttons.map((b) => 'copy' in b
+            ? { type: 'button', style: 'secondary', height: 'sm', action: { type: 'clipboard', label: b.label, clipboardText: b.copy } }
+            : { type: 'button', style: 'primary', color: GOLD, height: 'sm', action: { type: 'uri', label: b.label, uri: b.uri } }),
         },
       } : {}),
     },
@@ -147,7 +154,11 @@ export function orderCreatedMsg(o: any, s: Awaited<ReturnType<typeof getSettings
     { type: 'text', text: '請匯款至', size: 'sm', color: '#aaaaaa', margin: 'md' },
     { type: 'text', text: `${bank}\n帳號 ${s.account_no ?? '（尚未設定）'}\n戶名 ${s.account_name ?? ''}`, size: 'sm', color: '#ffffff', wrap: true, margin: 'xs' },
     { type: 'text', text: '匯款後請到「我的訂單」填寫匯款日期與帳號後五碼。', size: 'xs', color: '#888888', wrap: true, margin: 'md' },
-  ], { label: '填寫匯款資料', uri: `${LIFF_URL}?goto=orders` })
+  ], [
+    ...(s.account_no ? [{ label: '複製匯款帳號', copy: s.account_no.replace(/[\s-]/g, '') }] : []),
+    { label: '複製金額', copy: String(o.total) },
+    { label: '填寫匯款資料', uri: `${LIFF_URL}?goto=orders` },
+  ])
 }
 
 // deno-lint-ignore no-explicit-any

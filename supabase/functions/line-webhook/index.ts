@@ -9,6 +9,8 @@
 //   npx supabase functions deploy line-webhook --no-verify-jwt --project-ref <project-ref>
 // ═══════════════════════════════════════════════════════════════════════════
 
+import { handleTeamEvent } from '../_shared/team.ts'
+
 // ── 環境變數（在 Supabase Dashboard > Edge Functions > Secrets 設定）──────
 const LINE_CHANNEL_SECRET  = Deno.env.get('LINE_CHANNEL_SECRET')!        // LINE Bot Channel Secret，用於驗證簽名
 const LINE_CHANNEL_TOKEN   = Deno.env.get('LINE_CHANNEL_TOKEN')!         // LINE Bot Channel Access Token，用於回覆訊息
@@ -435,6 +437,15 @@ const lineReply = (replyToken: string, messages: unknown[]) =>
     body: JSON.stringify({ replyToken, messages }),
   })
 
+// 群組成員的 LINE 名稱（不需要對方加好友）
+const groupMemberName = async (groupId: string, userId: string): Promise<string> => {
+  const res = await fetch(`https://api.line.me/v2/bot/group/${groupId}/member/${userId}`, {
+    headers: { 'Authorization': `Bearer ${LINE_CHANNEL_TOKEN}` },
+  })
+  if (!res.ok) return ''
+  return ((await res.json()).displayName as string) || ''
+}
+
 // ── 事件處理 ───────────────────────────────────────────────────────────────
 // 逐一處理 LINE 傳來的 events 陣列
 // 只處理文字訊息（type=message, message.type=text）
@@ -444,6 +455,8 @@ const handleEvents = async (events: Record<string, unknown>[]) => {
   const featureKeys = ['feature_rules', 'feature_tarot', 'feature_summon', 'feature_card', 'feature_sect']
   const features: Record<string, boolean> = {}
   featureKeys.forEach(k => { features[k] = true })
+  features['feature_team'] = false // 揪團：預設關，後台打開才有
+  featureKeys.push('feature_team')
   try {
     const featuresData = await dbGet(`group_settings?key=in.(${featureKeys.join(',')})&select=key,value`)
     if (Array.isArray(featuresData)) {
@@ -458,6 +471,15 @@ const handleEvents = async (events: Record<string, unknown>[]) => {
 
   for (const event of events) {
     console.log('event.type:', event.type)
+
+    // ── 揪團指令（規格 docs/group-session-api.md）：是揪團指令就處理完跳下一則 ──
+    if (features['feature_team']) {
+      try {
+        if (await handleTeamEvent(event, { reply: lineReply, profileName: groupMemberName })) continue
+      } catch (e) {
+        console.error('team event error:', e)
+      }
+    }
 
     // ── 有人加入群組：發送群組規則 ─────────────────────────────────────────
     if (event.type === 'memberJoined') {

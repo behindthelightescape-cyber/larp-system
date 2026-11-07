@@ -4,6 +4,7 @@ import { ref, computed, onMounted } from 'vue'
 import { supabase } from '../supabase'
 import { PRESALE_STATUS, money, groupItems, ticketCount } from '../utils/presaleApi'
 
+const props = defineProps({ role: { type: String, default: 'admin' } })
 const tab = ref('orders') // orders | settings | stats
 const statusFilter = ref('reviewing')
 const orders = ref([])
@@ -140,7 +141,7 @@ onMounted(() => { loadOrders(); loadSettings() })
   <div class="presale-admin">
     <div class="tabs">
       <button :class="{ active: tab === 'orders' }" @click="switchTab('orders')">訂單</button>
-      <button :class="{ active: tab === 'settings' }" @click="switchTab('settings')">匯款設定</button>
+      <button v-if="props.role === 'admin'" :class="{ active: tab === 'settings' }" @click="switchTab('settings')">匯款設定</button>
       <button :class="{ active: tab === 'stats' }" @click="switchTab('stats')">統計</button>
     </div>
 

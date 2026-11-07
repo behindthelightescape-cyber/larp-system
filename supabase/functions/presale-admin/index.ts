@@ -2,7 +2,7 @@ import {
   APP_ORIGINS, corsFor, db, getSettings, issuedMsg, jsonRes, pushTo, rejectedMsg, UserError,
 } from '../_shared/presale.ts'
 
-// 後台預售訂單管理。只有 users.role 在 ALLOWED_ROLES 的人可以呼叫（要開放店長就加 'manager'）。
+// 後台預售訂單管理。users.role 在 ALLOWED_ROLES 的人可以呼叫；改匯款設定（save_settings）只限 admin。
 // POST body:
 //   { action: 'list', status? }               → 訂單列表（status 不填＝全部，不含 expired）＋各狀態筆數
 //   { action: 'approve', id }                 → reviewing → issued，同一個交易逐本發券，再推播
@@ -11,7 +11,7 @@ import {
 //   { action: 'get_settings' } / { action: 'save_settings', settings }
 //   { action: 'stats' }                       → 統計
 
-const ALLOWED_ROLES = ['admin']
+const ALLOWED_ROLES = ['admin', 'manager']
 const UUID = /^[0-9a-f-]{36}$/i
 
 async function getCaller(req: Request) {
@@ -98,6 +98,7 @@ Deno.serve(async (req) => {
         return jsonRes(cors, { settings: await getSettings() })
 
       case 'save_settings': {
+        if (caller.role !== 'admin') throw new UserError('匯款設定只有系統總管可以修改', 403)
         const s = body.settings ?? {}
         const txt = (v: unknown) => (typeof v === 'string' && v.trim() ? v.trim().slice(0, 200) : null)
         const { error } = await db.from('presale_settings').update({

@@ -204,7 +204,7 @@ const goToMember = async (legacyId) => {
           <button class="nav-btn" :class="{ active: currentTab === 'promo_code' }" @click="changeTab('promo_code')">
             <span class="icon">🎁</span> 兌換碼設定
           </button>
-          <button v-if="adminProfile.role === 'admin'" class="nav-btn" :class="{ active: currentTab === 'presale' }" @click="changeTab('presale')">
+          <button v-if="['admin', 'manager'].includes(adminProfile.role)" class="nav-btn" :class="{ active: currentTab === 'presale' }" @click="changeTab('presale')">
             <span class="icon">🛒</span> 雙11預售訂單
           </button>
         </template>
@@ -339,7 +339,7 @@ const goToMember = async (legacyId) => {
 
 <div v-if="currentTab === 'push_log'" class="panel active"><AdminPushLogs /></div>
 <div v-if="currentTab === 'push_message' && adminProfile.role === 'admin'" class="panel active"><AdminPushMessage /></div>
-<div v-if="currentTab === 'presale' && adminProfile.role === 'admin'" class="panel active"><AdminPresale /></div>
+<div v-if="currentTab === 'presale' && ['admin', 'manager'].includes(adminProfile.role)" class="panel active"><AdminPresale :role="adminProfile.role" /></div>
 
       <div v-if="currentTab === 'analytics'" class="panel active">
         <AnalyticsManager />

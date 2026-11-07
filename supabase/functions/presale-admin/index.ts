@@ -11,6 +11,7 @@ import {
 //   { action: 'cancel', id }                  → 未發券的訂單 → cancelled
 //   { action: 'get_settings' } / { action: 'save_settings', settings }
 //   { action: 'stats' }                       → 統計
+//   { action: 'get_items' } / { action: 'save_item', id, coupon_title, coupon_desc, apply_issued } → 票券名稱與使用規則（只限 admin）
 
 const ALLOWED_ROLES = ['admin', 'manager']
 const UUID = /^[0-9a-f-]{36}$/i
@@ -109,6 +110,37 @@ Deno.serve(async (req) => {
         }).eq('id', 1)
         if (error) throw new Error(error.message)
         return jsonRes(cors, { ok: true, settings: await getSettings() })
+      }
+
+      case 'get_items': {
+        const { data, error } = await db.from('presale_items')
+          .select('id, script_name, coupon_title, coupon_desc, sort_order').order('sort_order')
+        if (error) throw new Error(error.message)
+        return jsonRes(cors, { items: data ?? [] })
+      }
+
+      case 'save_item': {
+        if (caller.role !== 'admin') throw new UserError('票券文字只有系統總管可以修改', 403)
+        const itemId = String(body.id ?? '')
+        const title = String(body.coupon_title ?? '').trim().slice(0, 100)
+        const desc = String(body.coupon_desc ?? '').trim().slice(0, 2000)
+        if (!title) throw new UserError('票券名稱不能空白')
+        const { data: old, error: e0 } = await db.from('presale_items').select('coupon_title').eq('id', itemId).maybeSingle()
+        if (e0) throw new Error(e0.message)
+        if (!old) throw new UserError('找不到這本劇本')
+        const { error } = await db.from('presale_items').update({ coupon_title: title, coupon_desc: desc || null }).eq('id', itemId)
+        if (error) throw new Error(error.message)
+        // 已發出、還沒使用的券一起更新（用舊名稱比對）
+        let updated = 0
+        if (body.apply_issued) {
+          const { data: rows, error: e2 } = await db.from('coupons')
+            .update({ title, description: desc || null })
+            .eq('coupon_type', 'presale').eq('status', 'available').eq('title', old.coupon_title)
+            .select('id')
+          if (e2) throw new Error(e2.message)
+          updated = rows?.length ?? 0
+        }
+        return jsonRes(cors, { ok: true, updated })
       }
 
       case 'stats': {

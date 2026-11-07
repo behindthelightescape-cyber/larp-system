@@ -5,7 +5,8 @@ import { supabase } from '../supabase'
 import { PRESALE_STATUS, money, groupItems, ticketCount, extraCount } from '../utils/presaleApi'
 
 const props = defineProps({ role: { type: String, default: 'admin' } })
-const tab = ref('orders') // orders | settings | stats
+const tab = ref('orders') // orders | settings | rules | stats
+const rules = ref(null)
 const statusFilter = ref('reviewing')
 const orders = ref([])
 const counts = ref({})
@@ -109,6 +110,35 @@ const saveSettings = async () => {
   }
 }
 
+// ── 票券文字（使用規則）──
+const loadRules = async () => {
+  try {
+    rules.value = (await invoke({ action: 'get_items' })).items
+      .map((i) => ({ ...i, coupon_desc: i.coupon_desc ?? '', _orig: { t: i.coupon_title, d: i.coupon_desc ?? '' }, apply: true }))
+  } catch (err) { errorMsg.value = err.message }
+}
+const ruleDirty = (r) => r.coupon_title !== r._orig.t || r.coupon_desc !== r._orig.d
+const applyAllRule = (src) => {
+  if (!confirm(`把《${src.script_name}》的使用規則套用到全部劇本？（「${src.script_name}」會自動換成各本劇本名，還要按各本的儲存才會生效）`)) return
+  for (const r of rules.value) if (r !== src) r.coupon_desc = src.coupon_desc.split(src.script_name).join(r.script_name)
+}
+const saveRule = async (r) => {
+  busy.value = 'rule-' + r.id
+  errorMsg.value = ''
+  notice.value = ''
+  try {
+    const res = await invoke({ action: 'save_item', id: r.id, coupon_title: r.coupon_title, coupon_desc: r.coupon_desc, apply_issued: r.apply })
+    r._orig = { t: r.coupon_title.trim(), d: r.coupon_desc.trim() }
+    r.coupon_title = r._orig.t
+    r.coupon_desc = r._orig.d
+    notice.value = `《${r.script_name}》已儲存${r.apply ? `，同時更新了 ${res.updated} 張已發出未使用的券` : '（之後發的券才會用新文字）'}。`
+  } catch (err) {
+    errorMsg.value = err.message
+  } finally {
+    busy.value = ''
+  }
+}
+
 // ── 統計 ──
 const loadStats = async () => {
   try { stats.value = await invoke({ action: 'stats', include_test: statsTest.value }) }
@@ -132,6 +162,7 @@ const switchTab = (t) => {
   notice.value = ''
   if (t === 'settings' && !settings.value) loadSettings()
   if (t === 'stats') loadStats()
+  if (t === 'rules' && !rules.value) loadRules()
 }
 
 onMounted(() => { loadOrders(); loadSettings() })
@@ -142,6 +173,7 @@ onMounted(() => { loadOrders(); loadSettings() })
     <div class="tabs">
       <button :class="{ active: tab === 'orders' }" @click="switchTab('orders')">訂單</button>
       <button v-if="props.role === 'admin'" :class="{ active: tab === 'settings' }" @click="switchTab('settings')">匯款設定</button>
+      <button v-if="props.role === 'admin'" :class="{ active: tab === 'rules' }" @click="switchTab('rules')">票券規則</button>
       <button :class="{ active: tab === 'stats' }" @click="switchTab('stats')">統計</button>
     </div>
 
@@ -224,6 +256,21 @@ onMounted(() => { loadOrders(); loadSettings() })
       <p class="hint">品項、價格、折抵級距目前直接改資料庫（presale_items、presale_tiers）。</p>
     </template>
 
+    <!-- 票券名稱與使用規則 -->
+    <template v-if="tab === 'rules' && rules">
+      <p class="hint">這裡的文字會寫進發給玩家的票券（名稱＋說明）。改完按該本的「儲存」。</p>
+      <div v-for="r in rules" :key="r.id" class="card rule">
+        <div class="o-head"><b class="gold">《{{ r.script_name }}》</b><span v-if="ruleDirty(r)" class="muted">（未儲存）</span></div>
+        <label>票券名稱<input v-model="r.coupon_title" class="input" /></label>
+        <label>使用規則<textarea v-model="r.coupon_desc" class="input" rows="5"></textarea></label>
+        <label class="check"><input v-model="r.apply" type="checkbox" /> 同時更新已發出、還沒使用的券</label>
+        <div class="o-actions">
+          <button class="btn gold" :disabled="busy === 'rule-' + r.id || !ruleDirty(r)" @click="saveRule(r)">{{ busy === 'rule-' + r.id ? '儲存中…' : '儲存' }}</button>
+          <button class="btn link" @click="applyAllRule(r)">把這段規則套用到全部劇本</button>
+        </div>
+      </div>
+    </template>
+
     <!-- 統計 -->
     <template v-if="tab === 'stats'">
       <label class="check"><input v-model="statsTest" type="checkbox" @change="loadStats" /> 只看測試訂單</label>
@@ -294,6 +341,7 @@ onMounted(() => { loadOrders(); loadSettings() })
 .alert.success { background: rgba(46,204,113,0.1); border: 1px solid rgba(46,204,113,0.4); color: #2ecc71; }
 .alert.warn { background: rgba(241,196,15,0.08); border: 1px solid rgba(241,196,15,0.35); color: #f1c40f; }
 .card { background: #111; border: 1px solid #222; border-radius: 12px; padding: 18px; display: flex; flex-direction: column; gap: 10px; max-width: 520px; }
+.card.rule { margin-bottom: 12px; max-width: 640px; }
 .form-row { display: flex; gap: 10px; }
 .form-row label:first-child { flex: 1; }
 label { display: flex; flex-direction: column; gap: 4px; color: #aaa; font-size: 0.85rem; }

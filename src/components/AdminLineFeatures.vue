@@ -11,7 +11,7 @@ const FEATURES = [
   { key: 'feature_tarot',  label: '塔羅牌', desc: '開放成員在群組使用塔羅牌抽牌功能' },
   { key: 'feature_summon', label: '召喚',   desc: '開放成員使用召喚指令' },
   { key: 'feature_card',   label: '名片',   desc: '開放成員查詢或展示個人名片' },
-  { key: 'feature_team',   label: '揪團',   desc: '群組裡用「開團、+1、繳費、名單」等指令管理團務（需團務系統連線）' },
+  { key: 'feature_team',   label: '揪團',   desc: '群組裡用「揪團、+1、繳費、名單」等指令管理團務（需團務系統連線）' },
 ]
 
 const toggles = ref({})

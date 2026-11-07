@@ -852,8 +852,8 @@ POST /sessions/{id}/reminders/{reminderId}/sent   { "sent_at": "...", "channel":
 
 | 群組裡打 | 呼叫 |
 |---|---|
-| `開團 傘靈 11/15 19:30` | `POST /sessions`（`script_query`），多本時回候選卡片 |
-| `開團 傘靈 11/15 19:30 6人 700元` | 同上，帶 `capacity`、`price_per_person` 覆蓋 |
+| `揪團 傘靈 11/15 19:30` | `POST /sessions`（`script_query`），多本時回候選卡片。沒寫日期也沒寫時間時當聊天、不回應 |
+| `揪團 傘靈 11/15 19:30 6人 700元` | 同上，帶 `capacity`、`price_per_person` 覆蓋 |
 | `團` / `本團` | `GET /line-groups/{gid}/active-session?expand=members` → 場次卡片 |
 | `+1` / `報名` / 卡片按鈕 | `POST /sessions/{id}/members` |
 | `+1 朋友小美` | 同上，`line_user_id: null`、`guest_of` = 自己 |
@@ -881,9 +881,9 @@ POST /sessions/{id}/reminders/{reminderId}/sent   { "sent_at": "...", "channel":
 ### 15.1 開團 → 報名 → 繳費 → 提醒
 
 ```
-喬：開團 傘靈 11/15 19:30
+喬：揪團 傘靈 11/15 19:30
  └ 機器人 POST /sessions {script_query:"傘靈", start_at:"2026-11-15T19:30:00+08:00", line_group_id:"C1..", organizer:{喬}}
- └ 201 → 機器人發開團卡片：《傘靈》11/15(六) 19:30–00:30｜6 人｜每人 $800｜已報 1/6 [報名]
+ └ 201 → 機器人發揪團卡片：《傘靈》11/15(六) 19:30–00:30｜6 人｜每人 $800｜已報 1/6 [報名]
 
 小明：+1
  └ POST /sessions/ses_1/members {line_user_id:"U77..", display_name:"小明"}
@@ -905,7 +905,7 @@ POST /sessions/{id}/reminders/{reminderId}/sent   { "sent_at": "...", "channel":
 ### 15.2 劇本名稱不明確
 
 ```
-喬：開團 月 11/20 14:00
+喬：揪團 月 11/20 14:00
  └ POST /sessions {script_query:"月"} → 409 SCRIPT_AMBIGUOUS {candidates:[那一束月光, 二十四橋明月夜]}
  └ 機器人回快速選單（Quick Reply），按下後帶 script_id 重送
 ```

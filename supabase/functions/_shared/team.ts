@@ -322,7 +322,7 @@ export function mentionList(members: any[], prefix = 'm') {
 export const HELP = [
   '🎲 揪團指令',
   '',
-  '開團 傘靈 11/15 19:30',
+  '揪團 傘靈 11/15 19:30',
   '　（可加：6人、700元；日期也可以寫 明天、週六）',
   '本團｜看這團資訊',
   '+1｜報名　　+1 小美｜幫朋友報名',
@@ -384,12 +384,12 @@ export async function handleTeamEvent(event: any, ctx: TeamCtx): Promise<boolean
     else if ((m = text.match(/^([-－]1)\s*([\s\S]*)$/))) { cmd = '-1'; arg = m[2] }
     else if ((m = text.match(/^(\S+?)(?:\s+([\s\S]*))?$/))) { cmd = m[1]; arg = (m[2] || '').trim() }
     const ALIAS: Record<string, string> = {
-      開團: '開團', 揪團: '開團', 本團: '本團', 團: '本團', 報名: '+1', 退出: '-1', 名單: '名單',
+      揪團: '揪團', 本團: '本團', 團: '本團', 報名: '+1', 退出: '-1', 名單: '名單',
       未繳: '未繳', 繳費: '繳費', 已繳: '繳費', 我匯了: '我匯了', 已匯款: '我匯了', 備註: '備註', 用券: '用券',
       改時間: '改時間', 成團: '成團', 取消團: '取消團', 結團: '結團', 劇本: '劇本', 揪團說明: '說明', 揪團指令: '說明',
     }
-    // 開團 允許黏在一起寫：開團傘靈 11/15 19:30
-    if (!ALIAS[cmd] && /^(開團|揪團)\S/.test(cmd)) { arg = (cmd.slice(2) + ' ' + arg).trim(); cmd = '開團' }
+    // 允許黏在一起寫：揪團傘靈 11/15 19:30
+    if (!ALIAS[cmd] && /^揪團\S/.test(cmd)) { arg = (cmd.slice(2) + ' ' + arg).trim(); cmd = '揪團' }
     if (cmd !== '+1' && cmd !== '-1') cmd = ALIAS[cmd] || ''
     if (!cmd) return false
   } else return false
@@ -398,7 +398,7 @@ export async function handleTeamEvent(event: any, ctx: TeamCtx): Promise<boolean
   const text = (t: string) => ({ type: 'text', text: t })
 
   if (!teamApiReady()) {
-    if (cmd === '開團' || cmd === '說明') { await say(text('揪團功能還在準備中（團務系統尚未連線）')); return true }
+    if (cmd === '說明') { await say(text('揪團功能還在準備中（團務系統尚未連線）')); return true }
     return false
   }
 
@@ -424,23 +424,24 @@ export async function handleTeamEvent(event: any, ctx: TeamCtx): Promise<boolean
       return true
     }
 
-    if (cmd === '開團' || cmd === '__pick') {
+    if (cmd === '揪團' || cmd === '__pick') {
       let body: any
       if (cmd === '__pick') {
         // team|pick|<script_id>|<start_at>|<capacity>|<price>
         const [scriptId, startAt, cap, price] = postExtra
         body = { script_id: scriptId, start_at: startAt, capacity: cap ? +cap : null, price_per_person: price ? +price : null }
       } else {
-        if (!arg) { await say(text('開團格式：開團 劇本 日期 時間\n例如：開團 傘靈 11/15 19:30')); return true }
         const w = parseWhen(arg, now)
-        if (w.error) { await say(text(`${w.error}\n例如：開團 傘靈 11/15 19:30`)); return true }
-        if (!w.rest) { await say(text('要開哪本？例如：開團 傘靈 11/15 19:30')); return true }
+        // 「揪團」是常用字（例：揪團 有人要玩嗎），沒寫日期也沒寫時間就當聊天，不回應
+        if (!w.hasDate && !w.hasTime) return false
+        if (w.error) { await say(text(`${w.error}\n例如：揪團 傘靈 11/15 19:30`)); return true }
+        if (!w.rest) { await say(text('要揪哪本？例如：揪團 傘靈 11/15 19:30')); return true }
         body = { script_query: w.rest, start_at: w.start_at, capacity: w.capacity ?? null, price_per_person: w.price ?? null }
       }
       body = { ...body, line_group_id: groupId, organizer_joins: true, organizer: { line_user_id: uid, display_name: myName } }
       try {
         const s = await teamApi.createSession(body, actor, eventId)
-        await say(sessionCard(s, '🎲 開團囉'))
+        await say(sessionCard(s, '🎲 揪團囉'))
       } catch (e) {
         if (e instanceof TeamApiError && e.code === 'SCRIPT_AMBIGUOUS' && Array.isArray(e.details?.candidates)) {
           const items = e.details.candidates.slice(0, 13).map((c: any) => ({
@@ -449,7 +450,7 @@ export async function handleTeamEvent(event: any, ctx: TeamCtx): Promise<boolean
               type: 'postback',
               label: String(c.title).slice(0, 20),
               data: ['team', 'pick', c.id, body.start_at, body.capacity ?? '', body.price_per_person ?? ''].join('|'),
-              displayText: `開團《${c.title}》`,
+              displayText: `揪團《${c.title}》`,
             },
           }))
           await say({ type: 'text', text: `${e.message}\n請選一本：`, quickReply: { items } })
@@ -659,8 +660,8 @@ export function webhookMessages(ev: any): unknown[] {
 
   if (type === 'reminder.due') {
     const kind = ev.data?.reminder?.kind
-    const head = kind === 'day_before' ? '⏰ 明天開團提醒'
-      : kind === 'hours_before' ? '⏰ 今天開團提醒'
+    const head = kind === 'day_before' ? '⏰ 明天揪團提醒'
+      : kind === 'hours_before' ? '⏰ 今天揪團提醒'
       : kind === 'payment_due' ? '💰 繳費提醒' : '⏰ 揪團提醒'
     const c = s.counts || {}
     const un: any[] = ev.data?.unpaid_members || []

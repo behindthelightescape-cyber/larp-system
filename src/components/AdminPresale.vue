@@ -117,10 +117,28 @@ const loadRules = async () => {
       .map((i) => ({ ...i, coupon_desc: i.coupon_desc ?? '', _orig: { t: i.coupon_title, d: i.coupon_desc ?? '' }, apply: true }))
   } catch (err) { errorMsg.value = err.message }
 }
+const TAGS = [['{劇本}', '劇本名'], ['{價格}', '預售價'], ['{漲價後}', '2/4 起價格']]
+const fmtN = (n) => Number(n).toLocaleString('en-US')
+const renderTag = (t, r) => (t || '').split('{劇本}').join(r.script_name)
+  .split('{價格}').join(fmtN(r.price)).split('{漲價後}').join(fmtN(r.later_price ?? r.price))
+// 在游標位置插入標籤（沒點過欄位就加在使用規則最後）
+const lastField = ref(null)
+const insertTag = (r, tag) => {
+  const f = lastField.value?.r === r ? lastField.value : { r, key: 'coupon_desc', el: null }
+  const el = f.el
+  const v = r[f.key] || ''
+  const pos = el ? el.selectionStart ?? v.length : v.length
+  const end = el ? el.selectionEnd ?? pos : pos
+  r[f.key] = v.slice(0, pos) + tag + v.slice(end)
+  if (el) requestAnimationFrame(() => { el.focus(); el.setSelectionRange(pos + tag.length, pos + tag.length) })
+}
 const ruleDirty = (r) => r.coupon_title !== r._orig.t || r.coupon_desc !== r._orig.d
 const applyAllRule = (src) => {
-  if (!confirm(`把《${src.script_name}》的使用規則套用到全部劇本？（「${src.script_name}」會自動換成各本劇本名，還要按各本的儲存才會生效）`)) return
-  for (const r of rules.value) if (r !== src) r.coupon_desc = src.coupon_desc.split(src.script_name).join(r.script_name)
+  if (!confirm(`把《${src.script_name}》的使用規則套用到全部劇本？（名稱也會一起套用；文字裡的「${src.script_name}」會換成 {劇本} 標籤，還要按各本的儲存才會生效）`)) return
+  for (const r of rules.value) if (r !== src) {
+    r.coupon_desc = src.coupon_desc.split(src.script_name).join('{劇本}')
+    r.coupon_title = src.coupon_title.split(src.script_name).join('{劇本}')
+  }
 }
 const saveRule = async (r) => {
   busy.value = 'rule-' + r.id
@@ -258,11 +276,13 @@ onMounted(() => { loadOrders(); loadSettings() })
 
     <!-- 票券名稱與使用規則 -->
     <template v-if="tab === 'rules' && rules">
-      <p class="hint">這裡的文字會寫進發給玩家的票券（名稱＋說明）。改完按該本的「儲存」。</p>
+      <p class="hint">這裡的文字會寫進發給玩家的票券（名稱＋說明）。可以用標籤：<code>{劇本}</code> 劇本名、<code>{價格}</code> 預售價、<code>{漲價後}</code> 2/4 起價格，發券時會自動換成該本的內容。改完按該本的「儲存」。</p>
       <div v-for="r in rules" :key="r.id" class="card rule">
         <div class="o-head"><b class="gold">《{{ r.script_name }}》</b><span v-if="ruleDirty(r)" class="muted">（未儲存）</span></div>
-        <label>票券名稱<input v-model="r.coupon_title" class="input" /></label>
-        <label>使用規則<textarea v-model="r.coupon_desc" class="input" rows="5"></textarea></label>
+        <label>票券名稱<input v-model="r.coupon_title" class="input" @focus="lastField = { r, key: 'coupon_title', el: $event.target }" /></label>
+        <label>使用規則<textarea v-model="r.coupon_desc" class="input" rows="5" @focus="lastField = { r, key: 'coupon_desc', el: $event.target }"></textarea></label>
+        <div class="tagbar">插入標籤：<button v-for="[t, n] in TAGS" :key="t" class="tag" @mousedown.prevent @click="insertTag(r, t)">{{ n }}</button></div>
+        <div class="preview"><div class="lbl">玩家看到的樣子</div><b>{{ renderTag(r.coupon_title, r) }}</b><div>{{ renderTag(r.coupon_desc, r) }}</div></div>
         <label class="check"><input v-model="r.apply" type="checkbox" /> 同時更新已發出、還沒使用的券</label>
         <div class="o-actions">
           <button class="btn gold" :disabled="busy === 'rule-' + r.id || !ruleDirty(r)" @click="saveRule(r)">{{ busy === 'rule-' + r.id ? '儲存中…' : '儲存' }}</button>
@@ -341,6 +361,11 @@ onMounted(() => { loadOrders(); loadSettings() })
 .alert.success { background: rgba(46,204,113,0.1); border: 1px solid rgba(46,204,113,0.4); color: #2ecc71; }
 .alert.warn { background: rgba(241,196,15,0.08); border: 1px solid rgba(241,196,15,0.35); color: #f1c40f; }
 .card { background: #111; border: 1px solid #222; border-radius: 12px; padding: 18px; display: flex; flex-direction: column; gap: 10px; max-width: 520px; }
+.tagbar { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; color: #888; font-size: 0.82rem; }
+.tag { background: #1d1d1d; color: #D4AF37; border: 1px solid #444; border-radius: 12px; padding: 3px 10px; font-size: 0.8rem; cursor: pointer; }
+.preview { background: #0b0b0b; border: 1px dashed #333; border-radius: 8px; padding: 10px 12px; font-size: 0.88rem; color: #ccc; white-space: pre-wrap; line-height: 1.5; }
+.preview b { color: #fff; display: block; margin-bottom: 4px; }
+code { color: #D4AF37; }
 .card.rule { margin-bottom: 12px; max-width: 640px; }
 .form-row { display: flex; gap: 10px; }
 .form-row label:first-child { flex: 1; }

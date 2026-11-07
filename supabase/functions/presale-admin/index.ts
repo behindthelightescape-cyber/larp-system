@@ -26,6 +26,15 @@ async function getCaller(req: Request) {
   return rows?.find((r) => ALLOWED_ROLES.includes(r.role)) ?? null
 }
 
+// 票券文字標籤，跟資料庫 presale_tag() 一致
+// deno-lint-ignore no-explicit-any
+const fmt = (n: any) => Number(n).toLocaleString('en-US')
+// deno-lint-ignore no-explicit-any
+const renderTag = (t: string | null, it: any) => t == null ? null : t
+  .split('{劇本}').join(it.script_name)
+  .split('{價格}').join(fmt(it.price))
+  .split('{漲價後}').join(fmt(it.later_price ?? it.price))
+
 const twDate = (iso: string) => new Date(Date.parse(iso) + 8 * 3600e3).toISOString().slice(0, 10)
 
 Deno.serve(async (req) => {
@@ -114,7 +123,7 @@ Deno.serve(async (req) => {
 
       case 'get_items': {
         const { data, error } = await db.from('presale_items')
-          .select('id, script_name, coupon_title, coupon_desc, sort_order').order('sort_order')
+          .select('id, script_name, price, later_price, coupon_title, coupon_desc, sort_order').order('sort_order')
         if (error) throw new Error(error.message)
         return jsonRes(cors, { items: data ?? [] })
       }
@@ -125,17 +134,17 @@ Deno.serve(async (req) => {
         const title = String(body.coupon_title ?? '').trim().slice(0, 100)
         const desc = String(body.coupon_desc ?? '').trim().slice(0, 2000)
         if (!title) throw new UserError('票券名稱不能空白')
-        const { data: old, error: e0 } = await db.from('presale_items').select('coupon_title').eq('id', itemId).maybeSingle()
+        const { data: old, error: e0 } = await db.from('presale_items').select('script_name, price, later_price, coupon_title').eq('id', itemId).maybeSingle()
         if (e0) throw new Error(e0.message)
         if (!old) throw new UserError('找不到這本劇本')
         const { error } = await db.from('presale_items').update({ coupon_title: title, coupon_desc: desc || null }).eq('id', itemId)
         if (error) throw new Error(error.message)
-        // 已發出、還沒使用的券一起更新（用舊名稱比對）
+        // 已發出、還沒使用的券一起更新（用舊名稱代入標籤後比對）
         let updated = 0
         if (body.apply_issued) {
           const { data: rows, error: e2 } = await db.from('coupons')
-            .update({ title, description: desc || null })
-            .eq('coupon_type', 'presale').eq('status', 'available').eq('title', old.coupon_title)
+            .update({ title: renderTag(title, old), description: renderTag(desc || null, old) })
+            .eq('coupon_type', 'presale').eq('status', 'available').eq('title', renderTag(old.coupon_title, old))
             .select('id')
           if (e2) throw new Error(e2.message)
           updated = rows?.length ?? 0

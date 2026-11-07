@@ -83,6 +83,22 @@ Deno.serve(async (req) => {
           return jsonRes(cors, { order: publicOrder(again), bank: bankInfo(settings) })
         }
 
+        // 會員資料只補空的：手機／Email 原本沒填才寫進去，已有的不覆寫；失敗不影響訂單
+        try {
+          const { data: priv } = await db.from('users_private').select('phone, email').eq('user_id', me).maybeSingle()
+          const patch: Record<string, string> = {}
+          if (!priv?.phone?.trim()) patch.phone = phone
+          if (!priv?.email?.trim()) patch.email = email
+          if (Object.keys(patch).length) {
+            const { error: pe } = priv
+              ? await db.from('users_private').update(patch).eq('user_id', me)
+              : await db.from('users_private').insert({ user_id: me, ...patch })
+            if (pe) console.error('補會員資料失敗', pe.message)
+          }
+        } catch (err) {
+          console.error('補會員資料失敗', err)
+        }
+
         const pushError = await pushTo(me, [orderCreatedMsg(claimed, settings)])
         return jsonRes(cors, { order: publicOrder(claimed), bank: bankInfo(settings), push_error: pushError })
       }

@@ -95,20 +95,25 @@ const submit = async () => {
         <div class="row small"><span>訂單編號</span><span>{{ order.order_no }}</span></div>
         <div v-if="(order.qty || 1) > 1" class="row small"><span>組數</span><span>{{ order.qty }} 組<template v-if="extraCount(order.extra)">＋加購 {{ extraCount(order.extra) }} 張</template></span></div>
         <div class="divider"></div>
-        <div v-for="l in lines" :key="l.id" class="line-item">
-          <div class="row">
-            <span>{{ l.title }}<b v-if="l.qty > 1"> × {{ l.qty }}</b></span>
-            <span>{{ money(l.price * l.qty) }}</span>
-          </div>
-          <div v-if="l.later_price" class="row later-sub">
-            <span>{{ l.later_price > l.price ? '2/4 漲價後' : '2/4 後不漲價' }}</span>
-            <span v-if="l.later_price > l.price">{{ money(l.later_price * l.qty) }}</span>
+        <div class="items">
+          <div v-for="l in lines" :key="l.id" class="it">
+            <div class="it-l">
+              <div class="it-t">{{ l.title.replace(/預售票$/, '') }}</div>
+              <div class="it-q">{{ money(l.price) }} × {{ l.qty }} 張</div>
+            </div>
+            <div class="it-r">
+              <div class="it-p">{{ money(l.price * l.qty) }}</div>
+              <div v-if="l.later_price > l.price" class="it-up">2/4 起 {{ money(l.later_price * l.qty) }}</div>
+            </div>
           </div>
         </div>
         <div class="divider"></div>
-        <div v-if="laterTotal > order.subtotal" class="row small later-row"><span>2/4 漲價後（{{ ticketCount(order) }} 張）</span><span>{{ money(laterTotal) }}</span></div>
-        <div class="row small"><span>現價小計（{{ ticketCount(order) }} 張）</span><span>{{ money(order.subtotal) }}</span></div>
-        <div v-if="order.discount" class="row small"><span>多本折抵</span><span class="ok">−{{ money(order.discount) }}</span></div>
+        <div class="sum">
+          <div v-if="laterTotal > order.subtotal" class="row small later-row"><span>2/4 漲價後（{{ ticketCount(order) }} 張）</span><span>{{ money(laterTotal) }}</span></div>
+          <div class="row small"><span>現價小計（{{ ticketCount(order) }} 張）</span><span>{{ money(order.subtotal) }}</span></div>
+          <div v-if="order.discount" class="row small"><span>多本折抵</span><span class="ok">−{{ money(order.discount) }}</span></div>
+        </div>
+        <div class="divider"></div>
         <div class="row total"><span>應付金額</span><span>{{ money(order.total) }}</span></div>
       </div>
 
@@ -167,8 +172,15 @@ label { display: flex; flex-direction: column; gap: 4px; font-size: 0.85rem; col
 .danger { color: #e74c3c; }
 .ok { color: #5eff8a; }
 .row.small.later-row { color: #e74c3c; }
-.line-item { display: flex; flex-direction: column; gap: 1px; }
-.later-sub { font-size: 0.75rem; color: #e74c3c; }
+.items { display: flex; flex-direction: column; gap: 12px; padding: 4px 0; }
+.it { display: flex; justify-content: space-between; gap: 12px; }
+.it-l, .it-r { display: flex; flex-direction: column; gap: 2px; }
+.it-r { align-items: flex-end; text-align: right; flex-shrink: 0; }
+.it-t { font-size: 0.98rem; color: #fff; font-weight: 600; }
+.it-q { font-size: 0.78rem; color: #888; }
+.it-p { font-size: 0.98rem; color: #fff; font-weight: 600; }
+.it-up { font-size: 0.75rem; color: #e74c3c; }
+.sum { display: flex; flex-direction: column; gap: 6px; }
 .done { background: rgba(46,204,113,0.08); border: 1px solid rgba(46,204,113,0.4); border-radius: 18px; padding: 18px; display: flex; flex-direction: column; gap: 8px; }
 .done h3 { margin: 0; color: #2ecc71; font-size: 1.1rem; }
 .done p { margin: 0; line-height: 1.7; font-size: 0.92rem; color: #ddd; }

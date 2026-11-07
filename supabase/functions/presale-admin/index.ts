@@ -1,4 +1,5 @@
 import {
+  extraCount,
   APP_ORIGINS, corsFor, db, getSettings, issuedMsg, jsonRes, pushTo, rejectedMsg, UserError,
 } from '../_shared/presale.ts'
 
@@ -112,7 +113,7 @@ Deno.serve(async (req) => {
 
       case 'stats': {
         const { data, error } = await db.from('presale_orders')
-          .select('status, items, qty, total, utm_source, created_at, claimed_at, remit_reported_at, is_test')
+          .select('status, items, qty, extra, total, utm_source, created_at, claimed_at, remit_reported_at, is_test')
           .eq('is_test', !!body.include_test ? true : false)
         if (error) throw new Error(error.message)
         const rows = data ?? []
@@ -152,7 +153,7 @@ Deno.serve(async (req) => {
           },
           revenue,
           money,
-          tickets: issued.reduce((s, r) => s + r.items.length * (r.qty ?? 1), 0),
+          tickets: issued.reduce((s, r) => s + r.items.length * (r.qty ?? 1) + extraCount(r.extra), 0),
           avg_order: issued.length ? Math.round(revenue / issued.length) : 0,
           qty_dist: qtyDist,
           party_dist: partyDist,

@@ -67,8 +67,8 @@ const submitRemit = async (o) => {
         <span class="status" :class="PRESALE_STATUS[o.status]?.cls">{{ PRESALE_STATUS[o.status]?.text || o.status }}</span>
       </div>
       <div class="items">
-        <span v-if="(o.qty || 1) > 1" class="party">{{ o.qty }} 人份</span>
-        <span v-for="l in groupItems(o.items, o.qty || 1)" :key="l.id">{{ l.title }}<template v-if="l.qty > 1"> × {{ l.qty }}</template></span>
+        <span v-if="(o.qty || 1) > 1" class="party">{{ o.qty }} 組</span>
+        <span v-for="l in groupItems(o.items, o.qty || 1, o.extra)" :key="l.id">{{ l.title }}<template v-if="l.qty > 1"> × {{ l.qty }}</template></span>
       </div>
       <div class="row total"><span>應付金額</span><span>{{ money(o.total) }}</span></div>
 

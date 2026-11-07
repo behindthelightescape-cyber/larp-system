@@ -4,7 +4,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useUserStore } from '../stores/user'
-import { presaleMember, money, groupItems, ticketCount } from '../utils/presaleApi'
+import { presaleMember, money, groupItems, ticketCount, extraCount } from '../utils/presaleApi'
 import PresaleBankInfo from '../components/PresaleBankInfo.vue'
 import liff from '@line/liff'
 
@@ -28,7 +28,7 @@ const closePage = () => {
 }
 
 const code = computed(() => String(route.query.order || ''))
-const lines = computed(() => groupItems(order.value?.items, order.value?.qty || 1))
+const lines = computed(() => groupItems(order.value?.items, order.value?.qty || 1, order.value?.extra))
 const claimed = computed(() => order.value && order.value.status !== 'unclaimed')
 
 const load = async () => {
@@ -91,7 +91,7 @@ const submit = async () => {
       <!-- 明細 -->
       <div class="card">
         <div class="row small"><span>訂單編號</span><span>{{ order.order_no }}</span></div>
-        <div v-if="(order.qty || 1) > 1" class="row small"><span>人份</span><span>{{ order.qty }} 人份（每本 {{ order.qty }} 張）</span></div>
+        <div v-if="(order.qty || 1) > 1" class="row small"><span>組數</span><span>{{ order.qty }} 組<template v-if="extraCount(order.extra)">＋加購 {{ extraCount(order.extra) }} 張</template></span></div>
         <div class="divider"></div>
         <div v-for="l in lines" :key="l.id" class="row">
           <span>{{ l.title }}<b v-if="l.qty > 1"> × {{ l.qty }}</b></span>

@@ -1,7 +1,7 @@
 import { corsFor, db, getSettings, jsonRes, SITE_ORIGINS } from '../_shared/presale.ts'
 
 // GET（免登入）：上架中的預售品項＋折抵級距，給官網即時顯示價格。
-// 回傳：{ items:[{id,script_name,title,price,later_price,groups,image_url,sale_start,sale_end,on_sale}], tiers:[{min_qty,discount_per_item}], open, test_mode }
+// 回傳：{ items:[{id,script_name,title,price,later_price,max_extra,groups,image_url,sale_start,sale_end,on_sale}], tiers:[{min_qty,discount_per_item}], open, test_mode }
 
 Deno.serve(async (req) => {
   const cors = corsFor(req, SITE_ORIGINS)
@@ -11,7 +11,7 @@ Deno.serve(async (req) => {
   try {
     const [{ data: items, error: e1 }, { data: tiers, error: e2 }, settings] = await Promise.all([
       db.from('presale_items')
-        .select('id, script_name, title, price, later_price, group_key, image_url, sale_start, sale_end')
+        .select('id, script_name, title, price, later_price, max_extra, group_key, image_url, sale_start, sale_end')
         .eq('is_active', true).order('sort_order'),
       db.from('presale_tiers').select('min_qty, discount_per_item').order('min_qty'),
       getSettings(),

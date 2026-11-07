@@ -1,15 +1,18 @@
 import {
-  corsFor, db, getSettings, jsonRes, priceOf, SITE_ORIGINS, UserError, type Item, type Tier,
+  corsFor, db, getSettings, jsonRes, priceOf, SITE_ORIGINS, UserError, type Extra, type Item, type Tier,
 } from '../_shared/presale.ts'
 
 // POST（免登入）：官網按「用 LINE 結帳」時呼叫。
-// 輸入：{ "items": ["umbrella","acacia",...], "qty": 1, "utm": { "source","medium","campaign" } }
-//   items 是劇本代號清單（1～7 本、不可重複）；qty 是幾人份（1～10，預設 1），每本都買 qty 張。
-// 回傳：{ code, liff_url, order_no, qty, subtotal, discount, total }
+// 輸入：{ "items": ["umbrella","acacia",...], "qty": 1, "extra": { "umbrella": 1 }, "utm": { "source","medium","campaign" } }
+//   items 是劇本代號清單（1～7 本、不可重複）；qty 是幾組（1～10，預設 1），每本都買 qty 張。
+//   extra 是加購單張（可省略）：滿 6 組才能加購，key 要在 items 裡，上限看 presale_items.max_extra。
+// 回傳：{ code, liff_url, order_no, qty, extra, subtotal, discount, total }
+// 規格：SPEC.md ＋ SPEC-extra.md
 // 金額一律用資料庫價格重算，不信任網站送來的任何價格。
 
 const MAX_ITEMS = 7
 const MAX_QTY = 10
+const EXTRA_MIN_QTY = 6
 const RATE_PER_MIN = 10
 
 const randomCode = () => {
@@ -32,19 +35,19 @@ Deno.serve(async (req) => {
     if ((count ?? 0) >= RATE_PER_MIN) throw new UserError('操作太頻繁，請一分鐘後再試', 429)
     await db.from('presale_rate').insert({ ip })
 
-    let body: { items?: unknown; qty?: unknown; utm?: Record<string, unknown> }
+    let body: { items?: unknown; qty?: unknown; extra?: unknown; utm?: Record<string, unknown> }
     try { body = await req.json() } catch { throw new UserError('資料格式錯誤') }
 
     const ids = Array.isArray(body.items) ? body.items.map((x) => String(x ?? '').trim()) : []
     if (ids.length === 0) throw new UserError('請至少選一本劇本')
-    if (new Set(ids).size !== ids.length) throw new UserError('同一本劇本不能重複選，要買多張請改「人份」')
+    if (new Set(ids).size !== ids.length) throw new UserError('同一本劇本不能重複選，要買多張請改「組」')
     if (ids.length > MAX_ITEMS) throw new UserError(`一次最多 ${MAX_ITEMS} 本`)
     const qty = body.qty === undefined || body.qty === null ? 1 : Number(body.qty)
-    if (!Number.isInteger(qty) || qty < 1 || qty > MAX_QTY) throw new UserError(`人份要是 1～${MAX_QTY} 的整數`)
+    if (!Number.isInteger(qty) || qty < 1 || qty > MAX_QTY) throw new UserError(`組數要是 1～${MAX_QTY} 的整數`)
 
     const settings = await getSettings()
     const [{ data: rows, error: e1 }, { data: tiers, error: e2 }] = await Promise.all([
-      db.from('presale_items').select('id, title, price, is_active, sale_start, sale_end').in('id', ids),
+      db.from('presale_items').select('id, script_name, title, price, is_active, sale_start, sale_end, max_extra').in('id', ids),
       db.from('presale_tiers').select('min_qty, discount_per_item'),
     ])
     if (e1 || e2) throw new Error((e1 ?? e2)!.message)
@@ -64,14 +67,30 @@ Deno.serve(async (req) => {
       items.push({ id: r.id, title: r.title, price: r.price })
     }
 
-    const price = priceOf(items, (tiers ?? []) as Tier[], qty)
+    // 加購（SPEC-extra）
+    const extra: Extra = {}
+    const rawExtra = body.extra ?? {}
+    if (typeof rawExtra !== 'object' || Array.isArray(rawExtra)) throw new UserError('加購格式錯誤')
+    for (const [k, v] of Object.entries(rawExtra as Record<string, unknown>)) {
+      const r = byId.get(k)
+      if (!r || !ids.includes(k)) throw new UserError('加購的劇本要先選進來')
+      const max = r.max_extra ?? 0
+      const nv = Number(v)
+      if (!Number.isInteger(nv) || nv < 0 || nv > max) {
+        throw new UserError(max > 0 ? `《${r.script_name}》最多加購 ${max} 張` : `《${r.script_name}》不能加購`)
+      }
+      if (nv > 0) extra[k] = nv
+    }
+    if (Object.keys(extra).length && qty < EXTRA_MIN_QTY) throw new UserError(`滿 ${EXTRA_MIN_QTY} 組才能加購`)
+
+    const price = priceOf(items, (tiers ?? []) as Tier[], qty, extra)
     const { data: orderNo, error: e3 } = await db.rpc('presale_next_order_no')
     if (e3) throw new Error(e3.message)
 
     const code = randomCode()
     const utm = body.utm ?? {}
     const { error: e4 } = await db.from('presale_orders').insert({
-      code, order_no: orderNo, items, qty, ...price, status: 'unclaimed',
+      code, order_no: orderNo, items, qty, extra, ...price, status: 'unclaimed',
       utm_source: utmText(utm.source ?? utm.utm_source),
       utm_medium: utmText(utm.medium ?? utm.utm_medium),
       utm_campaign: utmText(utm.campaign ?? utm.utm_campaign),
@@ -84,6 +103,7 @@ Deno.serve(async (req) => {
       liff_url: `https://liff.line.me/2009161687-icfQU9r6?order=${code}`,
       order_no: orderNo,
       qty,
+      extra,
       ...price,
     })
   } catch (err) {

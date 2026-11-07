@@ -27,16 +27,18 @@ export const PRESALE_STATUS = {
 
 export const money = (n) => `$${Number(n || 0).toLocaleString('en-US')}`
 
-// 每本 × 人份（perQty＝訂單的 qty）；舊格式同一本重複出現也會合併
-export const groupItems = (items = [], perQty = 1) => {
+// 每本張數＝組數＋加購（extra[id]）；舊格式同一本重複出現也會合併
+export const groupItems = (items = [], perQty = 1, extra = {}) => {
   const m = new Map()
   for (const i of items) {
     const g = m.get(i.id)
     if (g) g.qty += perQty
-    else m.set(i.id, { ...i, qty: perQty })
+    else m.set(i.id, { ...i, qty: perQty + (Number(extra?.[i.id]) || 0) })
   }
   return [...m.values()]
 }
 
+export const extraCount = (extra) => Object.values(extra || {}).reduce((s, v) => s + (Number(v) || 0), 0)
+
 // 這張訂單共幾張票
-export const ticketCount = (o) => (o?.items?.length || 0) * (o?.qty || 1)
+export const ticketCount = (o) => (o?.items?.length || 0) * (o?.qty || 1) + extraCount(o?.extra)

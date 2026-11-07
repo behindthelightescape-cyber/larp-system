@@ -167,6 +167,7 @@ create trigger coupons_guard_presale before update on public.coupons
 
 -- ---------------------------------------------------------------------
 -- 5. 確認並發券：同一個交易裡改狀態＋逐本發券。只有 service role 能呼叫。
+--    （加購版在 presale_extra.sql，新環境跑完本檔要接著跑那支）
 -- ---------------------------------------------------------------------
 create or replace function public.presale_approve(p_order_id uuid, p_admin text)
 returns int language plpgsql security definer set search_path = public as $$

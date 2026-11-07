@@ -39,17 +39,32 @@ export class UserError extends Error {
 export type Item = { id: string; title: string; price: number }
 export type Tier = { min_qty: number; discount_per_item: number }
 
+export type Extra = Record<string, number>
+
 /**
- * 級距看「不同劇本的本數 n」，每一份都折：
- * total ＝（各本單價合計 − 每本折扣 × n）× qty
+ * 級距看「不同劇本的本數 n」，每一組都折；加購的單張票跟組裡同價（單價 − 每本折扣）。
+ *   subtotal = Σprice × qty + Σprice[k] × extra[k]
+ *   discount = min(Σprice, d × n) × qty + Σmin(price[k], d) × extra[k]
  */
-export function priceOf(items: Item[], tiers: Tier[], qty = 1) {
+export function priceOf(items: Item[], tiers: Tier[], qty = 1, extra: Extra = {}) {
   const n = items.length
   const perSet = items.reduce((s, i) => s + i.price, 0)
   const tier = [...tiers].sort((a, b) => b.min_qty - a.min_qty).find((t) => n >= t.min_qty)
-  const perSetDiscount = Math.min(perSet, (tier?.discount_per_item ?? 0) * n)
-  return { subtotal: perSet * qty, discount: perSetDiscount * qty, total: (perSet - perSetDiscount) * qty }
+  const d = tier?.discount_per_item ?? 0
+  const setOff = Math.min(perSet, d * n)
+  let extraSub = 0, extraOff = 0
+  for (const i of items) {
+    const k = extra[i.id] ?? 0
+    extraSub += i.price * k
+    extraOff += Math.min(i.price, d) * k
+  }
+  const subtotal = perSet * qty + extraSub
+  const discount = setOff * qty + extraOff
+  return { subtotal, discount, total: subtotal - discount }
 }
+
+export const extraCount = (extra: Extra | null | undefined) =>
+  Object.values(extra ?? {}).reduce((s, v) => s + (Number(v) || 0), 0)
 
 export async function getSettings() {
   const { data, error } = await db.from('presale_settings').select('*').eq('id', 1).single()
@@ -77,7 +92,7 @@ export async function lineUserFrom(req: Request): Promise<string> {
 // ── 給玩家看的訂單內容（不含內部欄位）────────────────────────────────────
 // deno-lint-ignore no-explicit-any
 export const publicOrder = (o: any) => ({
-  id: o.id, code: o.code, order_no: o.order_no, status: o.status, items: o.items, qty: o.qty ?? 1,
+  id: o.id, code: o.code, order_no: o.order_no, status: o.status, items: o.items, qty: o.qty ?? 1, extra: o.extra ?? {},
   subtotal: o.subtotal, discount: o.discount, total: o.total,
   contact_name: o.contact_name, contact_phone: o.contact_phone, contact_email: o.contact_email,
   remit_date: o.remit_date, remit_last5: o.remit_last5, remit_amount: o.remit_amount,
@@ -88,13 +103,13 @@ export const publicOrder = (o: any) => ({
 // ── LINE 推播（單人）────────────────────────────────────────────────────
 const nt = (n: number) => `$${n.toLocaleString('en-US')}`
 
-/** 品項彙總：每本 × 人份（舊格式若同一本重複出現也會合併） */
-export function itemLines(items: Item[], perQty = 1) {
+/** 品項彙總：每本 × 組數＋加購（舊格式若同一本重複出現也會合併） */
+export function itemLines(items: Item[], perQty = 1, extra: Extra = {}) {
   const m = new Map<string, { title: string; price: number; qty: number }>()
   for (const i of items) {
     const g = m.get(i.id)
     if (g) g.qty += perQty
-    else m.set(i.id, { title: i.title, price: i.price, qty: perQty })
+    else m.set(i.id, { title: i.title, price: i.price, qty: perQty + (Number(extra[i.id]) || 0) })
   }
   return [...m.values()]
 }
@@ -142,11 +157,11 @@ function card(altText: string, title: string, body: unknown[], button?: Btn | Bt
 // deno-lint-ignore no-explicit-any
 export function orderCreatedMsg(o: any, s: Awaited<ReturnType<typeof getSettings>>) {
   const qty = o.qty ?? 1
-  const lines = itemLines(o.items, qty).map((l) => row(`${l.title}${l.qty > 1 ? ` × ${l.qty}` : ''}`, nt(l.price * l.qty)))
+  const lines = itemLines(o.items, qty, o.extra ?? {}).map((l) => row(`${l.title}${l.qty > 1 ? ` × ${l.qty}` : ''}`, nt(l.price * l.qty)))
   const bank = [s.bank_name, s.bank_code ? `(${s.bank_code})` : ''].filter(Boolean).join(' ')
   return card(`訂單已成立 ${o.order_no}，應付 ${nt(o.total)}`, '訂單已成立 🎫', [
     row('訂單編號', o.order_no),
-    ...(qty > 1 ? [row('人份', `${qty} 人份（每本 ${qty} 張）`)] : []),
+    ...(qty > 1 ? [row('組數', `${qty} 組${extraCount(o.extra) ? `＋加購 ${extraCount(o.extra)} 張` : ''}`)] : []),
     { type: 'box', layout: 'vertical', margin: 'md', contents: lines },
     ...(o.discount ? [row('多本折抵', `−${nt(o.discount)}`)] : []),
     row('應付金額', nt(o.total), true),

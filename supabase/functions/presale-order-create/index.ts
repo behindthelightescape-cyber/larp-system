@@ -47,7 +47,7 @@ Deno.serve(async (req) => {
 
     const settings = await getSettings()
     const [{ data: rows, error: e1 }, { data: tiers, error: e2 }] = await Promise.all([
-      db.from('presale_items').select('id, script_name, title, price, is_active, sale_start, sale_end, max_extra').in('id', ids),
+      db.from('presale_items').select('id, script_name, title, price, later_price, is_active, sale_start, sale_end, max_extra').in('id', ids),
       db.from('presale_tiers').select('min_qty, discount_per_item'),
     ])
     if (e1 || e2) throw new Error((e1 ?? e2)!.message)
@@ -64,7 +64,7 @@ Deno.serve(async (req) => {
         if (!settings.test_mode) throw new UserError('預售還沒開始，11/11 00:00 開賣')
         beforeStart = true
       }
-      items.push({ id: r.id, title: r.title, price: r.price })
+      items.push({ id: r.id, title: r.title, price: r.price, later_price: r.later_price ?? null })
     }
 
     // 加購（SPEC-extra）

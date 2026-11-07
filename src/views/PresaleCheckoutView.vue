@@ -29,6 +29,8 @@ const closePage = () => {
 
 const code = computed(() => String(route.query.order || ''))
 const lines = computed(() => groupItems(order.value?.items, order.value?.qty || 1, order.value?.extra))
+// 2/4 漲價後的價格（只顯示）：舊訂單沒存 later_price 就不顯示
+const laterTotal = computed(() => lines.value.every((l) => l.later_price) ? lines.value.reduce((s, l) => s + l.later_price * l.qty, 0) : 0)
 const claimed = computed(() => order.value && order.value.status !== 'unclaimed')
 
 const load = async () => {
@@ -98,7 +100,8 @@ const submit = async () => {
           <span>{{ money(l.price * l.qty) }}</span>
         </div>
         <div class="divider"></div>
-        <div class="row small"><span>原價小計（{{ ticketCount(order) }} 張）</span><span>{{ money(order.subtotal) }}</span></div>
+        <div v-if="laterTotal > order.subtotal" class="row small later-row"><span>2/4 漲價後（{{ ticketCount(order) }} 張）</span><span>{{ money(laterTotal) }}</span></div>
+        <div class="row small"><span>現價小計（{{ ticketCount(order) }} 張）</span><span>{{ money(order.subtotal) }}</span></div>
         <div v-if="order.discount" class="row small"><span>多本折抵</span><span class="ok">−{{ money(order.discount) }}</span></div>
         <div class="row total"><span>應付金額</span><span>{{ money(order.total) }}</span></div>
       </div>
@@ -157,6 +160,7 @@ label { display: flex; flex-direction: column; gap: 4px; font-size: 0.85rem; col
 .muted { color: #888; }
 .danger { color: #e74c3c; }
 .ok { color: #5eff8a; }
+.row.small.later-row { color: #e74c3c; }
 .done { background: rgba(46,204,113,0.08); border: 1px solid rgba(46,204,113,0.4); border-radius: 18px; padding: 18px; display: flex; flex-direction: column; gap: 8px; }
 .done h3 { margin: 0; color: #2ecc71; font-size: 1.1rem; }
 .done p { margin: 0; line-height: 1.7; font-size: 0.92rem; color: #ddd; }

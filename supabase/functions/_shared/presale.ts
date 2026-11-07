@@ -36,7 +36,7 @@ export class UserError extends Error {
 }
 
 // ── 價格 ────────────────────────────────────────────────────────────────
-export type Item = { id: string; title: string; price: number }
+export type Item = { id: string; title: string; price: number; later_price?: number | null }  // later_price＝2/4 起單價，只顯示、不參與計算
 export type Tier = { min_qty: number; discount_per_item: number }
 
 export type Extra = Record<string, number>

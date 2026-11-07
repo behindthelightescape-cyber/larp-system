@@ -407,12 +407,12 @@ const goToMember = async (legacyId) => {
 
 <style scoped>
 /* CSS 保持完美不變 */
-.admin-layout { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 9999; background-color: #050505; color: white; font-family: 'Segoe UI', sans-serif; }
+.admin-layout { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; height: 100dvh; z-index: 9999; background-color: #050505; color: white; font-family: 'Segoe UI', sans-serif; }
 .center-content { display: flex; flex-direction: column; justify-content: center; align-items: center; }
 .login-box { border: 1px solid #333; width: 100%; max-width: 380px; padding: 40px; border-radius: 12px; background: #111; box-shadow: 0 10px 30px rgba(0,0,0,0.8); }
 .admin-input { width: 100%; padding: 14px; background: #222; border: 1px solid #444; color: white; border-radius: 8px; box-sizing: border-box; font-size: 1rem; transition: border 0.3s; }
 .admin-input:focus { border-color: #D4AF37; outline: none; }
-.admin-wrapper { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 9999; display: flex; background-color: #0a0a0a; color: white; overflow: hidden; }
+.admin-wrapper { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; height: 100dvh; z-index: 9999; display: flex; background-color: #0a0a0a; color: white; overflow: hidden; }
 .sidebar { width: 260px; background-color: #111; border-right: 1px solid #222; display: flex; flex-direction: column; flex-shrink: 0; transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); z-index: 1000; }
 .sidebar.collapsed { margin-left: -260px; }
 .sidebar-header { padding: 25px 20px; border-bottom: 1px solid #222; display: flex; align-items: center; justify-content: space-between; }
@@ -444,7 +444,7 @@ const goToMember = async (legacyId) => {
 .admin-info { display: flex; flex-direction: column; overflow: hidden; }
 .admin-name { font-weight: bold; font-size: 0.9rem; }
 .admin-email { color: #666; font-size: 0.75rem; white-space: nowrap; text-overflow: ellipsis; overflow: hidden; }
-.main-content { flex: 1; display: flex; flex-direction: column; overflow-y: auto; transition: all 0.3s ease; min-width: 0; }
+.main-content { flex: 1; display: flex; flex-direction: column; overflow-y: auto; transition: all 0.3s ease; min-width: 0; padding-bottom: calc(40px + env(safe-area-inset-bottom)); }
 .top-header { padding: 20px 30px; border-bottom: 1px solid #222; background: #0a0a0a; position: sticky; top: 0; z-index: 10; display: flex; align-items: center; }
 .menu-toggle-btn { background: #1a1a1a; border: 1px solid #333; color: #D4AF37; padding: 8px; border-radius: 6px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: 0.2s; }
 .menu-toggle-btn:hover { background: #222; border-color: #D4AF37; }

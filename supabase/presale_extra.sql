@@ -62,3 +62,9 @@ end $$;
 revoke all on function public.presale_approve(uuid, text) from public, anon, authenticated;
 
 select id, max_extra from public.presale_items order by sort_order;
+
+-- ---------------------------------------------------------------------
+-- 玩家回報匯款後，LINE 通知這些人（users.id＝LINE userId）
+-- 名單不放在 repo：另外用 update presale_settings set notify_user_ids = array[...] 設定
+-- ---------------------------------------------------------------------
+alter table public.presale_settings add column if not exists notify_user_ids text[] not null default '{}';

@@ -9,6 +9,7 @@ export const db = createClient(
 )
 const LINE_TOKEN = Deno.env.get('LINE_CHANNEL_ACCESS_TOKEN') ?? ''
 export const LIFF_URL = 'https://liff.line.me/2009161687-icfQU9r6'
+const ADMIN_URL = 'https://larp-system.vercel.app/#/admin'
 const GOLD = '#D4AF37'
 
 // ── CORS ────────────────────────────────────────────────────────────────
@@ -72,6 +73,7 @@ export async function getSettings() {
   return data as {
     bank_name: string | null; bank_code: string | null; account_no: string | null
     account_name: string | null; remit_note: string | null; test_mode: boolean
+    notify_user_ids: string[] | null
   }
 }
 
@@ -190,6 +192,45 @@ export function issuedMsg(o: any, count: number) {
     row('訂單編號', o.order_no),
     { type: 'text', text: `${count} 張預售票已放進票券匣。同行朋友要用時，由你在現場用自己的 LINE 核銷即可。`, size: 'sm', color: '#ffffff', wrap: true, margin: 'md' },
   ], { label: '打開票券匣', uri: `${LIFF_URL}?goto=coupons` })
+}
+
+// 玩家回報匯款 → 通知管理員（presale_settings.notify_user_ids）
+// deno-lint-ignore no-explicit-any
+export function remitNotifyMsg(o: any, memberName: string | null) {
+  const mismatch = o.remit_amount != null && o.remit_amount !== o.total
+  return card(`💰 ${o.order_no} 回報匯款 ${nt(o.remit_amount ?? o.total)}，後五碼 ${o.remit_last5}`, '💰 有人回報匯款了', [
+    row('訂單編號', o.order_no),
+    row('會員', `${memberName ?? ''}${o.contact_name ? `（${o.contact_name}）` : ''}`),
+    ...(o.contact_phone ? [row('電話', o.contact_phone)] : []),
+    row('應付金額', nt(o.total), true),
+    { type: 'separator', margin: 'md', color: '#333333' },
+    row('匯款日期', o.remit_date),
+    row('帳號後五碼', o.remit_last5, true),
+    ...(o.remit_amount != null ? [row('回報金額', nt(o.remit_amount))] : []),
+    ...(mismatch ? [{ type: 'text', text: '⚠️ 回報金額跟應付金額不一樣', size: 'sm', color: '#e74c3c', wrap: true, margin: 'md' }] : []),
+    ...(o.is_test ? [{ type: 'text', text: '（測試訂單）', size: 'xs', color: '#8e44ad', margin: 'md' }] : []),
+  ], { label: '打開後台查帳', uri: `${ADMIN_URL}?tab=presale` })
+}
+
+/** 推播給多人（multicast）；失敗只回傳錯誤字串 */
+export async function multicastTo(userIds: string[], messages: unknown[]): Promise<string | null> {
+  const to = [...new Set(userIds.filter(Boolean))]
+  if (!to.length) return null
+  if (to.length === 1) return pushTo(to[0], messages)
+  if (!LINE_TOKEN) return '找不到 LINE_CHANNEL_ACCESS_TOKEN'
+  try {
+    const res = await fetch('https://api.line.me/v2/bot/message/multicast', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${LINE_TOKEN}` },
+      body: JSON.stringify({ to, messages }),
+    })
+    if (res.ok) return null
+    const t = await res.text()
+    console.error('預售管理員通知失敗', res.status, t)
+    return `LINE ${res.status}: ${t}`.slice(0, 500)
+  } catch (err) {
+    return err instanceof Error ? err.message : String(err)
+  }
 }
 
 /** 推播給單一會員；失敗只回傳錯誤字串，不影響主流程 */

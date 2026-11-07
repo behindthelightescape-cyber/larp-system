@@ -1,5 +1,5 @@
 import {
-  APP_ORIGINS, bankInfo, corsFor, db, getSettings, jsonRes, lineUserFrom, orderCreatedMsg, publicOrder, pushTo, UserError,
+  APP_ORIGINS, bankInfo, corsFor, db, getSettings, jsonRes, lineUserFrom, multicastTo, orderCreatedMsg, publicOrder, pushTo, remitNotifyMsg, UserError,
 } from '../_shared/presale.ts'
 
 // 玩家端（LIFF）預售訂單操作。Authorization: Bearer <LIFF access token>
@@ -132,6 +132,19 @@ Deno.serve(async (req) => {
           .select('*').maybeSingle()
         if (error) throw new Error(error.message)
         if (!data) throw new UserError('這張訂單現在不能填寫匯款資料（可能已在查帳中）')
+
+        // 通知管理員（名單在 presale_settings.notify_user_ids）；失敗不影響玩家
+        try {
+          const settings = await getSettings()
+          const ids = settings.notify_user_ids ?? []
+          if (ids.length) {
+            const { data: u } = await db.from('users').select('display_name').eq('id', me).maybeSingle()
+            const err = await multicastTo(ids, [remitNotifyMsg(data, u?.display_name ?? null)])
+            if (err) console.error('匯款通知管理員失敗', err)
+          }
+        } catch (err) {
+          console.error('匯款通知管理員失敗', err)
+        }
         return jsonRes(cors, { order: publicOrder(data) })
       }
 

@@ -1,6 +1,7 @@
 <script setup>
 import { ref, onMounted, onUnmounted, nextTick } from 'vue'
 import { supabase } from '../supabase'
+import { useRoute } from 'vue-router'
 import MemberManager from '../components/MemberManager.vue'
 import CouponManager from '../components/CouponManager.vue'
 import GameManager from '../components/GameManager.vue'
@@ -24,6 +25,9 @@ import AdminPresale from '../components/AdminPresale.vue'
 const session = ref(null)
 const isLoading = ref(true)
 const currentTab = ref('dashboard')
+// 從 LINE 通知點進來時可直接開指定分頁：#/admin?tab=presale
+const initialTab = useRoute().query.tab
+if (typeof initialTab === 'string' && initialTab) currentTab.value = initialTab
 const isSidebarOpen = ref(window.innerWidth > 768) 
 const stats = ref({ members: 0, scripts: 0, games: 0, coupons: 0 })
 const email = ref('')

@@ -61,7 +61,11 @@ Deno.serve(async (req) => {
       if (!r || !r.is_active) throw new UserError(`找不到這本劇本或已下架：${id}`)
       if (r.sale_end && Date.parse(r.sale_end) < now) throw new UserError(`《${r.title}》預售已結束`)
       if (r.sale_start && Date.parse(r.sale_start) > now) {
-        if (!settings.test_mode) throw new UserError('預售還沒開始，11/11 00:00 開賣')
+        if (!settings.test_mode) {
+          const t = new Date(Date.parse(r.sale_start) + 8 * 3600_000) // 台灣時間
+          const hm = `${String(t.getUTCHours()).padStart(2, '0')}:${String(t.getUTCMinutes()).padStart(2, '0')}`
+          throw new UserError(`預售還沒開始，${t.getUTCMonth() + 1}/${t.getUTCDate()} ${hm} 開賣`)
+        }
         beforeStart = true
       }
       items.push({ id: r.id, title: r.title, price: r.price, later_price: r.later_price ?? null })

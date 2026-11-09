@@ -71,10 +71,13 @@ const sendToDisplay = async () => {
   }
 }
 
-// 等 userStore 完成 LIFF 初始化
-const stopWatch = watch(() => userStore.isLoading, (loading) => {
-  if (loading) return
-  stopWatch()
+// 等 userStore 完成 LIFF 初始化。
+// 這頁通常在初始化完成後才掛上（App 載入中不渲染 router-view），所以 immediate 會同步觸發；
+// 不能在 callback 裡呼叫還沒賦值的 stopWatch（會 TDZ 錯誤、畫面永遠卡在「連線中」），改用 once 旗標。
+let started = false
+watch(() => userStore.isLoading, (loading) => {
+  if (loading || started) return
+  started = true
   if (userStore.isLoggedIn) sendToDisplay()
   else { status.value = 'error'; errorMsg.value = '登入失敗，請重新掃描' }
 }, { immediate: true })

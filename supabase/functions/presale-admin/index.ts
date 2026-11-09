@@ -154,7 +154,7 @@ Deno.serve(async (req) => {
 
       case 'stats': {
         const { data, error } = await db.from('presale_orders')
-          .select('status, items, qty, extra, total, utm_source, created_at, claimed_at, remit_reported_at, is_test')
+          .select('status, items, qty, extra, total, utm_source, utm_medium, utm_content, created_at, claimed_at, remit_reported_at, is_test')
           .eq('is_test', !!body.include_test ? true : false)
         if (error) throw new Error(error.message)
         const rows = data ?? []
@@ -167,7 +167,8 @@ Deno.serve(async (req) => {
         for (const r of issued) partyDist[String(r.qty ?? 1)] = (partyDist[String(r.qty ?? 1)] ?? 0) + 1
         const utm: Record<string, { orders: number; revenue: number }> = {}
         for (const r of issued) {
-          const k = r.utm_source || '（無）'
+          // 依「平台 / 位置 / 哪一篇」分：ig / story、line / push / segment
+          const k = r.utm_source ? [r.utm_source, r.utm_medium, r.utm_content].filter(Boolean).join(' / ') : '（無）'
           utm[k] ??= { orders: 0, revenue: 0 }
           utm[k].orders++
           utm[k].revenue += r.total

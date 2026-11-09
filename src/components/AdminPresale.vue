@@ -249,7 +249,7 @@ onMounted(() => { loadOrders(); loadSettings() })
             <div v-if="o.reviewed_by" class="muted">{{ o.reviewed_by }}・{{ fmt(o.reviewed_at) }}</div>
           </div>
         </div>
-        <div v-if="o.utm_source" class="muted">來源：{{ o.utm_source }} / {{ o.utm_medium || '-' }} / {{ o.utm_campaign || '-' }}</div>
+        <div v-if="o.utm_source" class="muted">來源：{{ o.utm_source }} / {{ o.utm_medium || '-' }} / {{ o.utm_campaign || '-' }}<template v-if="o.utm_content"> / {{ o.utm_content }}</template></div>
         <div class="o-actions">
           <button v-if="o.status === 'reviewing'" class="btn gold" :disabled="busy === o.id" @click="approve(o)">確認並發券</button>
           <button v-if="o.status === 'reviewing'" class="btn dark" :disabled="busy === o.id" @click="reject(o)">退回</button>

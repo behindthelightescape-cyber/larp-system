@@ -3,7 +3,7 @@ import {
 } from '../_shared/presale.ts'
 
 // POST（免登入）：官網按「用 LINE 結帳」時呼叫。
-// 輸入：{ "items": ["umbrella","acacia",...], "qty": 1, "extra": { "umbrella": 1 }, "utm": { "source","medium","campaign" } }
+// 輸入：{ "items": ["umbrella","acacia",...], "qty": 1, "extra": { "umbrella": 1 }, "utm": { "source","medium","campaign","content" } }
 //   items 是劇本代號清單（1～7 本、不可重複）；qty 是幾組（1～10，預設 1），每本都買 qty 張。
 //   extra 是加購單張（可省略）：滿 6 組才能加購，key 要在 items 裡，上限看 presale_items.max_extra。
 // 回傳：{ code, liff_url, order_no, qty, extra, subtotal, discount, total }
@@ -98,6 +98,7 @@ Deno.serve(async (req) => {
       utm_source: utmText(utm.source ?? utm.utm_source),
       utm_medium: utmText(utm.medium ?? utm.utm_medium),
       utm_campaign: utmText(utm.campaign ?? utm.utm_campaign),
+      utm_content: utmText(utm.content ?? utm.utm_content),
       is_test: settings.test_mode && beforeStart,
     })
     if (e4) throw new Error(e4.message)

@@ -229,10 +229,19 @@ const countUp = (target, refVal, duration = 1200) => {
 }
 
 // ── 紙娃娃載入 ──
-const loadDollForUser = async (userId) => {
+// 電視端沒登入（anon），讀不到 user_wardrobe_equipped（RLS 限本人），
+// 所以掃碼的手機會先把穿搭圖片網址放進 player_data.doll；沒有才退回自己查（只拿得到預設底圖）。
+const loadDollForUser = async (userId, doll) => {
   dollBaseUrl.value = FALLBACK_BASE
   dollLayers.value  = {}
   dollBgStyle.value = {}
+
+  if (doll) {
+    if (doll.base) dollBaseUrl.value = doll.base
+    dollLayers.value = doll.layers || {}
+    if (doll.bg) dollBgStyle.value = { backgroundImage: `url(${doll.bg})`, backgroundSize: 'cover', backgroundPosition: 'center' }
+    return
+  }
 
   const { data: base } = await supabase
     .from('wardrobe_bases').select('img_url')
@@ -346,7 +355,7 @@ const startShow = async (playerData) => {
   clearSlideTimer()
   try {
     player.value = playerData
-    await loadDollForUser(playerData.userId ?? null)
+    await loadDollForUser(playerData.userId ?? null, playerData.doll)
     displayLevel.value = displayGames.value = displayDays.value = displayExp.value = 0
     currentPage.value = 0
     phase.value = 'show'

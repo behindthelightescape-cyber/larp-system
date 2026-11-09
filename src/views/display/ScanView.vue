@@ -43,7 +43,36 @@ const sendToDisplay = async () => {
       discipleCount = disciples.length
     }
 
+    // 穿搭：電視端沒登入讀不到，所以在手機（本人登入）這邊先查好圖片網址一起送過去
+    let doll = null
+    try {
+      const { data: base } = await supabase
+        .from('wardrobe_bases').select('img_url')
+        .eq('is_default', true).eq('is_active', true).maybeSingle()
+      doll = { base: base?.img_url || null, layers: {}, bg: null }
+      const { data: eq } = await supabase
+        .from('user_wardrobe_equipped').select('equipped, background_id')
+        .eq('user_id', user.id).maybeSingle()
+      if (eq?.background_id) {
+        const { data: bg } = await supabase
+          .from('wardrobe_backgrounds').select('img_url').eq('id', eq.background_id).maybeSingle()
+        doll.bg = bg?.img_url || null
+      }
+      const ids = Object.values(eq?.equipped || {}).filter(Boolean)
+      if (ids.length) {
+        const { data: items } = await supabase
+          .from('wardrobe_items').select('id, img_url').in('id', ids)
+        for (const [cat, id] of Object.entries(eq.equipped)) {
+          const url = items?.find(i => i.id === id)?.img_url
+          if (url) doll.layers[cat] = url
+        }
+      }
+    } catch (e) {
+      console.warn('讀取穿搭失敗，電視會顯示預設燈燈', e)
+    }
+
     const playerData = {
+      doll,
       userId:       user.id,
       name:         user.display_name || profile?.displayName || '冒險者',
       title:        user.current_title || levelInfo.title,

@@ -43,7 +43,7 @@ const sendToDisplay = async () => {
       discipleCount = disciples.length
     }
 
-    // 穿搭：電視端沒登入讀不到，所以在手機（本人登入）這邊先查好圖片網址一起送過去
+    // 穿搭：畫面端沒登入讀不到，所以在手機（本人登入）這邊先查好圖片網址一起送過去
     let doll = null
     try {
       const { data: base } = await supabase
@@ -68,7 +68,7 @@ const sendToDisplay = async () => {
         }
       }
     } catch (e) {
-      console.warn('讀取穿搭失敗，電視會顯示預設燈燈', e)
+      console.warn('讀取穿搭失敗，畫面會顯示預設燈燈', e)
     }
 
     const playerData = {
@@ -133,9 +133,9 @@ watch(() => userStore.isLoading, (loading) => {
         <div class="scan-icon success-icon">✦</div>
         <p class="scan-title">準備好了！</p>
         <p class="scan-name">{{ userStore.userData?.display_name }}</p>
-        <p class="scan-sub">請看向電視螢幕</p>
+        <p class="scan-sub">請看向畫面</p>
         <div class="scan-deco-line"></div>
-        <p class="scan-hint">你的冒險記錄正在電視上播放中</p>
+        <p class="scan-hint">你的冒險記錄正在畫面上播放中</p>
       </template>
 
       <!-- Error -->

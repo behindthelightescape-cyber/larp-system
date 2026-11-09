@@ -146,7 +146,7 @@ watch(currentAdData, (ad) => {
   // video: @ended 事件處理
 }, { immediate: true })
 
-// 管理員改了播放清單，電視端即時更新
+// 管理員改了播放清單，畫面端即時更新
 let adsChannel = null
 const subscribeAds = () => {
   adsChannel = supabase.channel('display-ads-watch')
@@ -229,7 +229,7 @@ const countUp = (target, refVal, duration = 1200) => {
 }
 
 // ── 紙娃娃載入 ──
-// 電視端沒登入（anon），讀不到 user_wardrobe_equipped（RLS 限本人），
+// 畫面端沒登入（anon），讀不到 user_wardrobe_equipped（RLS 限本人），
 // 所以掃碼的手機會先把穿搭圖片網址放進 player_data.doll；沒有才退回自己查（只拿得到預設底圖）。
 const loadDollForUser = async (userId, doll) => {
   dollBaseUrl.value = FALLBACK_BASE
@@ -340,8 +340,25 @@ const bgmFadeOut = () => {
 }
 
 // ── 點擊啟動 ──
+// ── 全螢幕 ──
+// 瀏覽器規定要使用者點擊才能進全螢幕，所以在「點擊任意處開始」時進入；
+// 中途跳出（按 Esc 等）可雙擊畫面或按 F 再進入。
+const isFullscreen = ref(!!document.fullscreenElement)
+const enterFullscreen = () => {
+  const el = document.documentElement
+  const req = el.requestFullscreen || el.webkitRequestFullscreen
+  if (!document.fullscreenElement && req) Promise.resolve(req.call(el)).catch(() => {})
+}
+const toggleFullscreen = () => {
+  if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {})
+  else enterFullscreen()
+}
+const onFullscreenChange = () => { isFullscreen.value = !!document.fullscreenElement }
+const onKeydown = (e) => { if (e.key === 'f' || e.key === 'F') toggleFullscreen() }
+
 const handleStart = () => {
   started.value = true
+  enterFullscreen()
   getCtx()
 }
 
@@ -391,6 +408,8 @@ let clockTimer = null
 
 onMounted(async () => {
   // audio unlock 改由 handleStart 處理
+  document.addEventListener('fullscreenchange', onFullscreenChange)
+  document.addEventListener('keydown', onKeydown)
   burnTimer = setInterval(() => {
     pixelShift.value = nextShift()
   }, 60000)
@@ -402,6 +421,8 @@ onMounted(async () => {
   clockTimer = setInterval(() => { now.value = new Date() }, 1000)
 })
 onUnmounted(() => {
+  document.removeEventListener('fullscreenchange', onFullscreenChange)
+  document.removeEventListener('keydown', onKeydown)
   activeRafs.forEach(h => cancelAnimationFrame(h))
   activeRafs.clear()
   clearPageTimers()
@@ -430,7 +451,8 @@ const displayExpPct = computed(() =>
 </script>
 
 <template>
-  <div class="tv-root">
+  <div class="tv-root" @dblclick="toggleFullscreen">
+  <div v-if="started && !isFullscreen" class="fs-hint">雙擊畫面或按 F 進入全螢幕</div>
   <div class="tv-shift" :style="{ transform: pixelShift, transition: 'transform 2s ease' }">
 
     <!-- 粒子 -->
@@ -530,7 +552,7 @@ const displayExpPct = computed(() =>
                 <img v-if="qrDataUrl" :src="qrDataUrl" class="qr-img" alt="QR Code" />
                 <div v-else class="qr-placeholder"><span>產生中...</span></div>
               </div>
-              <p class="ad-qr-hint">掃描以 LINE 登入</p>
+              <p class="ad-qr-hint">掃描以登入互動</p>
             </div>
           </div>
 
@@ -561,7 +583,7 @@ const displayExpPct = computed(() =>
               <img v-if="qrDataUrl" :src="qrDataUrl" class="qr-img" alt="QR Code" />
               <div v-else class="qr-placeholder"><span>產生中...</span></div>
             </div>
-            <p class="qr-float-hint">掃描以 LINE 登入</p>
+            <p class="qr-float-hint">掃描以登入互動</p>
           </div>
         </div>
 
@@ -767,6 +789,12 @@ const displayExpPct = computed(() =>
   height: 80px; object-fit: contain;
   filter: drop-shadow(0 0 24px rgba(212,175,55,0.5));
   animation: fade-up 0.8s ease both;
+}
+.fs-hint {
+  position: fixed; left: 24px; bottom: 20px; z-index: 50;
+  font-size: 0.8rem; letter-spacing: 1px; color: rgba(212,175,55,0.55);
+  background: rgba(0,0,0,0.5); border: 1px solid rgba(212,175,55,0.2);
+  border-radius: 999px; padding: 6px 14px; pointer-events: none;
 }
 .start-prompt {
   font-size: 1rem; letter-spacing: 6px; color: #D4AF37;

@@ -143,7 +143,7 @@ onMounted(loadAds)
   <div class="da-root">
 
     <div class="da-top-bar">
-      <a href="/#/display" target="_blank" class="da-link-btn">📺 開啟電視端</a>
+      <a href="/#/display" target="_blank" class="da-link-btn">📺 開啟畫面端</a>
     </div>
 
     <!-- ── 新增廣告 ── -->
@@ -204,7 +204,7 @@ onMounted(loadAds)
             class="da-input"
             :placeholder="adType === 'image' ? '圖片直連網址（JPG / PNG / GIF）' : '影片直連網址（MP4 / WebM）'"
           />
-          <p v-if="adType === 'image'" class="da-media-hint">建議尺寸：1920 × 1080px（16:9 橫向），電視全版顯示</p>
+          <p v-if="adType === 'image'" class="da-media-hint">建議尺寸：1920 × 1080px（16:9 橫向），全螢幕顯示</p>
         </template>
 
         <!-- 進度 -->

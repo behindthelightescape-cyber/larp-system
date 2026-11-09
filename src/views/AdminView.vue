@@ -235,7 +235,7 @@ const goToMember = async (legacyId) => {
         </button>
         <template v-if="!collapsedGroups['display']">
           <button class="nav-btn" :class="{ active: currentTab === 'display_ads' }" @click="changeTab('display_ads')">
-            <span class="icon">📺</span> 電視廣告管理
+            <span class="icon">📺</span> 畫面廣告管理
           </button>
         </template>
 
@@ -319,7 +319,7 @@ const goToMember = async (legacyId) => {
               currentTab === 'presale' ? '雙11預售訂單' :
               currentTab === 'achievement' ? '成就鑄造廠' :
               currentTab === 'paperdoll' ? '燈燈造型室' :
-              currentTab === 'display_ads' ? '電視廣告管理' :
+              currentTab === 'display_ads' ? '畫面廣告管理' :
               currentTab === 'points' ? '點數系統管理' :
               currentTab === 'line_features' ? 'LINE 群組設定' :
               currentTab === 'line_group' ? '版規設定' :

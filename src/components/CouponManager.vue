@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, computed, watch } from 'vue'
 import { supabase } from '../supabase'
 
 const emit = defineEmits(['update-stats'])
@@ -59,28 +59,34 @@ const fetchCoupons = async () => {
   }
 }
 
+// 會員有上萬人，資料庫一次最多回 1000 筆，不能整包載入再篩；改成打字時到資料庫搜尋，每次最多 50 筆。
+const USER_SEARCH_LIMIT = 50
+let userSearchSeq = 0
 const fetchUsers = async () => {
+  const seq = ++userSearchSeq
+  // 去掉會破壞 or() 篩選語法的字元
+  const kw = (searchUserQuery.value || '').trim().replace(/[,()%*\\]/g, '')
   try {
-    const { data, error } = await supabase
+    let q = supabase
       .from('users')
       .select('id, display_name, legacy_id')
       .order('legacy_id', { ascending: true })
-    
+      .limit(USER_SEARCH_LIMIT)
+    if (kw) q = q.or(`display_name.ilike.%${kw}%,legacy_id.ilike.%${kw}%`)
+    const { data, error } = await q
     if (error) throw error
-    users.value = data || []
+    if (seq === userSearchSeq) users.value = data || []
   } catch (err) {
     console.error('讀取會員失敗:', err.message)
   }
 }
-
-const filteredUsers = computed(() => {
-  if (!searchUserQuery.value) return users.value
-  const kw = searchUserQuery.value.toLowerCase()
-  return users.value.filter(u => 
-    (u.display_name && u.display_name.toLowerCase().includes(kw)) || 
-    (u.legacy_id && u.legacy_id.includes(kw))
-  )
+let userSearchTimer = null
+watch(searchUserQuery, () => {
+  clearTimeout(userSearchTimer)
+  userSearchTimer = setTimeout(fetchUsers, 250)
 })
+
+const filteredUsers = computed(() => users.value)
 
 const safeFormatDate = (dateStr) => {
   if (!dateStr) return '無紀錄'
@@ -315,6 +321,8 @@ const voidCoupon = async (coupon) => {
                   [{{ user.legacy_id }}] {{ user.display_name }}
                 </option>
               </select>
+              <p v-if="filteredUsers.length >= USER_SEARCH_LIMIT" style="color: #888; font-size: 0.75rem; margin: 4px 0 0;">只列出前 {{ USER_SEARCH_LIMIT }} 筆，找不到請輸入更完整的名字或編號</p>
+              <p v-else-if="searchUserQuery && !filteredUsers.length" style="color: #888; font-size: 0.75rem; margin: 4px 0 0;">找不到符合的會員</p>
             </div>
 
             <div class="form-group mt-3">

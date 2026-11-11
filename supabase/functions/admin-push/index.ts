@@ -63,7 +63,7 @@ Deno.serve(async (req) => {
   if (!caller) return json({ error: '沒有權限' }, 403)
   const callerName = caller.display_name ?? caller.id
 
-  let body: { action?: string; target?: Target; message?: string; title?: string; send_at?: string; id?: string; media?: unknown; extra?: unknown; name?: string; state?: unknown }
+  let body: { action?: string; target?: Target; message?: string; title?: string; send_at?: string; id?: string; media?: unknown; extra?: unknown; name?: string; state?: unknown; test_legacy_id?: string }
   try {
     body = await req.json()
   } catch {
@@ -100,8 +100,18 @@ Deno.serve(async (req) => {
       }
 
       case 'test_send': {
-        if (!caller.lineId) return json({ error: '你的後台帳號沒有綁 LINE，沒辦法收測試訊息' }, 400)
-        return json(await sendTest(caller.lineId, body.message ?? '', normalizeMedia(body.media), body.extra))
+        // 收件人：有填會員編號就發給那位會員（後台 Email 帳號沒有 LINE），沒填就發給自己的 LINE
+        let to = caller.lineId
+        let toName = callerName
+        const legacy = String(body.test_legacy_id ?? '').trim()
+        if (legacy) {
+          const { data: u } = await supabase.from('users').select('id, display_name').eq('legacy_id', legacy).maybeSingle()
+          if (!u || !/^U[0-9a-f]{32}$/.test(u.id)) return json({ error: `找不到會員編號 ${legacy} 的 LINE 帳號` }, 400)
+          to = u.id
+          toName = u.display_name ?? legacy
+        }
+        if (!to) return json({ error: '請先填「測試收件人」的會員編號（你的後台帳號沒有綁 LINE）' }, 400)
+        return json({ ...(await sendTest(to, body.message ?? '', normalizeMedia(body.media), body.extra)), to_name: toName })
       }
 
       case 'list_drafts': {

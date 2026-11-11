@@ -473,11 +473,14 @@ onMounted(loadDrafts)
 
 // ===== 測試發送：只發給自己 =====
 const isTesting = ref(false)
+// 測試收件人：會員編號（後台 Email 帳號沒有 LINE，要指定一個會員帳號收），記在這台瀏覽器
+const testLegacyId = ref(localStorage.getItem('pushTestLegacyId') || '')
+watch(testLegacyId, (v) => localStorage.setItem('pushTestLegacyId', v.trim()))
 const testSend = async () => {
   isTesting.value = true; errorMsg.value = ''; notice.value = ''
   try {
-    const r = await invoke({ action: 'test_send', ...buildContent() })
-    notice.value = `測試訊息已發到你的 LINE（${r.count} 個對話框，用掉 1 則額度）`
+    const r = await invoke({ action: 'test_send', test_legacy_id: testLegacyId.value.trim(), ...buildContent() })
+    notice.value = `測試訊息已發給 ${r.to_name}（${r.count} 個對話框，用掉 1 則額度）`
     await loadQuota()
   } catch (err) { errorMsg.value = err.message } finally { isTesting.value = false }
 }
@@ -840,9 +843,14 @@ const testSend = async () => {
     </div>
 
     <div v-if="notice" class="alert success">{{ notice }}</div>
-    <button class="btn btn-dark send test-btn" :disabled="!contentReady || isTesting" @click="testSend">
-      {{ isTesting ? '發送中…' : '📱 先發給我看看（只發給自己）' }}
-    </button>
+    <div class="test-row">
+      <label>測試收件人（會員編號）
+        <input v-model="testLegacyId" class="input" style="width: 140px;" placeholder="例：00000002" inputmode="numeric" maxlength="12" />
+      </label>
+      <button class="btn btn-dark test-btn" :disabled="!contentReady || isTesting" @click="testSend">
+        {{ isTesting ? '發送中…' : '📱 先發給這位看看' }}
+      </button>
+    </div>
     <button class="btn btn-gold send" :disabled="!canSubmit" @click="showConfirm = true">
       <template v-if="isSending">{{ sendMode === 'schedule' ? '預約中…' : '發送中…' }}</template>
       <template v-else-if="previewCount === null">請先計算人數</template>
@@ -1034,6 +1042,7 @@ code { background: #222; padding: 1px 5px; border-radius: 4px; color: #D4AF37; }
 .draft-name { cursor: pointer; flex: 1; }
 .draft-name:hover { color: #D4AF37; }
 .small { font-size: 0.8rem; }
-.test-btn { margin-bottom: 10px; }
+.test-row { display: flex; align-items: flex-end; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; color: #aaa; font-size: 0.85rem; }
+.test-row .test-btn { flex: 1; padding: 12px; }
 .modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 16px; }
 </style>

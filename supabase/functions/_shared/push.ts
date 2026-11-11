@@ -30,6 +30,8 @@ export type Filter = {
   not_played_scripts?: number[] // 這些都沒玩過
   achievement_id?: string       // 成就差一點：還沒解鎖、只差 1～achievement_missing_max 部劇本
   achievement_missing_max?: number
+  // 成就狀態：'' 或 missing＝差幾本（預設）；done＝已達成（玩過全部或已領）；unclaimed＝玩過全部但還沒領；claimed＝已領取
+  achievement_mode?: '' | 'missing' | 'done' | 'unclaimed' | 'claimed'
   categories?: string[]         // 玩過其中任一類型
   branches?: string[]           // 去過其中任一分店
   has_coupon?: boolean          // 有未使用、未過期的票券
@@ -141,6 +143,7 @@ async function resolveFilter(f: Filter): Promise<Resolved> {
   let achScripts: number[] | null = null
   let achUnlocked = new Set<string>()
   const achMissingMax = Math.max(1, num(f.achievement_missing_max) ?? 1)
+  const achMode = ['done', 'unclaimed', 'claimed'].includes(f.achievement_mode ?? '') ? f.achievement_mode : 'missing'
   if (f.achievement_id) {
     const { data: ach, error } = await supabase
       .from('achievements').select('condition_type, condition_value').eq('id', f.achievement_id).single()
@@ -196,14 +199,17 @@ async function resolveFilter(f: Filter): Promise<Resolved> {
       if (categories && !categories.some((c) => s?.cats.has(c))) return false
       if (branches && !branches.some((b) => s?.branches.has(b))) return false
       if (achScripts) {
-        if (achUnlocked.has(id)) return false
+        const claimed = achUnlocked.has(id)
         const miss = achScripts.filter((x) => !s?.scripts.has(x)).length
-        if (miss < 1 || miss > achMissingMax) return false
+        if (achMode === 'claimed') { if (!claimed) return false }
+        else if (achMode === 'done') { if (!claimed && miss > 0) return false }
+        else if (achMode === 'unclaimed') { if (claimed || miss > 0) return false }
+        else if (claimed || miss < 1 || miss > achMissingMax) return false
       }
       return true
     })
     for (const id of ids) { const s = stats.get(id); if (s?.last) lp.set(id, s.last) }
-    if (achScripts) {
+    if (achScripts && achMode === 'missing') {
       const m = (missing = new Map<string, number[]>())
       for (const id of ids) m.set(id, achScripts.filter((x) => !stats.get(id)?.scripts.has(x)))
     }
@@ -275,7 +281,7 @@ export function normalizeMedia(raw: unknown): Media {
 export function validateMessage(message: string, target: Target, media: Media = null) {
   if (!message && !media) throw new PushError('訊息不能空白')
   if (message.length > MAX_TEXT) throw new PushError(`訊息最多 ${MAX_TEXT} 字`)
-  if (message.includes(MISSING_TAG) && !(target?.mode === 'filter' && target.achievement_id)) {
+  if (message.includes(MISSING_TAG) && !(target?.mode === 'filter' && target.achievement_id && !['done', 'unclaimed', 'claimed'].includes(target.achievement_mode ?? ''))) {
     throw new PushError(`訊息裡有 ${MISSING_TAG}，但沒有設定「成就差一點」條件`)
   }
   // 圖文卡片可以沒有圖（只有標題、內文、按鈕）；有填就要是 https

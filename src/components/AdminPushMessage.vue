@@ -24,7 +24,7 @@ const emptyFilter = () => ({
   play_count_min: '', play_count_max: '',
   last_played_after: '', last_played_before: '',
   played_scripts: [], played_scripts_min: '', not_played_scripts: [],
-  achievement_id: '', achievement_missing_max: '',
+  achievement_id: '', achievement_missing_max: '', achievement_mode: '',
   categories: [], branches: [], has_coupon: false,
 })
 const MISSING_TAG = '{缺少劇本}'
@@ -292,6 +292,13 @@ const useAchievementTemplate = () => {
 
 只要再玩 ${MISSING_TAG} 就能解鎖，快揪團來劇光燈完成收集吧！`
 }
+const useClaimTemplate = () => {
+  const a = selectedAchievement.value
+  if (!a) return
+  blocks.value[0].text = `🏆 恭喜！你已經達成【${a.title}】成就！
+
+打開劇光燈 App 的成就頁，按「領取」就能把它收進你的收藏。`
+}
 // 確認視窗用：把 {缺少劇本} 換成抽樣第一位的內容
 const exampleOf = (text) => {
   const ex = previewSample.value.find(u => u.missing)?.missing
@@ -299,7 +306,7 @@ const exampleOf = (text) => {
 }
 const hasMissingTag = computed(() => blocks.value.some(b => b.text.includes(MISSING_TAG)))
 const tagWithoutAchievement = computed(() =>
-  hasMissingTag.value && !(mode.value === 'filter' && filter.value.achievement_id)
+  hasMissingTag.value && !(mode.value === 'filter' && filter.value.achievement_id && !filter.value.achievement_mode)
 )
 
 // ===== 完整名單：瀏覽、排除 =====
@@ -671,7 +678,7 @@ const testSend = async () => {
         </fieldset>
 
         <fieldset>
-          <legend>成就差一點</legend>
+          <legend>成就</legend>
           <div class="row">
             <label>成就
               <select v-model="filter.achievement_id" class="input" style="min-width: 220px;">
@@ -681,7 +688,15 @@ const testSend = async () => {
                 </option>
               </select>
             </label>
-            <label v-if="filter.achievement_id">還差
+            <label v-if="filter.achievement_id">狀態
+              <select v-model="filter.achievement_mode" class="input">
+                <option value="">差一點（還沒達成）</option>
+                <option value="unclaimed">已達成、還沒領取</option>
+                <option value="done">已達成（不論領沒領）</option>
+                <option value="claimed">已領取</option>
+              </select>
+            </label>
+            <label v-if="filter.achievement_id && !filter.achievement_mode">還差
               <select v-model="filter.achievement_missing_max" class="input small">
                 <option value="">1 部</option>
                 <option v-for="n in [2, 3, 4, 5]" :key="n" :value="n">1～{{ n }} 部</option>
@@ -690,7 +705,10 @@ const testSend = async () => {
           </div>
           <div v-if="selectedAchievement" class="hint">
             條件劇本：{{ selectedAchievement.script_ids.map(scriptTitle).join('、') }}<br />
-            已解鎖的人會自動排除。訊息裡可以放 <code>{{ MISSING_TAG }}</code>，每個人會看到自己還缺的劇本。
+            <template v-if="!filter.achievement_mode">已解鎖的人會自動排除。訊息裡可以放 <code>{{ MISSING_TAG }}</code>，每個人會看到自己還缺的劇本。</template>
+            <template v-else-if="filter.achievement_mode === 'unclaimed'">玩過全部條件劇本、但還沒到成就頁按「領取」的人。</template>
+            <template v-else-if="filter.achievement_mode === 'done'">玩過全部條件劇本，或已經領取的人。</template>
+            <template v-else>已經在成就頁按過「領取」的人。</template>
           </div>
         </fieldset>
 
@@ -788,8 +806,11 @@ const testSend = async () => {
       <input v-model="title" class="input" placeholder="紀錄標題（選填，只顯示在推播監控）" maxlength="40" />
 
       <div v-if="mode === 'filter' && filter.achievement_id" class="tag-bar">
+        <template v-if="!filter.achievement_mode">
         <button class="btn-chip" @click="insertMissingTag">插入 {{ MISSING_TAG }}（第 1 個對話框）</button>
         <button class="btn-chip" @click="useAchievementTemplate">套用成就範本</button>
+        </template>
+        <button v-else-if="filter.achievement_mode === 'unclaimed'" class="btn-chip" @click="useClaimTemplate">套用「提醒領取」範本</button>
       </div>
 
       <div v-for="(b, i) in blocks" :key="b.key" class="block">

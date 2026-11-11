@@ -109,10 +109,10 @@ select cron.schedule(
   $$
 );
 
--- 4c. 每 5 分鐘執行到期的預約推播
+-- 4c. 每小時整點執行到期的預約推播
 select cron.schedule(
   'scheduled-push-runner',
-  '*/5 * * * *',
+  '0 * * * *',
   $$
   select net.http_post(
     url := 'https://cqbiozfappfwfcahtxfm.supabase.co/functions/v1/scheduled-push-runner',

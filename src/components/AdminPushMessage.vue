@@ -688,7 +688,7 @@ onMounted(loadScheduled)
         </label>
       </div>
       <p v-if="sendMode === 'schedule'" class="hint">
-        系統每 5 分鐘檢查一次，實際送達可能晚幾分鐘。名單會在發送當下依條件重新計算，人數可能跟現在略有不同。
+        系統每小時整點檢查一次，會在你選的時間之後的第一個整點送出（例：選 14:30，15:00 左右送出；選 15:00，15:00 送出）。名單會在發送當下依條件重新計算，人數可能跟現在略有不同。
         <span v-if="sendAt && !sendAtValid" class="danger">請選擇 1 分鐘後的時間。</span>
       </p>
     </section>

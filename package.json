@@ -11,6 +11,8 @@
     "deploy:push": "npx supabase functions deploy admin-push scheduled-push-runner birthday-push-sniper --no-verify-jwt --project-ref cqbiozfappfwfcahtxfm",
     "deploy:webhook": "npx supabase functions deploy line-webhook team-hook --no-verify-jwt --project-ref cqbiozfappfwfcahtxfm",
     "sql": "supabase db query --linked -f",
+    "sql:ach": "supabase db query --linked -f supabase/achievements_double11.sql",
+    "sql:hourly": "supabase db query --linked -f supabase/push_runner_hourly.sql",
     "deploy:team-mock": "npx supabase functions deploy team-mock-api --no-verify-jwt --project-ref cqbiozfappfwfcahtxfm",
     "deploy:presale": "npx supabase functions deploy presale-catalog presale-order-create presale-member presale-admin --no-verify-jwt --project-ref cqbiozfappfwfcahtxfm"
   },

@@ -1,7 +1,7 @@
 import { LINE_TOKEN, sendPush, supabase, type Target } from '../_shared/push.ts'
 import { notifyAdmins } from '../_shared/notify.ts'
 
-// 執行到期的預約推播（scheduled_pushes）。由 pg_cron 每 5 分鐘呼叫一次。
+// 執行到期的預約推播（scheduled_pushes）。由 pg_cron 每小時整點呼叫一次。
 // 不接受任何參數，只會處理後台已建立、且時間已到的預約，所以不需要驗證呼叫者；
 // 每筆預約先用 status 從 pending 改成 sending「搶」下來，重複呼叫也不會重複發送。
 

@@ -14,6 +14,7 @@
     "sql:ach": "supabase db query --linked -f supabase/achievements_double11.sql",
     "sql:hourly": "supabase db query --linked -f supabase/push_runner_hourly.sql",
     "sql:pushextra": "supabase db query --linked -f supabase/push_extra.sql",
+    "sql:drafts": "supabase db query --linked -f supabase/push_drafts.sql",
     "deploy:team-mock": "npx supabase functions deploy team-mock-api --no-verify-jwt --project-ref cqbiozfappfwfcahtxfm",
     "deploy:presale": "npx supabase functions deploy presale-catalog presale-order-create presale-member presale-admin --no-verify-jwt --project-ref cqbiozfappfwfcahtxfm"
   },

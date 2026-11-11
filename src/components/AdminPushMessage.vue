@@ -149,9 +149,9 @@ const buildContent = () => {
 const blockReady = (b) => {
   if (b.text.length > textMaxOf(b)) return false
   if (b.kind === 'text') return !!b.text.trim()
-  if (!b.image_url || b.uploading) return false
-  if (b.kind === 'card') return !!b.card.title.trim() && buttonPaired(b) && buttonUrlValid(b)
-  return true
+  if (b.uploading) return false
+  if (b.kind === 'image') return !!b.image_url
+  return !!b.card.title.trim() && buttonPaired(b) && buttonUrlValid(b) // 圖文卡片：圖片選填
 }
 // 訊息內容是否完整（不含對象）
 const contentReady = computed(() => blocks.value.every(blockReady) && bubbleCount.value <= MAX_BUBBLES)
@@ -364,6 +364,7 @@ const canSubmit = computed(() => canSend.value && (sendMode.value === 'now' || s
 const resetMessage = () => {
   title.value = ''
   blocks.value = [newBlock()]
+  draftId.value = null; draftName.value = ''
 }
 
 const send = async () => {
@@ -418,6 +419,68 @@ const SCHEDULE_STATUS = {
   cancelled: { text: '已取消', cls: 'badge-secondary' },
 }
 onMounted(loadScheduled)
+
+// ===== 草稿 =====
+// 存整個頁面的狀態：對象、條件、標題、對話框（不含上傳中的狀態）
+const drafts = ref([])
+const draftId = ref(null)   // 目前載入的草稿；再按「存草稿」會覆蓋這份
+const draftName = ref('')
+const draftBusy = ref(false)
+const notice = ref('')
+const loadDrafts = async () => {
+  try { drafts.value = (await invoke({ action: 'list_drafts' })).items }
+  catch (err) { console.warn('讀取草稿失敗:', err.message) }
+}
+const snapshot = () => ({
+  mode: mode.value, filter: filter.value, selected: selected.value, title: title.value,
+  blocks: blocks.value.map(({ key, uploading, ...b }) => b),
+})
+const saveDraft = async (asNew = false) => {
+  draftBusy.value = true; errorMsg.value = ''; notice.value = ''
+  try {
+    const name = draftName.value.trim() || title.value.trim() || blocks.value[0].text.trim().slice(0, 20) || blocks.value[0].card.title.trim() || '未命名草稿'
+    const r = await invoke({ action: 'save_draft', id: asNew ? null : draftId.value, name, state: snapshot() })
+    draftId.value = r.id; draftName.value = name
+    notice.value = `已存草稿「${name}」`
+    await loadDrafts()
+  } catch (err) { errorMsg.value = err.message } finally { draftBusy.value = false }
+}
+const openDraft = (d) => {
+  if (!confirm(`載入草稿「${d.name}」？目前頁面上沒存的內容會被取代。`)) return
+  const st = d.state || {}
+  mode.value = st.mode || 'filter'
+  filter.value = { ...emptyFilter(), ...(st.filter || {}) }
+  selected.value = st.selected || []
+  title.value = st.title || ''
+  blocks.value = (st.blocks?.length ? st.blocks : [{}]).map(b => ({ ...newBlock(), ...b, card: { ...newBlock().card, ...(b.card || {}) }, key: ++blockSeq, uploading: false }))
+  draftId.value = d.id; draftName.value = d.name
+  notice.value = `已載入草稿「${d.name}」，記得重新「計算人數」再發送`
+  window.scrollTo({ top: 0, behavior: 'smooth' })
+}
+const deleteDraft = async (d) => {
+  if (!confirm(`刪除草稿「${d.name}」？`)) return
+  try {
+    await invoke({ action: 'delete_draft', id: d.id })
+    if (draftId.value === d.id) { draftId.value = null; draftName.value = '' }
+    await loadDrafts()
+  } catch (err) { errorMsg.value = err.message }
+}
+const newDraft = () => {
+  if (!confirm('清空目前的訊息，開始新的推播？')) return
+  resetMessage(); draftId.value = null; draftName.value = ''
+}
+onMounted(loadDrafts)
+
+// ===== 測試發送：只發給自己 =====
+const isTesting = ref(false)
+const testSend = async () => {
+  isTesting.value = true; errorMsg.value = ''; notice.value = ''
+  try {
+    const r = await invoke({ action: 'test_send', ...buildContent() })
+    notice.value = `測試訊息已發到你的 LINE（${r.count} 個對話框，用掉 1 則額度）`
+    await loadQuota()
+  } catch (err) { errorMsg.value = err.message } finally { isTesting.value = false }
+}
 </script>
 
 <template>
@@ -435,6 +498,29 @@ onMounted(loadScheduled)
         </div>
       </div>
     </div>
+
+    <!-- 草稿 -->
+    <section class="card">
+      <div class="filter-head">
+        <h4 style="margin: 0;">📝 草稿</h4>
+        <button class="link" @click="newDraft">開新推播</button>
+      </div>
+      <div class="row" style="margin: 8px 0 0;">
+        <input v-model="draftName" class="input" style="flex: 1; min-width: 180px;" placeholder="草稿名稱（不填就用標題或第一段文字）" maxlength="60" />
+        <button class="btn btn-dark" :disabled="draftBusy" @click="saveDraft(false)">{{ draftId ? '儲存（覆蓋）' : '存草稿' }}</button>
+        <button v-if="draftId" class="btn btn-dark" :disabled="draftBusy" @click="saveDraft(true)">另存新草稿</button>
+      </div>
+      <div v-if="draftId" class="hint">正在編輯草稿「{{ draftName }}」</div>
+      <ul v-if="drafts.length" class="draft-list">
+        <li v-for="d in drafts" :key="d.id" :class="{ current: d.id === draftId }">
+          <span class="draft-name" @click="openDraft(d)">{{ d.name }}</span>
+          <span class="muted small">{{ fmtTime(d.updated_at) }}<template v-if="d.created_by_name"> · {{ d.created_by_name }}</template></span>
+          <button class="link" @click="openDraft(d)">載入</button>
+          <button class="link danger" @click="deleteDraft(d)">刪除</button>
+        </li>
+      </ul>
+      <div v-else class="hint">還沒有草稿。</div>
+    </section>
 
     <!-- 1. 對象 -->
     <section class="card">
@@ -669,7 +755,7 @@ onMounted(loadScheduled)
             {{ b.uploading ? '上傳中…' : (b.image_url ? '換一張圖片' : '上傳圖片') }}
             <input type="file" accept="image/*" hidden :disabled="b.uploading" @change="uploadImage(b, $event)" />
           </label>
-          <span class="hint">JPG／PNG 都可以，會自動縮到 1600px 寬。</span>
+          <span class="hint"><template v-if="b.kind === 'card'">圖片選填，不放就是「標題＋內文＋按鈕」。</template>JPG／PNG 都可以，會自動縮到 1600px 寬。</span>
           <button v-if="b.image_url" class="link" @click="b.image_url = ''">移除</button>
         </div>
 
@@ -753,6 +839,10 @@ onMounted(loadScheduled)
       <div v-for="e in result.errors" :key="e" class="muted">{{ e }}</div>
     </div>
 
+    <div v-if="notice" class="alert success">{{ notice }}</div>
+    <button class="btn btn-dark send test-btn" :disabled="!contentReady || isTesting" @click="testSend">
+      {{ isTesting ? '發送中…' : '📱 先發給我看看（只發給自己）' }}
+    </button>
     <button class="btn btn-gold send" :disabled="!canSubmit" @click="showConfirm = true">
       <template v-if="isSending">{{ sendMode === 'schedule' ? '預約中…' : '發送中…' }}</template>
       <template v-else-if="previewCount === null">請先計算人數</template>
@@ -938,5 +1028,12 @@ code { background: #222; padding: 1px 5px; border-radius: 4px; color: #D4AF37; }
 .lp-preview > * + * { margin-top: 8px; }
 .confirm-blocks { max-height: 50vh; overflow-y: auto; }
 .confirm-block { border-top: 1px solid #222; padding-top: 8px; margin-top: 8px; }
+.draft-list { list-style: none; padding: 0; margin: 10px 0 0; border: 1px solid #222; border-radius: 8px; max-height: 220px; overflow-y: auto; }
+.draft-list li { display: flex; gap: 10px; align-items: center; padding: 8px 12px; border-bottom: 1px solid #1d1d1d; color: #ddd; }
+.draft-list li.current { background: rgba(212, 175, 55, 0.08); }
+.draft-name { cursor: pointer; flex: 1; }
+.draft-name:hover { color: #D4AF37; }
+.small { font-size: 0.8rem; }
+.test-btn { margin-bottom: 10px; }
 .modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 16px; }
 </style>

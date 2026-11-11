@@ -1,5 +1,5 @@
 import {
-  getQuota, missingTextFn, normalizeExtra, normalizeMedia, PushError, resolveTarget, sendPush, supabase, validateUnits, LINE_TOKEN,
+  getQuota, missingTextFn, normalizeExtra, normalizeMedia, PushError, resolveTarget, sendPush, sendTest, supabase, validateUnits, LINE_TOKEN,
   type Media, type Target,
 } from '../_shared/push.ts'
 
@@ -19,6 +19,8 @@ const defaultTitle = (title: string | undefined, message: string, media: Media) 
 //   { action: 'schedule', target, message, title?, send_at } → 預約（send_at 為 ISO 時間）
 //   { action: 'list_scheduled' }                            → 預約清單
 //   { action: 'cancel', id }                                → 取消尚未發送的預約
+//   { action: 'test_send', message, media?, extra? }        → 只發給自己看（不記紀錄，用掉 1 則額度）
+//   { action: 'list_drafts' } / { action: 'save_draft', id?, name, state } / { action: 'delete_draft', id } → 草稿
 // target:
 //   { mode: 'ids', ids: string[] }   指定會員（users.id）
 //   { mode: 'filter', ...Filter }    條件篩選（所有條件 AND）
@@ -45,7 +47,11 @@ async function getCaller(req: Request) {
   // 後台帳號：users.id = auth uid；LINE 帳號：users.id = LINE user id
   const candidates = [data.user.id, data.user.user_metadata?.line_user_id].filter(Boolean)
   const { data: rows } = await supabase.from('users').select('id, display_name, role').in('id', candidates)
-  return rows?.find((r) => ALLOWED_ROLES.includes(r.role)) ?? null
+  const row = rows?.find((r) => ALLOWED_ROLES.includes(r.role))
+  if (!row) return null
+  // 測試發送要用 LINE user id（U 開頭）；後台帳號沒綁 LINE 時是 null
+  const lineId = [data.user.user_metadata?.line_user_id, row.id].find((v) => typeof v === 'string' && /^U[0-9a-f]{32}$/.test(v)) ?? null
+  return { ...row, lineId }
 }
 
 Deno.serve(async (req) => {
@@ -57,7 +63,7 @@ Deno.serve(async (req) => {
   if (!caller) return json({ error: '沒有權限' }, 403)
   const callerName = caller.display_name ?? caller.id
 
-  let body: { action?: string; target?: Target; message?: string; title?: string; send_at?: string; id?: string; media?: unknown; extra?: unknown }
+  let body: { action?: string; target?: Target; message?: string; title?: string; send_at?: string; id?: string; media?: unknown; extra?: unknown; name?: string; state?: unknown }
   try {
     body = await req.json()
   } catch {
@@ -90,6 +96,39 @@ Deno.serve(async (req) => {
           .select('id')
         if (error) throw new Error(error.message)
         if (!data?.length) return json({ error: '這筆預約已經在發送或已結束，無法取消' }, 400)
+        return json({ ok: true })
+      }
+
+      case 'test_send': {
+        if (!caller.lineId) return json({ error: '你的後台帳號沒有綁 LINE，沒辦法收測試訊息' }, 400)
+        return json(await sendTest(caller.lineId, body.message ?? '', normalizeMedia(body.media), body.extra))
+      }
+
+      case 'list_drafts': {
+        const { data, error } = await supabase.from('push_drafts')
+          .select('id, name, state, created_by_name, updated_at').order('updated_at', { ascending: false }).limit(50)
+        if (error) throw new Error(`讀取草稿失敗（請確認 push_drafts.sql 已執行）：${error.message}`)
+        return json({ items: data ?? [] })
+      }
+
+      case 'save_draft': {
+        const name = String(body.name ?? '').trim().slice(0, 60) || '未命名草稿'
+        if (!body.state || typeof body.state !== 'object') return json({ error: '草稿內容是空的' }, 400)
+        if (JSON.stringify(body.state).length > 200_000) return json({ error: '草稿太大' }, 400)
+        const row = { name, state: body.state, created_by_name: callerName, updated_at: new Date().toISOString() }
+        const q = body.id
+          ? supabase.from('push_drafts').update(row).eq('id', body.id).select('id').maybeSingle()
+          : supabase.from('push_drafts').insert([row]).select('id').single()
+        const { data, error } = await q
+        if (error) throw new Error(`儲存草稿失敗（請確認 push_drafts.sql 已執行）：${error.message}`)
+        if (!data) return json({ error: '這份草稿已經被刪掉了，請另存新草稿' }, 400)
+        return json({ ok: true, id: data.id })
+      }
+
+      case 'delete_draft': {
+        if (!body.id) return json({ error: '缺少 id' }, 400)
+        const { error } = await supabase.from('push_drafts').delete().eq('id', body.id)
+        if (error) throw new Error(error.message)
         return json({ ok: true })
       }
 

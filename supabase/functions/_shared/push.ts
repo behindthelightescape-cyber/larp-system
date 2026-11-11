@@ -273,9 +273,9 @@ export function validateMessage(message: string, target: Target, media: Media = 
   if (message.includes(MISSING_TAG) && !(target?.mode === 'filter' && target.achievement_id)) {
     throw new PushError(`訊息裡有 ${MISSING_TAG}，但沒有設定「成就差一點」條件`)
   }
-  if (media) {
-    if (!HTTPS_URL.test(media.image_url)) throw new PushError('請先上傳圖片')
-  }
+  // 圖文卡片可以沒有圖（只有標題、內文、按鈕）；有填就要是 https
+  if (media?.kind === 'image' && !HTTPS_URL.test(media.image_url)) throw new PushError('請先上傳圖片')
+  if (media?.kind === 'card' && media.image_url && !HTTPS_URL.test(media.image_url)) throw new PushError('圖片網址不正確，請重新上傳')
   if (media?.kind === 'card') {
     if (!media.card_title) throw new PushError('圖文卡片需要標題')
     if (media.card_title.length > 60) throw new PushError('卡片標題最多 60 字')
@@ -298,10 +298,12 @@ export function buildMessages(text: string, media: Media): unknown[] {
   const bubble: Record<string, unknown> = {
     type: 'bubble',
     styles: { body: { backgroundColor: '#111111' }, footer: { backgroundColor: '#111111' } },
-    hero: {
-      type: 'image', url: media.image_url, size: 'full', aspectRatio: media.aspect || '20:13', aspectMode: 'cover',
-      ...(media.button_url ? { action: { type: 'uri', uri: media.button_url } } : {}),
-    },
+    ...(media.image_url ? {
+      hero: {
+        type: 'image', url: media.image_url, size: 'full', aspectRatio: media.aspect || '20:13', aspectMode: 'cover',
+        ...(media.button_url ? { action: { type: 'uri', uri: media.button_url } } : {}),
+      },
+    } : {}),
     body: { type: 'box', layout: 'vertical', paddingAll: '16px', contents: body },
   }
   if (media.button_label && media.button_url) {
@@ -454,4 +456,20 @@ export async function sendPush(opts: {
   })
 
   return { count: ids.length, success, fail, errors, logId: log.id as string }
+}
+
+/** 測試發送：只發給操作的人自己（不寫推播紀錄，但一樣會用掉 1 則額度）。{缺少劇本} 換成範例文字。 */
+export async function sendTest(lineUserId: string, message: string, media: Media, extraRaw: unknown) {
+  const units: Unit[] = [{ message: (message ?? '').trim(), media: normalizeMedia(media) }, ...normalizeExtra(extraRaw)]
+  // 測試時不需要設定成就條件，用假的 target 讓 {缺少劇本} 通過檢查
+  validateUnits(units, { mode: 'filter', achievement_id: 'test' } as Target)
+  const sample = '《範例劇本A》、《範例劇本B》'
+  const messages = units.flatMap((u) => buildMessages(u.message.replaceAll(MISSING_TAG, sample), u.media))
+  const res = await fetch('https://api.line.me/v2/bot/message/push', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${LINE_TOKEN}` },
+    body: JSON.stringify({ to: lineUserId, messages }),
+  })
+  if (!res.ok) throw new PushError(`測試發送失敗（LINE ${res.status}）：${(await res.text()).slice(0, 300)}`)
+  return { ok: true, count: messages.length }
 }

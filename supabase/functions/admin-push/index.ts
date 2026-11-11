@@ -1,5 +1,5 @@
 import {
-  getQuota, missingTextFn, normalizeMedia, PushError, resolveTarget, sendPush, supabase, validateMessage, LINE_TOKEN,
+  getQuota, missingTextFn, normalizeExtra, normalizeMedia, PushError, resolveTarget, sendPush, supabase, validateUnits, LINE_TOKEN,
   type Media, type Target,
 } from '../_shared/push.ts'
 
@@ -15,7 +15,7 @@ const defaultTitle = (title: string | undefined, message: string, media: Media) 
 // POST body:
 //   { action: 'quota' }                                     → 本月額度 / 已用
 //   { action: 'preview', target }                           → 預計人數 + 前幾位名單
-//   { action: 'send', target, message, title? }             → 立即發送
+//   { action: 'send', target, message, media?, extra?, title? } → 立即發送（extra＝第 2 個起的對話框 [{message, media}]）
 //   { action: 'schedule', target, message, title?, send_at } → 預約（send_at 為 ISO 時間）
 //   { action: 'list_scheduled' }                            → 預約清單
 //   { action: 'cancel', id }                                → 取消尚未發送的預約
@@ -57,7 +57,7 @@ Deno.serve(async (req) => {
   if (!caller) return json({ error: '沒有權限' }, 403)
   const callerName = caller.display_name ?? caller.id
 
-  let body: { action?: string; target?: Target; message?: string; title?: string; send_at?: string; id?: string; media?: unknown }
+  let body: { action?: string; target?: Target; message?: string; title?: string; send_at?: string; id?: string; media?: unknown; extra?: unknown }
   try {
     body = await req.json()
   } catch {
@@ -72,7 +72,7 @@ Deno.serve(async (req) => {
       case 'list_scheduled': {
         const { data, error } = await supabase
           .from('scheduled_pushes')
-          .select('id, title, message, media, send_at, status, estimated_count, result, error_msg, created_by_name, created_at, sent_at')
+          .select('id, title, message, media, extra, send_at, status, estimated_count, result, error_msg, created_by_name, created_at, sent_at')
           .or(`status.in.(pending,sending),send_at.gte.${new Date(Date.now() - 30 * 86400e3).toISOString()}`)
           .order('send_at', { ascending: false })
           .limit(50)
@@ -116,7 +116,7 @@ Deno.serve(async (req) => {
         const media = normalizeMedia(body.media)
         const title = defaultTitle(body.title, message, media)
         const r = await sendPush({
-          target: body.target, message, media, taskName: `[自訂] ${title}`, source: 'custom', createdByName: callerName,
+          target: body.target, message, media, extra: body.extra, taskName: `[自訂] ${title}`, source: 'custom', createdByName: callerName,
         })
         return json({ success: r.success, fail: r.fail, errors: r.errors })
       }
@@ -125,7 +125,8 @@ Deno.serve(async (req) => {
         if (!body.target) return json({ error: '缺少 target' }, 400)
         const message = (body.message ?? '').trim()
         const media = normalizeMedia(body.media)
-        validateMessage(message, body.target, media)
+        const extra = normalizeExtra(body.extra)
+        validateUnits([{ message, media }, ...extra], body.target)
         const sendAt = Date.parse(body.send_at ?? '')
         if (isNaN(sendAt)) return json({ error: '預約時間格式錯誤' }, 400)
         if (sendAt < Date.now() + 60 * 1000) return json({ error: '預約時間至少要在 1 分鐘後' }, 400)
@@ -138,6 +139,7 @@ Deno.serve(async (req) => {
           title: defaultTitle(body.title, message, media),
           message,
           media,
+          ...(extra.length ? { extra } : {}),
           target: body.target,
           send_at: new Date(sendAt).toISOString(),
           estimated_count: ids.length,

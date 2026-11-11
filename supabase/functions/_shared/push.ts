@@ -317,6 +317,42 @@ export function buildMessages(text: string, media: Media): unknown[] {
   return [{ type: 'flex', altText: alt, contents: bubble }]
 }
 
+// ── 多個對話框 ──
+// 一次推播＝第一個對話框（message＋media，舊欄位）＋extra（第 2 個起）。
+// LINE 一次最多 5 個訊息物件（「圖片＋文字」算 2 個），不管幾個，每人都只算 1 則額度。
+export type Unit = { message: string; media: Media }
+export const MAX_LINE_MESSAGES = 5
+
+/** 整理前端傳來的 extra：[{ message, media }]，空的對話框丟掉 */
+export function normalizeExtra(raw: unknown): Unit[] {
+  if (!Array.isArray(raw)) return []
+  return raw.slice(0, MAX_LINE_MESSAGES - 1)
+    // deno-lint-ignore no-explicit-any
+    .map((u: any) => ({ message: String(u?.message ?? '').trim(), media: normalizeMedia(u?.media) }))
+    .filter((u) => u.message || u.media)
+}
+
+/** 驗證所有對話框，並確認總數不超過 LINE 上限 */
+export function validateUnits(units: Unit[], target: Target) {
+  if (!units.length) throw new PushError('訊息不能空白')
+  units.forEach((u, i) => {
+    try {
+      validateMessage(u.message, target, u.media)
+    } catch (e) {
+      if (e instanceof PushError && units.length > 1) throw new PushError(`第 ${i + 1} 個對話框：${e.message}`)
+      throw e
+    }
+  })
+  const n = units.reduce((s, u) => s + buildMessages(u.message, u.media).length, 0)
+  if (n > MAX_LINE_MESSAGES) throw new PushError(`一次最多 ${MAX_LINE_MESSAGES} 個對話框（「圖片＋文字」算 2 個），現在是 ${n} 個`)
+}
+
+/** 一行摘要（通知、紀錄用） */
+export function unitSummary(u: Unit) {
+  return u.media?.kind === 'card' ? `［圖文卡片］${u.media.card_title}${u.message ? `\n${u.message}` : ''}`
+    : u.media?.kind === 'image' ? `［圖片］${u.message}` : u.message
+}
+
 /** 記錄一批收件人（寫入失敗只印 log，不影響發送） */
 export async function recordRecipients(
   logId: string, userIds: string[], status: 'sent' | 'failed', personalized: string | null,
@@ -336,10 +372,13 @@ export async function sendPush(opts: {
   source: 'custom' | 'scheduled'
   createdByName?: string
   media?: Media
+  extra?: unknown
 }) {
   const message = (opts.message ?? '').trim()
   const media = normalizeMedia(opts.media)
-  validateMessage(message, opts.target, media)
+  const extra = normalizeExtra(opts.extra)
+  const units: Unit[] = [{ message, media }, ...extra]
+  validateUnits(units, opts.target)
 
   const { ids, missing } = await resolveTarget(opts.target)
   if (ids.length === 0) throw new PushError('沒有符合條件的會員')
@@ -351,33 +390,39 @@ export async function sendPush(opts: {
 
   // 依實際訊息內容分組：有 {缺少劇本} 時，缺同一組劇本的人一起發
   const missingText = await missingTextFn(missing)
-  const groups = new Map<string, string[]>()
+  // 每個對話框都會代換
+  const groups = new Map<string, { texts: string[]; ids: string[] }>()
   for (const id of ids) {
-    const text = message.includes(MISSING_TAG) ? message.replaceAll(MISSING_TAG, missingText(id)) : message
-    const g = groups.get(text)
-    if (g) g.push(id)
-    else groups.set(text, [id])
+    const texts = units.map((u) => (u.message.includes(MISSING_TAG) ? u.message.replaceAll(MISSING_TAG, missingText(id)) : u.message))
+    const key = JSON.stringify(texts)
+    const g = groups.get(key)
+    if (g) g.ids.push(id)
+    else groups.set(key, { texts, ids: [id] })
   }
+  const originalKey = JSON.stringify(units.map((u) => u.message))
 
   const base = { task_name: opts.taskName, status: 'processing', target_count: ids.length }
   const insertLog = (row: Record<string, unknown>) => supabase.from('push_logs').insert([row]).select().single()
   const full = { ...base, source: opts.source, message, created_by_name: opts.createdByName ?? null }
-  let { data: log, error: logErr } = await insertLog({ ...full, media })
-  // 還沒跑 push_media.sql / setup_push.sql（沒有新欄位）時退回舊格式
-  if (logErr) ({ data: log, error: logErr } = await insertLog(full))
+  let { data: log, error: logErr } = await insertLog({ ...full, media, extra: extra.length ? extra : null })
+  // 還沒跑 push_extra.sql（沒有 extra 欄位）時：單一對話框退回舊格式；多個對話框直接報錯，不要只記一半
+  if (logErr && !extra.length) ({ data: log, error: logErr } = await insertLog({ ...full, media }))
+  if (logErr && !extra.length) ({ data: log, error: logErr } = await insertLog(full))
   if (logErr) ({ data: log, error: logErr } = await insertLog(base))
   if (logErr || !log) throw new Error(`寫入 push_logs 失敗: ${logErr?.message}`)
 
   let success = 0
   let fail = 0
   const errors: string[] = []
-  for (const [text, groupIds] of groups) {
+  for (const [key, { texts, ids: groupIds }] of groups) {
+    const messages = units.flatMap((u, i) => buildMessages(texts[i], u.media))
+    const personalized = key === originalKey ? null : texts.filter(Boolean).join('\n──\n')
     for (let i = 0; i < groupIds.length; i += CHUNK_SIZE) {
       const chunk = groupIds.slice(i, i + CHUNK_SIZE)
       const res = await fetch('https://api.line.me/v2/bot/message/multicast', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${LINE_TOKEN}` },
-        body: JSON.stringify({ to: chunk, messages: buildMessages(text, media) }),
+        body: JSON.stringify({ to: chunk, messages }),
       })
       if (res.ok) {
         success += chunk.length
@@ -385,7 +430,7 @@ export async function sendPush(opts: {
         fail += chunk.length
         errors.push(`${chunk.length} 人發送失敗 LINE ${res.status}: ${await res.text()}`)
       }
-      await recordRecipients(log.id, chunk, res.ok ? 'sent' : 'failed', text === message ? null : text)
+      await recordRecipients(log.id, chunk, res.ok ? 'sent' : 'failed', personalized)
     }
   }
 
@@ -404,8 +449,7 @@ export async function sendPush(opts: {
     count: ids.length,
     success,
     fail,
-    message: media?.kind === 'card' ? `［圖文卡片］${media.card_title}\n${message}`
-      : media?.kind === 'image' ? `［圖片］${message}` : message,
+    message: units.map(unitSummary).join('\n──\n'),
     error: errors.length ? errors.join(' | ') : null,
   })
 

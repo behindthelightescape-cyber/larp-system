@@ -19,6 +19,13 @@ const STATUS = {
 const logs = ref([])
 const isLoading = ref(true)
 const hasMore = ref(false)
+// 多個對話框的推播：第 1 個在 message，第 2 個起在 extra
+const unitText = (u) => (u.media?.kind === 'card' ? `［圖文卡片］${u.media.card_title}${u.message ? '\n' + u.message : ''}`
+  : u.media?.kind === 'image' ? `［圖片］${u.message || ''}` : u.message)
+const fullMessage = (log) => {
+  if (!log.extra?.length) return log.message
+  return [{ message: log.message, media: log.media }, ...log.extra].map(unitText).join('\n──────\n')
+}
 const sourceFilter = ref('') // '' | birthday | custom | scheduled
 const loadError = ref('')
 
@@ -429,7 +436,7 @@ const triggerManualPush = async (key) => {
                 <div class="detail">
                   <div class="detail-col">
                     <div class="label">訊息內容</div>
-                    <pre class="msg">{{ (member && log.my_message) || log.message || '（這筆是舊紀錄，沒有保存內容）' }}</pre>
+                    <pre class="msg">{{ (member && log.my_message) || fullMessage(log) || '（這筆是舊紀錄，沒有保存內容）' }}</pre>
                     <div v-if="log.error_msg" class="err">錯誤：{{ log.error_msg }}</div>
                   </div>
                   <div v-if="!member" class="detail-col">

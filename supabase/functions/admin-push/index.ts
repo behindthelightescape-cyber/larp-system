@@ -142,6 +142,26 @@ Deno.serve(async (req) => {
         return json({ ok: true })
       }
 
+      // 完整名單（不套用 exclude_ids，前端自己標示已排除的人）
+      case 'preview_list': {
+        if (!body.target) return json({ error: '缺少 target' }, 400)
+        const { exclude_ids: _ex, ...t } = body.target as Target & { exclude_ids?: string[] }
+        const { ids, lastPlayed, missing } = await resolveTarget(t as Target)
+        const LIMIT = 5000
+        const missingText = await missingTextFn(missing)
+        const fmt = (v?: number) => (v ? new Date(v + 8 * 3600 * 1000).toISOString().slice(0, 10) : null)
+        const users: Record<string, unknown>[] = []
+        const slice = ids.slice(0, LIMIT)
+        for (let i = 0; i < slice.length; i += 300) {
+          const { data } = await supabase.from('users').select('id, display_name, legacy_id, level').in('id', slice.slice(i, i + 300))
+          for (const u of data ?? []) {
+            users.push({ ...u, last_played: fmt(lastPlayed?.get(u.id)), missing: missing ? missingText(u.id) : null })
+          }
+        }
+        users.sort((a, b) => String(a.legacy_id ?? '').localeCompare(String(b.legacy_id ?? '')))
+        return json({ count: ids.length, truncated: ids.length > LIMIT, users })
+      }
+
       case 'preview': {
         if (!body.target) return json({ error: '缺少 target' }, 400)
         const { ids, lastPlayed, missing } = await resolveTarget(body.target)

@@ -302,6 +302,50 @@ const tagWithoutAchievement = computed(() =>
   hasMissingTag.value && !(mode.value === 'filter' && filter.value.achievement_id)
 )
 
+// ===== 完整名單：瀏覽、排除 =====
+const excludedIds = ref([])           // 手動排除的會員 id（存進草稿、預約時一起帶）
+const excludedSet = computed(() => new Set(excludedIds.value))
+const showList = ref(false)
+const listLoading = ref(false)
+const listUsers = ref([])             // [{ id, display_name, legacy_id, level, last_played, missing }]
+const listTruncated = ref(false)
+const listQuery = ref('')
+const listPage = ref(0)
+const LIST_PAGE = 100
+let excludedAtOpen = ''
+const listFiltered = computed(() => {
+  const q = listQuery.value.trim().toLowerCase()
+  if (!q) return listUsers.value
+  return listUsers.value.filter(u => (u.display_name || '').toLowerCase().includes(q) || (u.legacy_id || '').includes(q))
+})
+const listPageCount = computed(() => Math.max(1, Math.ceil(listFiltered.value.length / LIST_PAGE)))
+const listRows = computed(() => listFiltered.value.slice(listPage.value * LIST_PAGE, (listPage.value + 1) * LIST_PAGE))
+watch(listQuery, () => { listPage.value = 0 })
+const openList = async () => {
+  showList.value = true
+  excludedAtOpen = JSON.stringify(excludedIds.value)
+  listLoading.value = true; listQuery.value = ''; listPage.value = 0
+  try {
+    const r = await invoke({ action: 'preview_list', target: buildTarget() })
+    listUsers.value = r.users || []
+    listTruncated.value = !!r.truncated
+  } catch (err) {
+    errorMsg.value = err.message; showList.value = false
+  } finally { listLoading.value = false }
+}
+const toggleExclude = (id) => {
+  excludedIds.value = excludedSet.value.has(id) ? excludedIds.value.filter(x => x !== id) : [...excludedIds.value, id]
+}
+const excludeShown = () => {
+  const add = listFiltered.value.map(u => u.id).filter(id => !excludedSet.value.has(id))
+  excludedIds.value = [...excludedIds.value, ...add]
+}
+const clearExcluded = () => { excludedIds.value = [] }
+const closeList = () => {
+  showList.value = false
+  if (JSON.stringify(excludedIds.value) !== excludedAtOpen) preview() // 排除名單有變就重算人數
+}
+
 const isSet = (v) => (Array.isArray(v) ? v.length > 0 : v !== '' && v !== false && v !== null)
 const activeFilterCount = computed(() => Object.values(filter.value).filter(isSet).length)
 
@@ -309,6 +353,7 @@ const buildTarget = () => {
   if (mode.value === 'pick') return { mode: 'ids', ids: selected.value.map(u => u.id) }
   const target = { mode: 'filter' }
   for (const [k, v] of Object.entries(filter.value)) if (isSet(v)) target[k] = v
+  if (excludedIds.value.length) target.exclude_ids = [...excludedIds.value]
   return target
 }
 
@@ -432,7 +477,7 @@ const loadDrafts = async () => {
   catch (err) { console.warn('讀取草稿失敗:', err.message) }
 }
 const snapshot = () => ({
-  mode: mode.value, filter: filter.value, selected: selected.value, title: title.value,
+  mode: mode.value, filter: filter.value, selected: selected.value, title: title.value, excluded: excludedIds.value,
   blocks: blocks.value.map(({ key, uploading, ...b }) => b),
 })
 const saveDraft = async (asNew = false) => {
@@ -451,6 +496,7 @@ const openDraft = (d) => {
   mode.value = st.mode || 'filter'
   filter.value = { ...emptyFilter(), ...(st.filter || {}) }
   selected.value = st.selected || []
+  excludedIds.value = st.excluded || []
   title.value = st.title || ''
   blocks.value = (st.blocks?.length ? st.blocks : [{}]).map(b => ({ ...newBlock(), ...b, card: { ...newBlock().card, ...(b.card || {}) }, key: ++blockSeq, uploading: false }))
   draftId.value = d.id; draftName.value = d.name
@@ -715,6 +761,13 @@ const testSend = async () => {
           <span v-if="overQuota" class="danger">（超過本月剩餘額度）</span>
         </span>
       </div>
+      <div v-if="mode === 'filter' && (previewCount !== null || excludedIds.length)" class="list-tools">
+        <button class="btn btn-dark" @click="openList">📋 瀏覽完整名單</button>
+        <template v-if="excludedIds.length">
+          <span class="muted">已手動排除 <b>{{ excludedIds.length }}</b> 人</span>
+          <button class="link danger" @click="clearExcluded(); preview()">清除排除</button>
+        </template>
+      </div>
       <div v-if="previewSample.length" class="sample">
         <div class="group-label">名單抽樣（前 {{ previewSample.length }} 位）</div>
         <span v-for="u in previewSample" :key="u.legacy_id" class="sample-item">
@@ -888,6 +941,47 @@ const testSend = async () => {
       </table>
     </section>
 
+    <!-- 完整名單 -->
+    <div v-if="showList" class="modal-mask" @click.self="closeList">
+      <div class="modal list-modal">
+        <div class="filter-head">
+          <h4 style="margin: 0;">📋 完整名單</h4>
+          <button class="link" @click="closeList">關閉</button>
+        </div>
+        <div v-if="listLoading" class="hint">讀取中…</div>
+        <template v-else>
+          <p class="hint">
+            符合條件 <b>{{ listUsers.length }}</b> 人，已排除 <b>{{ excludedIds.length }}</b> 人，
+            實際發送 <b>{{ listUsers.filter(u => !excludedSet.has(u.id)).length }}</b> 人。
+            <span v-if="listTruncated" class="danger">名單超過 5000 人，只列出前 5000 位。</span>
+          </p>
+          <div class="row" style="margin: 0 0 8px;">
+            <input v-model="listQuery" class="input" style="flex: 1; min-width: 160px;" placeholder="搜尋暱稱或會員編號" />
+            <button class="btn btn-dark" :disabled="!listFiltered.length" @click="excludeShown">排除{{ listQuery ? '搜尋結果' : '全部' }}（{{ listFiltered.length }}）</button>
+            <button class="btn btn-dark" :disabled="!excludedIds.length" @click="clearExcluded">清除全部排除</button>
+          </div>
+          <ul class="results list-rows">
+            <li v-for="u in listRows" :key="u.id" :class="{ excluded: excludedSet.has(u.id) }">
+              <span>{{ u.display_name || '(無暱稱)' }}</span>
+              <span class="muted">#{{ u.legacy_id }} · LV{{ u.level }}<template v-if="u.last_played"> · 最後 {{ u.last_played }}</template><template v-if="u.missing"> · 缺 {{ u.missing }}</template></span>
+              <button class="link" :class="{ danger: !excludedSet.has(u.id) }" style="margin-left: auto;" @click="toggleExclude(u.id)">
+                {{ excludedSet.has(u.id) ? '恢復' : '排除' }}
+              </button>
+            </li>
+            <li v-if="!listRows.length" class="muted">沒有符合的會員</li>
+          </ul>
+          <div v-if="listPageCount > 1" class="pager">
+            <button class="link" :disabled="listPage === 0" @click="listPage--">上一頁</button>
+            <span class="muted">{{ listPage + 1 }} / {{ listPageCount }}</span>
+            <button class="link" :disabled="listPage >= listPageCount - 1" @click="listPage++">下一頁</button>
+          </div>
+          <div class="modal-actions">
+            <button class="btn btn-gold" @click="closeList">完成</button>
+          </div>
+        </template>
+      </div>
+    </div>
+
     <!-- 確認視窗 -->
     <div v-if="showConfirm" class="modal-mask" @click.self="showConfirm = false">
       <div class="modal">
@@ -1044,5 +1138,13 @@ code { background: #222; padding: 1px 5px; border-radius: 4px; color: #D4AF37; }
 .small { font-size: 0.8rem; }
 .test-row { display: flex; align-items: flex-end; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; color: #aaa; font-size: 0.85rem; }
 .test-row .test-btn { flex: 1; padding: 12px; }
+.list-tools { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 12px; }
+.list-modal { max-width: 640px; }
+.list-rows { max-height: 55vh; }
+.list-rows li { cursor: default; }
+.list-rows li.excluded { opacity: 0.45; text-decoration: line-through; }
+.list-rows li.excluded .link { text-decoration: none; }
+.pager { display: flex; justify-content: center; gap: 14px; align-items: center; margin-top: 8px; }
+.pager .link:disabled { opacity: 0.3; cursor: default; }
 .modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 16px; }
 </style>

@@ -35,7 +35,8 @@ export type Filter = {
   has_coupon?: boolean          // 有未使用、未過期的票券
 }
 
-export type Target = { mode: 'ids'; ids: string[] } | ({ mode: 'filter' } & Filter)
+// exclude_ids：在後台「瀏覽完整名單」手動排除的人（發送、預約到期時都會排除）
+export type Target = ({ mode: 'ids'; ids: string[] } | ({ mode: 'filter' } & Filter)) & { exclude_ids?: string[] }
 
 export const LINE_TOKEN = Deno.env.get('LINE_CHANNEL_ACCESS_TOKEN') ?? ''
 export const supabase = createClient(
@@ -223,9 +224,13 @@ async function resolveFilter(f: Filter): Promise<Resolved> {
 }
 
 export async function resolveTarget(target: Target): Promise<Resolved> {
-  if (target?.mode === 'ids') return { ids: await resolveIds(target.ids), lastPlayed: null, missing: null }
-  if (target?.mode === 'filter') return resolveFilter(target)
-  throw new Error('target.mode 必須是 ids 或 filter')
+  let r: Resolved
+  if (target?.mode === 'ids') r = { ids: await resolveIds(target.ids), lastPlayed: null, missing: null }
+  else if (target?.mode === 'filter') r = await resolveFilter(target)
+  else throw new Error('target.mode 必須是 ids 或 filter')
+  const ex = Array.isArray(target.exclude_ids) ? new Set(target.exclude_ids.map(String)) : null
+  if (ex?.size) r.ids = r.ids.filter((id) => !ex.has(id))
+  return r
 }
 
 /** 把成就缺少的劇本 id 轉成「《A》、《B》」 */

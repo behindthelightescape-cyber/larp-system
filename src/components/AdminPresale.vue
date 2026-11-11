@@ -28,8 +28,19 @@ const FILTERS = [
   { key: '', label: '全部' },
 ]
 
+// 只讀的動作連線失敗時自動重試一次（手機切回前景、網路一瞬間斷掉很常見）；發券、退回等寫入動作不重試
+const READ_ACTIONS = ['list', 'stats', 'get_settings', 'get_items']
 const invoke = async (body) => {
-  const { data, error } = await supabase.functions.invoke('presale-admin', { body })
+  let { data, error } = await supabase.functions.invoke('presale-admin', { body })
+  if (error?.name === 'FunctionsFetchError' && READ_ACTIONS.includes(body.action)) {
+    await new Promise((r) => setTimeout(r, 800))
+    ;({ data, error } = await supabase.functions.invoke('presale-admin', { body }))
+  }
+  if (error?.name === 'FunctionsFetchError') {
+    throw new Error(READ_ACTIONS.includes(body.action)
+      ? '連線失敗，請確認網路後按「重新整理」'
+      : '連線失敗，這個動作可能沒有完成：請按「重新整理」確認訂單狀態後再試')
+  }
   if (error) {
     let msg = error.message
     try { msg = (await error.context.json()).error || msg } catch { /* ignore */ }

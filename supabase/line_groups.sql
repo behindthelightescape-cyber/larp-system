@@ -29,6 +29,3 @@ create unique index if not exists line_groups_sheet_code_key on public.line_grou
 -- 可以用燈燈改公車表的人（會員編號，逗號分隔）。妘兒的編號之後加進來。
 insert into public.group_settings (key, value) values ('bus_editors', '00000002')
 on conflict (key) do nothing;
-
--- 第四步：綁定的那列離開公車表（App 一鍵成團刪列）的時間；sheet_row 留著最後內容
-alter table public.line_groups add column if not exists sheet_gone_at timestamptz;

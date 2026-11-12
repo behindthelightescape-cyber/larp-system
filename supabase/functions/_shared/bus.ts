@@ -476,18 +476,8 @@ export async function handleBusEvent(event: any, ctx: Ctx): Promise<boolean> {
     return true
   }
 
-  const groupRow = (await dbGet(`line_groups?group_id=eq.${encodeURIComponent(groupId)}&select=group_name,sheet_code,sheet_row,sheet_gone_at&limit=1`))?.[0]
+  const groupRow = (await dbGet(`line_groups?group_id=eq.${encodeURIComponent(groupId)}&select=group_name,sheet_code&limit=1`))?.[0]
   const code: string = groupRow?.sheet_code || ''
-
-  // 綁定的那列已經不在公車表（App 一鍵成團刪列、或手動刪掉）→ 解開代碼，但留著最後看到的內容（之後接 Firestore 用）
-  const markGone = () => dbPatch('line_groups', `group_id=eq.${encodeURIComponent(groupId)}`, {
-    sheet_code: null, sheet_gone_at: new Date().toISOString(), updated_at: new Date().toISOString(),
-  })
-  const lastLabel = () => {
-    const c: string[] = Array.isArray(groupRow?.sheet_row) ? groupRow.sheet_row : []
-    return c[0] ? `${c[0]}｜${c[6] || ''}${c[7] ? `（${String(c[7]).replace('星期', '')}）` : ''} ${c[8] || ''}`.trim() : ''
-  }
-  const goneText = () => `🎉 ${lastLabel() ? lastLabel() + '\n' : ''}這車已經從公車表移除囉（成團或取消）`
 
   try {
     if (cmd === 'find') {
@@ -508,10 +498,7 @@ export async function handleBusEvent(event: any, ctx: Ctx): Promise<boolean> {
 
     if (cmd === 'create?' || cmd === 'create') {
       const name: string = groupRow?.group_name || ''
-      if (code) {
-        if ((await readSheet()).some(x => x.code === code)) { await say(`這個群組已經綁了公車表（${code}），要開新車請先「解除綁定」`); return true }
-        await markGone() // 舊的那車已經不在表上，直接開新的
-      }
+      if (code) { await say(`這個群組已經綁了公車表（${code}），要開新車請先「解除綁定」`); return true }
       const g = parseGroupName(name)
       if (!looksLikeBus(g)) { await say('先把群組名稱改成「日期 時間 劇本」，例如「11/28 14:00 殺死巫師 @劇光燈」；還沒定的寫「XX/XX 殺死巫師」。改好再打「群組名稱」讓燈燈重讀'); return true }
       const want = normWant(cmd === 'create' ? post.slice(3).join('|') : arg)
@@ -545,7 +532,7 @@ export async function handleBusEvent(event: any, ctx: Ctx): Promise<boolean> {
       const created = (await readSheet()).find(x => x.code === c)
       if (!created) { await say('新增完找不到那一列，請打開公車表檢查 😢'); return true }
       await dbPatch('line_groups', `group_id=eq.${encodeURIComponent(groupId)}`, {
-        sheet_code: c, sheet_row: snapshot(created), bound_at: new Date().toISOString(), bound_by: uid, sheet_gone_at: null, updated_at: new Date().toISOString(),
+        sheet_code: c, sheet_row: snapshot(created), bound_at: new Date().toISOString(), bound_by: uid, updated_at: new Date().toISOString(),
       })
       await say(`✅ 已開車並綁定（第 ${created.row} 列）\n${rowLabel(created)}\n${wantLabel(created.want)}`)
       return true
@@ -570,18 +557,14 @@ export async function handleBusEvent(event: any, ctx: Ctx): Promise<boolean> {
       const c = r.code || newCode()
       if (!r.code) await writeCell(`Z${r.row}`, c)
       await dbPatch('line_groups', `group_id=eq.${encodeURIComponent(groupId)}`, {
-        sheet_code: c, sheet_row: snapshot(r), bound_at: new Date().toISOString(), bound_by: uid, sheet_gone_at: null, updated_at: new Date().toISOString(),
+        sheet_code: c, sheet_row: snapshot(r), bound_at: new Date().toISOString(), bound_by: uid, updated_at: new Date().toISOString(),
       })
       await say(`✅ 已綁定\n${rowLabel(r)}\n${wantLabel(r.want)}\n\n之後在這裡打「誠徵 1男 1女」「滿了」「日期 12/20」「時間 14:00」，燈燈就會更新公車表`)
       return true
     }
 
     // 以下都需要已綁定
-    if (!code) {
-      if (groupRow?.sheet_gone_at && cmd === 'show') { await say(goneText()); return true }
-      await say('這個群組還沒綁公車表，先打「綁定」')
-      return true
-    }
+    if (!code) { await say('這個群組還沒綁公車表，先打「綁定」'); return true }
     const rows = await readSheet()
     const hits = rows.filter(x => x.code === code)
     if (hits.length === 0 && cmd === 'unbind') {
@@ -589,11 +572,7 @@ export async function handleBusEvent(event: any, ctx: Ctx): Promise<boolean> {
       await say(`公車表上已經沒有 ${code} 這列了，已解除這個群組的綁定`)
       return true
     }
-    if (hits.length === 0) {
-      await markGone()
-      await say(cmd === 'show' ? goneText() : `${goneText()}\n不用再改公車表了～`)
-      return true
-    }
+    if (hits.length === 0) { await say(`公車表上找不到這個群組的車次（${code}），可能已經成團移除，或 Z 欄被清掉了`); return true }
     if (hits.length > 1) { await say(`公車表上有 ${hits.length} 列都是 ${code}，燈燈不敢亂改，請先整理 Z 欄`); return true }
     const r = hits[0]
 

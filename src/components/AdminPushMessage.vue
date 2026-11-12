@@ -528,6 +528,60 @@ const newDraft = () => {
 }
 onMounted(loadDrafts)
 
+// ===== 已存受眾 =====
+// 存「對象」：模式、篩選條件、指定名單、排除名單。
+// 最後遊玩／最後登入的日期是「相對」的（例如近 60 天）：載入時依存檔後過了幾天往後平移；入會日期不動。
+const audiences = ref([])
+const audienceId = ref('')
+const audienceBusy = ref(false)
+const loadAudiences = async () => {
+  try { audiences.value = (await invoke({ action: 'list_audiences' })).items }
+  catch (err) { console.warn('讀取受眾失敗:', err.message) }
+}
+const twToday = () => new Date(Date.now() + 8 * 3600e3).toISOString().slice(0, 10)
+const SHIFT_FIELDS = ['last_played_after', 'last_played_before', 'last_login_after', 'last_login_before']
+const shiftDate = (d, days) => new Date(Date.parse(`${d}T00:00:00Z`) + days * 86400e3).toISOString().slice(0, 10)
+const saveAudience = async (asNew = false) => {
+  const cur = audiences.value.find(a => a.id === audienceId.value)
+  const name = (asNew || !cur)
+    ? prompt('受眾名稱：', cur && asNew ? `${cur.name}（複製）` : '')
+    : cur.name
+  if (name === null) return
+  if (!asNew && cur && !confirm(`用目前畫面上的對象條件覆蓋受眾「${cur.name}」？`)) return
+  audienceBusy.value = true; errorMsg.value = ''; notice.value = ''
+  try {
+    const state = { mode: mode.value, filter: filter.value, selected: selected.value, excluded: excludedIds.value, saved_on: twToday() }
+    const r = await invoke({ action: 'save_audience', id: asNew ? null : (audienceId.value || null), name, state })
+    await loadAudiences()
+    audienceId.value = r.id
+    notice.value = `已存受眾「${name.trim() || '未命名受眾'}」`
+  } catch (err) { errorMsg.value = err.message } finally { audienceBusy.value = false }
+}
+const applyAudience = () => {
+  const a = audiences.value.find(x => x.id === audienceId.value)
+  if (!a) return
+  const st = a.state || {}
+  const f = { ...emptyFilter(), ...(st.filter || {}) }
+  const days = st.saved_on ? Math.round((Date.parse(twToday()) - Date.parse(st.saved_on)) / 86400e3) : 0
+  let shifted = false
+  if (days > 0) for (const k of SHIFT_FIELDS) if (f[k]) { f[k] = shiftDate(f[k], days); shifted = true }
+  mode.value = st.mode || 'filter'
+  filter.value = f
+  selected.value = st.selected || []
+  excludedIds.value = st.excluded || []
+  notice.value = `已套用受眾「${a.name}」` + (shifted ? `；最後遊玩／登入日期已往後平移 ${days} 天` : '') + '，請按「計算人數」'
+}
+const deleteAudience = async () => {
+  const a = audiences.value.find(x => x.id === audienceId.value)
+  if (!a || !confirm(`刪除受眾「${a.name}」？`)) return
+  try {
+    await invoke({ action: 'delete_audience', id: a.id })
+    audienceId.value = ''
+    await loadAudiences()
+  } catch (err) { errorMsg.value = err.message }
+}
+onMounted(loadAudiences)
+
 // ===== 測試發送：只發給自己 =====
 const isTesting = ref(false)
 // 測試收件人：會員編號（後台 Email 帳號沒有 LINE，要指定一個會員帳號收），記在這台瀏覽器
@@ -585,6 +639,16 @@ const testSend = async () => {
     <!-- 1. 對象 -->
     <section class="card">
       <h4>1. 選擇對象</h4>
+      <div class="audience-bar">
+        <select v-model="audienceId" class="input" style="flex: 1; min-width: 180px;">
+          <option value="">— 已存受眾 —</option>
+          <option v-for="a in audiences" :key="a.id" :value="a.id">{{ a.name }}</option>
+        </select>
+        <button class="btn btn-dark" :disabled="!audienceId" @click="applyAudience">套用</button>
+        <button class="btn btn-dark" :disabled="audienceBusy" @click="saveAudience(false)">{{ audienceId ? '更新這個受眾' : '存成受眾' }}</button>
+        <button v-if="audienceId" class="btn btn-dark" :disabled="audienceBusy" @click="saveAudience(true)">另存</button>
+        <button v-if="audienceId" class="link danger" @click="deleteAudience">刪除</button>
+      </div>
       <div class="tabs">
         <button :class="{ active: mode === 'filter' }" @click="mode = 'filter'">條件篩選</button>
         <button :class="{ active: mode === 'pick' }" @click="mode = 'pick'">指定會員</button>
@@ -1193,5 +1257,6 @@ code { background: #222; padding: 1px 5px; border-radius: 4px; color: #D4AF37; }
 .list-rows li.excluded .link { text-decoration: none; }
 .pager { display: flex; justify-content: center; gap: 14px; align-items: center; margin-top: 8px; }
 .pager .link:disabled { opacity: 0.3; cursor: default; }
+.audience-bar { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin: 0 0 14px; padding-bottom: 14px; border-bottom: 1px solid #1d1d1d; }
 .modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 16px; }
 </style>

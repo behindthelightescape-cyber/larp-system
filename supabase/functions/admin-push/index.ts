@@ -21,6 +21,7 @@ const defaultTitle = (title: string | undefined, message: string, media: Media) 
 //   { action: 'cancel', id }                                → 取消尚未發送的預約
 //   { action: 'test_send', message, media?, extra? }        → 只發給自己看（不記紀錄，用掉 1 則額度）
 //   { action: 'list_drafts' } / { action: 'save_draft', id?, name, state } / { action: 'delete_draft', id } → 草稿
+//   list_audiences / save_audience / delete_audience（同上格式）→ 已存受眾
 // target:
 //   { mode: 'ids', ids: string[] }   指定會員（users.id）
 //   { mode: 'filter', ...Filter }    條件篩選（所有條件 AND）
@@ -114,30 +115,36 @@ Deno.serve(async (req) => {
         return json({ ...(await sendTest(to, body.message ?? '', normalizeMedia(body.media), body.extra)), to_name: toName })
       }
 
+      case 'list_audiences':
       case 'list_drafts': {
-        const { data, error } = await supabase.from('push_drafts')
+        const table = body.action === 'list_audiences' ? 'push_audiences' : 'push_drafts'
+        const { data, error } = await supabase.from(table)
           .select('id, name, state, created_by_name, updated_at').order('updated_at', { ascending: false }).limit(50)
-        if (error) throw new Error(`讀取草稿失敗（請確認 push_drafts.sql 已執行）：${error.message}`)
+        if (error) throw new Error(`讀取失敗（請確認 ${table}.sql 已執行）：${error.message}`)
         return json({ items: data ?? [] })
       }
 
+      case 'save_audience':
       case 'save_draft': {
-        const name = String(body.name ?? '').trim().slice(0, 60) || '未命名草稿'
-        if (!body.state || typeof body.state !== 'object') return json({ error: '草稿內容是空的' }, 400)
-        if (JSON.stringify(body.state).length > 200_000) return json({ error: '草稿太大' }, 400)
+        const table = body.action === 'save_audience' ? 'push_audiences' : 'push_drafts'
+        const name = String(body.name ?? '').trim().slice(0, 60) || (table === 'push_audiences' ? '未命名受眾' : '未命名草稿')
+        if (!body.state || typeof body.state !== 'object') return json({ error: '內容是空的' }, 400)
+        if (JSON.stringify(body.state).length > 500_000) return json({ error: '內容太大（指定名單太多人）' }, 400)
         const row = { name, state: body.state, created_by_name: callerName, updated_at: new Date().toISOString() }
         const q = body.id
-          ? supabase.from('push_drafts').update(row).eq('id', body.id).select('id').maybeSingle()
-          : supabase.from('push_drafts').insert([row]).select('id').single()
+          ? supabase.from(table).update(row).eq('id', body.id).select('id').maybeSingle()
+          : supabase.from(table).insert([row]).select('id').single()
         const { data, error } = await q
-        if (error) throw new Error(`儲存草稿失敗（請確認 push_drafts.sql 已執行）：${error.message}`)
-        if (!data) return json({ error: '這份草稿已經被刪掉了，請另存新草稿' }, 400)
+        if (error) throw new Error(`儲存失敗（請確認 ${table}.sql 已執行）：${error.message}`)
+        if (!data) return json({ error: '這筆已經被刪掉了，請另存新的' }, 400)
         return json({ ok: true, id: data.id })
       }
 
+      case 'delete_audience':
       case 'delete_draft': {
         if (!body.id) return json({ error: '缺少 id' }, 400)
-        const { error } = await supabase.from('push_drafts').delete().eq('id', body.id)
+        const table = body.action === 'delete_audience' ? 'push_audiences' : 'push_drafts'
+        const { error } = await supabase.from(table).delete().eq('id', body.id)
         if (error) throw new Error(error.message)
         return json({ ok: true })
       }

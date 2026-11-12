@@ -607,7 +607,7 @@ export async function handleBusEvent(event: any, ctx: Ctx): Promise<boolean> {
       }
       await say(`✅ 公車表已更新\n${beforeLabel}\n→ ${after ? rowLabel(after) : '（重新讀取失敗，請看公車表）'}` +
         (after && after.row !== r.row ? `\n（照日期移到第 ${after.row} 列）` : '') +
-        '\n群組名稱記得也改一下，客人比較好認')
+        '\n\n燈燈小提醒：群組名稱也要記得改唷！')
       return true
     }
 

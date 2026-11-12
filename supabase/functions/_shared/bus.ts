@@ -626,7 +626,8 @@ export async function handleBusEvent(event: any, ctx: Ctx): Promise<boolean> {
     const r = hits[0]
 
     if (cmd === 'show') {
-      await say(`🚌 ${rowLabel(r)}\n${wantLabel(r.want)}`)
+      const site = r.cells[12] // M 欄：劇本介紹網站（公式帶出來的）
+      await say(`🚌 ${rowLabel(r)}\n${wantLabel(r.want)}` + (/^https?:\/\//.test(site) ? `\n📖 劇本介紹：${site}` : ''))
       return true
     }
 

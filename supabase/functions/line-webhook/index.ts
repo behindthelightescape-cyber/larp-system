@@ -10,7 +10,7 @@
 // ═══════════════════════════════════════════════════════════════════════════
 
 import { handleTeamEvent, parseWhen, fmtDT } from '../_shared/team.ts'
-import { handleBusEvent, sheetReady, readSheet, findCandidates, candidatesMessage } from '../_shared/bus.ts'
+import { handleBusEvent, sheetReady, readSheet, findCandidates, candidatesMessage, parseGroupName, describeGroup, looksLikeBus } from '../_shared/bus.ts'
 
 // ── 環境變數（在 Supabase Dashboard > Edge Functions > Secrets 設定）──────
 const LINE_CHANNEL_SECRET  = Deno.env.get('LINE_CHANNEL_SECRET')!        // LINE Bot Channel Secret，用於驗證簽名
@@ -471,19 +471,7 @@ const groupSummary = async (groupId: string): Promise<{ groupName?: string; pict
   return await res.json()
 }
 
-// 從群組名稱拆出日期時間和劇本，例：「11/27 13:00 登雞入駐 @劇光燈」
-// 「@劇光燈」是給客人看的地點，拿掉；結尾的「(9)」是 LINE 顯示的人數，保險起見也拿掉
-type GroupInfo = { start_at: string | null; script: string | null }
-const parseGroupName = (name: string): GroupInfo => {
-  const cleaned = name.replace(/[@＠]\S+/g, ' ').replace(/[（(]\d+[)）]\s*$/, ' ').trim()
-  const w = parseWhen(cleaned)
-  const ok = w.hasDate && w.hasTime && !!w.start_at
-  return { start_at: ok ? w.start_at : null, script: (ok && w.rest) ? w.rest : null }
-}
-const describeGroup = (g: GroupInfo) =>
-  g.start_at
-    ? `📅 ${fmtDT(g.start_at)}${g.script ? `《${g.script}》` : ''}`
-    : '（群組名稱裡沒看到日期時間，例如「11/27 13:00 劇本名」）'
+// 群組名稱解析（日期時間劇本、XX 未定）在 _shared/bus.ts
 
 // 手動指令「群組名稱」：重讀一次群組名稱，更新記錄並回報拆出來的日期時間劇本
 // （LINE 沒有改名事件；不自動查，群組改名後打這個指令就好）
@@ -494,7 +482,7 @@ const refreshGroupName = async (groupId: string, replyToken: string) => {
   const now = new Date().toISOString()
   const r = await dbUpsert('line_groups', {
     group_id: groupId, group_name: groupName, picture_url: pictureUrl || null,
-    start_at: g.start_at, script_name: g.script, left_at: null, updated_at: now,
+    start_at: g.start_at, script_name: looksLikeBus(g) ? g.script : null, left_at: null, updated_at: now,
   })
   console.log('refresh group name', groupId, groupName, g, 'save:', r.status)
   const res = await lineReply(replyToken, [{ type: 'text', text: `📝 群組名稱：「${groupName}」\n${describeGroup(g)}` }])
@@ -511,7 +499,7 @@ const handleBotJoined = async (event: Record<string, unknown>) => {
   const g = parseGroupName(groupName || '')
   const r = await dbUpsert('line_groups', {
     group_id: groupId, group_name: groupName || null, picture_url: pictureUrl || null,
-    start_at: g.start_at, script_name: g.script,
+    start_at: g.start_at, script_name: looksLikeBus(g) ? g.script : null,
     joined_at: now, left_at: null, updated_at: now,
   })
   console.log('join', groupId, groupName, g, 'save:', r.status)
@@ -520,7 +508,7 @@ const handleBotJoined = async (event: Record<string, unknown>) => {
     : '大家好～我是劇光燈的燈燈 🕯️'
   const messages: unknown[] = [{ type: 'text', text: hello }]
   // 有接公車表、名稱裡有劇本 → 順便找找看是哪一車
-  if (sheetReady() && g.script) {
+  if (sheetReady() && looksLikeBus(g)) {
     try { messages.push(candidatesMessage(findCandidates(await readSheet(), g), g)) }
     catch (e) { console.error('join bus lookup error:', e) }
   }

@@ -7,6 +7,8 @@
 //   誠徵 1男 1女     改 F 欄（誠徵）
 //   滿了             F 欄改成「已滿」
 //   解除綁定         清掉 Z 欄代碼
+//   日期 12/20       改 G 欄（日期）＋H 欄（星期），照日期重新排位置；也可以寫「日期 假日未定」
+//   時間 14:00       改 I 欄；也可以寫「時間 白天」
 //   開車 誠徵 2男 1女 公車表上還沒有這車 → 用群組名稱＋劇本資料庫新增一列（照日期插進去），並綁定
 //
 // 綁定方式：在那列的 Z 欄寫一個燈燈代碼（例「燈-7KQ2MX」），之後只認代碼，列怎麼移動都不會改錯格。
@@ -17,7 +19,7 @@
 //   會改 Sheet 的指令只有 group_settings.bus_editors 裡的會員編號（逗號分隔）能用
 // ═══════════════════════════════════════════════════════════════════════════
 
-import { parseWhen, fmtDT } from './team.ts'
+import { parseWhen, fmtDT, fmtDate } from './team.ts'
 
 const env = (k: string) => Deno.env.get(k) || ''
 const SUPABASE_URL = env('SUPABASE_URL')
@@ -125,13 +127,29 @@ const hhmm = (t: string) => {
   return m ? `${m[1].padStart(2, '0')}:${m[2]}` : ''
 }
 
-export type GroupInfo = { start_at: string | null; script: string | null }
+// 群組名稱：「11/28 14:00 殺死巫師 @劇光燈」
+// 還沒定的寫 XX：「XX/XX 傘靈」（日期未定）、「12/20 XX:XX 傘靈」（時間未定）
+// start_at：有日期就有（沒時間先當 12:00，只用來排序）；tbd：名稱裡有 XX
+export type GroupInfo = { start_at: string | null; script: string | null; hasDate: boolean; hasTime: boolean; tbd: boolean }
+const PLACEHOLDER = /\S*[XxＸｘ]{2}\S*/g
 export function parseGroupName(name: string): GroupInfo {
-  const cleaned = name.replace(/[@＠]\S+/g, ' ').replace(/[（(]\d+[)）]\s*$/, ' ').trim()
-  const w = parseWhen(cleaned)
-  const ok = w.hasDate && w.hasTime && !!w.start_at
-  return { start_at: ok ? w.start_at : null, script: (ok && w.rest) ? w.rest : null }
+  const base = name.replace(/[@＠]\S+/g, ' ').replace(/[（(]\d+[)）]\s*$/, ' ')
+  const tbd = /[XxＸｘ]{2}/.test(base)
+  const cleaned = base.replace(PLACEHOLDER, ' ').replace(/\s+/g, ' ').trim()
+  let w = parseWhen(cleaned)
+  let hasTime = w.hasTime
+  if (w.hasDate && !w.hasTime) { w = parseWhen(cleaned + ' 12:00'); hasTime = false }
+  const hasDate = w.hasDate && !!w.start_at
+  return { start_at: hasDate ? w.start_at : null, script: w.rest || null, hasDate, hasTime: hasDate && hasTime, tbd }
 }
+// 名稱看起來是一車（有日期，或用 XX 標未定）
+export const looksLikeBus = (g: GroupInfo) => !!g.script && (g.hasDate || g.tbd)
+export const whenText = (g: GroupInfo) =>
+  !g.hasDate || !g.start_at ? '日期未定' : g.hasTime ? fmtDT(g.start_at) : `${fmtDate(g.start_at)} 時間未定`
+export const describeGroup = (g: GroupInfo) => looksLikeBus(g)
+  ? `📅 ${whenText(g)}《${g.script}》`
+  : '（群組名稱裡沒看到日期時間，例如「11/27 13:00 劇本名」；還沒定可以寫「XX/XX 劇本名」）'
+
 
 // 回傳候選：exact = 劇本、日期、時間都對；否則列出劇本對得上的（最多 4 個）
 export function findCandidates(rows: BusRow[], g: GroupInfo): { exact: boolean; rows: BusRow[] } {
@@ -139,13 +157,15 @@ export function findCandidates(rows: BusRow[], g: GroupInfo): { exact: boolean; 
   const s = norm(g.script)
   const titleOk = (r: BusRow) => { const t = norm(r.title); return t === s || t.includes(s) || s.includes(t) }
   let mo = 0, d = 0, tm = ''
-  if (g.start_at) {
+  if (g.hasDate && g.start_at) {
     const tpe = new Date(new Date(g.start_at).getTime() + 8 * 3600_000)
     mo = tpe.getUTCMonth() + 1; d = tpe.getUTCDate()
     tm = `${String(tpe.getUTCHours()).padStart(2, '0')}:${String(tpe.getUTCMinutes()).padStart(2, '0')}`
   }
   const byTitle = rows.filter(titleOk)
-  const exact = byTitle.filter(r => parseDates(r.date).some(([a, b]) => a === mo && b === d) && hhmm(r.time) === tm)
+  const exact = g.hasDate
+    ? byTitle.filter(r => parseDates(r.date).some(([a, b]) => a === mo && b === d) && (!g.hasTime || hhmm(r.time) === tm))
+    : byTitle.filter(r => parseDates(r.date).length === 0) // 日期未定 ↔ 表上也沒寫確定日期的
   if (exact.length) return { exact: true, rows: exact.slice(0, 4) }
   return { exact: false, rows: byTitle.slice(0, 4) }
 }
@@ -162,7 +182,7 @@ const wantLabel = (w: string) => w ? `誠徵 ${w}` : '誠徵（空白）'
 export function candidatesMessage(c: { exact: boolean; rows: BusRow[] }, g: GroupInfo) {
   if (!c.rows.length) {
     return { type: 'text', text: g.script
-      ? `🔍 公車表上找不到《${g.script}》${g.start_at ? ` ${fmtDT(g.start_at)}` : ''} 這車`
+      ? `🔍 公車表上找不到《${g.script}》${whenText(g)} 這車，要新增可以打「開車 誠徵 2男 1女」`
       : '🔍 群組名稱裡沒看到劇本和日期時間，例如「11/28 14:00 殺死巫師 @劇光燈」' }
   }
   const head = c.exact ? '🚌 公車表上找到這車，是這個群組的嗎？' : '🚌 時間對不上，但有這些同劇本的車次：'
@@ -241,35 +261,72 @@ const WEEK = ['日', '一', '二', '三', '四', '五', '六']
 export const normWant = (a: string) => a.trim().replace(/\s+/g, ' ').replace(/(\d+)\s*([男女])/g, '$1$2').replace(/([男女])\s*(?=\d)/g, '$1 ')
 
 // 新的一列 A～N，格式照公車表現有的寫法
-export function buildRow(sc: Script, startAt: string, want: string): string[] {
-  const t = tpeParts(startAt)
+export function buildRow(sc: Script, g: GroupInfo, want: string): string[] {
+  const t = g.hasDate && g.start_at ? tpeParts(g.start_at) : null
   return [
     sc.title, sc.genre, sc.people,
     sc.cross === 'O' ? '可以反串' : '不建議反串',
-    sc.price, want, `${t.mo}/${t.d}`, `星期${WEEK[t.wd]}`, `${t.hh}:${t.mi}`, sc.hours,
+    sc.price, want,
+    t ? `${t.mo}/${t.d}` : '日期未定', t ? `星期${WEEK[t.wd]}` : '', t && g.hasTime ? `${t.hh}:${t.mi}` : '',
+    sc.hours,
     sc.costume === 'O' ? '有換裝' : '無換裝',
     '', sc.url, sc.cover,
   ]
 }
 
-// 表上每列的大概時間（沒寫年份：比現在早 60 天以上的算明年）；讀不出日期的回傳 Infinity（排最後）
-function rowTime(r: BusRow, now = Date.now()): number {
-  const d = parseDates(r.date)[0]
-  if (!d) return Infinity
+// 沒寫年份的月/日 → 時間戳（比現在早 60 天以上的算明年）
+function mdTime(mo: number, d: number, hm = '12:00', now = Date.now()): number {
   const y = new Date(now + 8 * 3600_000).getUTCFullYear()
-  const hm = hhmm(r.time) || '12:00'
-  const iso = (yy: number) => `${yy}-${String(d[0]).padStart(2, '0')}-${String(d[1]).padStart(2, '0')}T${hm}:00+08:00`
+  const iso = (yy: number) => `${yy}-${String(mo).padStart(2, '0')}-${String(d).padStart(2, '0')}T${hm}:00+08:00`
   let ts = Date.parse(iso(y))
   if (ts < now - 60 * 86400_000) ts = Date.parse(iso(y + 1))
   return ts
 }
-
-// 插在第一個比它晚（或沒日期）的列前面；都比它早就接在最後一列後面
-export function insertRowNumber(rows: BusRow[], startAt: string): number {
-  const ts = new Date(startAt).getTime()
-  const later = rows.find(r => rowTime(r) > ts)
+// 表上每列的大概時間；讀不出日期的回傳 Infinity（排最後）
+function rowTime(r: BusRow): number {
+  const d = parseDates(r.date)[0]
+  return d ? mdTime(d[0], d[1], hhmm(r.time) || '12:00') : Infinity
+}
+// 插在第一個比它晚（或沒日期）的列前面；都比它早、或它自己沒日期，就接在最後一列後面
+function slotFor(rows: BusRow[], ts: number): number {
+  const later = Number.isFinite(ts) ? rows.find(r => rowTime(r) > ts) : undefined
   if (later) return later.row
   return rows.length ? rows[rows.length - 1].row + 1 : FIRST_DATA_ROW
+}
+export function insertRowNumber(rows: BusRow[], g: GroupInfo): number {
+  return slotFor(rows, g.hasDate && g.start_at ? new Date(g.start_at).getTime() : Infinity)
+}
+
+// 改了日期／時間後，把這列移到照日期排的位置（moveDimension 用移動前的列號）
+async function reposition(code: string) {
+  const rows = await readSheet()
+  const self = rows.find(r => r.code === code)
+  if (!self) return
+  const target = slotFor(rows.filter(r => r !== self), rowTime(self))
+  if (target === self.row || target === self.row + 1) return
+  const res = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}:batchUpdate`, {
+    method: 'POST', headers: { Authorization: `Bearer ${await googleToken()}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ requests: [{ moveDimension: {
+      source: { sheetId: BUS_SHEET_GID, dimension: 'ROWS', startIndex: self.row - 1, endIndex: self.row },
+      destinationIndex: target - 1,
+    } }] }),
+  })
+  if (!res.ok) throw new Error(`公車表移動列失敗（${res.status}）：${(await res.text()).slice(0, 200)}`)
+}
+
+async function writeCells(cells: [string, string][]) {
+  const res = await fetch(`${API}:batchUpdate`, {
+    method: 'POST', headers: { Authorization: `Bearer ${await googleToken()}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ valueInputOption: 'RAW', data: cells.map(([a1, v]) => ({ range: `'${SHEET_NAME}'!${a1}`, values: [[v]] })) }),
+  })
+  if (!res.ok) throw new Error(`寫入公車表失敗（${res.status}）：${(await res.text()).slice(0, 200)}`)
+}
+
+// 「12/20」→「星期日」、「12/1、3」→「星期二、四」；讀不出日期就空白
+export function weekdayText(dateText: string): string {
+  const ds = parseDates(dateText)
+  if (!ds.length) return ''
+  return '星期' + ds.map(([mo, d]) => WEEK[new Date(mdTime(mo, d) + 8 * 3600_000).getUTCDay()]).join('、')
 }
 
 async function insertRow(rowNum: number, values: string[], code: string) {
@@ -300,8 +357,8 @@ const groupKey = (name: string) => {
   return (h >>> 0).toString(36)
 }
 
-function createPreview(sc: Script, startAt: string, want: string, groupName: string, insertAt: number) {
-  const v = buildRow(sc, startAt, want)
+function createPreview(sc: Script, g: GroupInfo, want: string, groupName: string, insertAt: number) {
+  const v = buildRow(sc, g, want)
   const line = (k: string, val: string) => ({ type: 'box', layout: 'baseline', spacing: 'md', contents: [
     { type: 'text', text: k, color: '#888888', size: 'xs', flex: 2 },
     { type: 'text', text: val || '—', color: '#ffffff', size: 'sm', flex: 5, wrap: true },
@@ -312,7 +369,7 @@ function createPreview(sc: Script, startAt: string, want: string, groupName: str
       type: 'box', layout: 'vertical', spacing: 'sm', backgroundColor: '#0d0d0d', paddingAll: '16px',
       contents: [
         { type: 'text', text: '🚌 要在公車表新增這車嗎？', color: GOLD, weight: 'bold', size: 'sm' },
-        line('劇本', v[0]), line('日期', `${v[6]}（${v[7].replace('星期', '')}）${v[8]}`), line('誠徵', v[5]),
+        line('劇本', v[0]), line('日期', `${v[6]}${v[7] ? `（${v[7].replace('星期', '')}）` : ''} ${v[8] || '時間未定'}`), line('誠徵', v[5]),
         line('人數', v[2]), line('價格', v[4]), line('類型', v[1]), line('反串／換裝', `${v[3]}・${v[10]}`), line('時長', v[9]),
         { type: 'text', text: `會插在第 ${insertAt} 列（照日期排）`, color: '#666666', size: 'xxs', margin: 'md' },
         { type: 'button', style: 'primary', color: GOLD, height: 'sm', margin: 'md',
@@ -346,6 +403,8 @@ export async function handleBusEvent(event: any, ctx: Ctx): Promise<boolean> {
     else if (/^(解除綁定|取消綁定)$/.test(text)) cmd = 'unbind'
     else if ((m = text.match(/^開車(?:\s+(?:誠徵|缺)?\s*(.*))?$/))) { cmd = 'create?'; arg = (m[1] || '').trim() }
     else if (/^(滿了|已滿|滿團)$/.test(text)) { cmd = 'want'; arg = '已滿' }
+    else if ((m = text.match(/^(?:日期|改日期)\s+(.+)$/))) { cmd = 'date'; arg = m[1].trim() }
+    else if ((m = text.match(/^(?:時間|改時間)\s+(.+)$/))) { cmd = 'time'; arg = m[1].trim() }
     else if ((m = text.match(/^(?:誠徵|缺)\s*(.+)$/))) { cmd = 'want'; arg = m[1] }
     else return false
   } else return false
@@ -353,7 +412,9 @@ export async function handleBusEvent(event: any, ctx: Ctx): Promise<boolean> {
   if (!sheetReady()) { await say('燈燈還沒接上公車表（Google 服務帳號未設定）'); return true }
 
   // 「這車」大家都能看；其他要權限
+  // 誠徵／滿了／日期／時間 是聊天常見的詞，不是導遊打的就當一般訊息放過；綁定／開車／解除綁定才回「只有導遊」
   if (cmd !== 'show' && !(await isEditor(uid))) {
+    if (['want', 'date', 'time'].includes(cmd)) return false
     await say('這個指令只有導遊可以用喔 🙏')
     return true
   }
@@ -374,29 +435,32 @@ export async function handleBusEvent(event: any, ctx: Ctx): Promise<boolean> {
       const name: string = groupRow?.group_name || ''
       if (code) { await say(`這個群組已經綁了公車表（${code}），要開新車請先「解除綁定」`); return true }
       const g = parseGroupName(name)
-      if (!g.start_at || !g.script) { await say('先把群組名稱改成「日期 時間 劇本」，例如「11/28 14:00 殺死巫師 @劇光燈」，再打「群組名稱」讓燈燈重讀'); return true }
+      if (!looksLikeBus(g)) { await say('先把群組名稱改成「日期 時間 劇本」，例如「11/28 14:00 殺死巫師 @劇光燈」；還沒定的寫「XX/XX 殺死巫師」。改好再打「群組名稱」讓燈燈重讀'); return true }
       const want = normWant(cmd === 'create' ? post.slice(3).join('|') : arg)
       if (want.length > 30) { await say('誠徵太長了，例如：開車 誠徵 2男 1女'); return true }
       if (cmd === 'create' && post[2] !== groupKey(name)) { await say('群組名稱剛剛有變，請重打「開車」'); return true }
       const [rows, scripts] = await Promise.all([readSheet(), readScripts()])
       const dup = findCandidates(rows, g)
       if (dup.exact) { await ctx.reply(token, [{ type: 'text', text: '公車表上已經有這車了，直接綁定就好：' }, candidatesMessage(dup, g)]); return true }
-      const f = findScript(scripts, g.script)
+      const f = findScript(scripts, g.script!)
       if (!f.hit) {
         await say(f.many?.length
           ? `劇本資料庫有好幾本像《${g.script}》：\n${f.many.map(x => '・' + x.title).join('\n')}\n請把群組名稱改成完整劇本名，再打「群組名稱」`
           : `劇本資料庫找不到《${g.script}》，請確認群組名稱的劇本名稱`)
         return true
       }
-      const at = insertRowNumber(rows, g.start_at)
+      const at = insertRowNumber(rows, g)
       if (cmd === 'create?') {
-        const msgs: unknown[] = [createPreview(f.hit, g.start_at, want, name, at)]
-        if (!want) msgs.push({ type: 'text', text: '（還沒填誠徵，可以打「開車 誠徵 2男 1女」重來，或開完再打「誠徵 …」）' })
+        const msgs: unknown[] = [createPreview(f.hit, g, want, name, at)]
+        const tips: string[] = []
+        if (!want) tips.push('還沒填誠徵：可以打「開車 誠徵 2男 1女」重來，或開完再打「誠徵 …」')
+        if (!g.hasDate || !g.hasTime) tips.push('日期時間還沒定：開完之後打「日期 12/20」「時間 14:00」（或「日期 假日未定」「時間 白天」）')
+        if (tips.length) msgs.push({ type: 'text', text: tips.map(t => '・' + t).join('\n') })
         await ctx.reply(token, msgs)
         return true
       }
       const c = newCode()
-      await insertRow(at, buildRow(f.hit, g.start_at, want), c)
+      await insertRow(at, buildRow(f.hit, g, want), c)
       const created = (await readSheet()).find(x => x.code === c)
       if (!created) { await say('新增完找不到那一列，請打開公車表檢查 😢'); return true }
       await dbPatch('line_groups', `group_id=eq.${encodeURIComponent(groupId)}`, {
@@ -422,7 +486,7 @@ export async function handleBusEvent(event: any, ctx: Ctx): Promise<boolean> {
       await dbPatch('line_groups', `group_id=eq.${encodeURIComponent(groupId)}`, {
         sheet_code: c, sheet_row: snapshot(r), bound_at: new Date().toISOString(), bound_by: uid, updated_at: new Date().toISOString(),
       })
-      await say(`✅ 已綁定\n${rowLabel(r)}\n${wantLabel(r.want)}\n\n之後在這裡打「誠徵 1男 1女」或「滿了」，燈燈就會更新公車表`)
+      await say(`✅ 已綁定\n${rowLabel(r)}\n${wantLabel(r.want)}\n\n之後在這裡打「誠徵 1男 1女」「滿了」「日期 12/20」「時間 14:00」，燈燈就會更新公車表`)
       return true
     }
 
@@ -448,6 +512,23 @@ export async function handleBusEvent(event: any, ctx: Ctx): Promise<boolean> {
       await writeCell(`Z${r.row}`, '')
       await dbPatch('line_groups', `group_id=eq.${encodeURIComponent(groupId)}`, { sheet_code: null, updated_at: new Date().toISOString() })
       await say(`已解除綁定：${rowLabel(r)}`)
+      return true
+    }
+
+    if (cmd === 'date' || cmd === 'time') {
+      const v = arg.replace(/\s+/g, ' ').replace(/／/g, '/').replace(/：/g, ':')
+      if (!v || v.length > 20) { await say(cmd === 'date' ? '格式：日期 12/20（或「日期 假日未定」）' : '格式：時間 14:00（或「時間 白天」）'); return true }
+      const beforeLabel = rowLabel(r)
+      if (cmd === 'date') await writeCells([[`G${r.row}`, v], [`H${r.row}`, weekdayText(v)]])
+      else await writeCells([[`I${r.row}`, hhmm(v) || v]])
+      await reposition(code)
+      const after = (await readSheet()).find(x => x.code === code)
+      if (after) {
+        await dbPatch('line_groups', `group_id=eq.${encodeURIComponent(groupId)}`, { sheet_row: snapshot(after), updated_at: new Date().toISOString() })
+      }
+      await say(`✅ 公車表已更新\n${beforeLabel}\n→ ${after ? rowLabel(after) : '（重新讀取失敗，請看公車表）'}` +
+        (after && after.row !== r.row ? `\n（照日期移到第 ${after.row} 列）` : '') +
+        '\n群組名稱記得也改一下，客人比較好認')
       return true
     }
 

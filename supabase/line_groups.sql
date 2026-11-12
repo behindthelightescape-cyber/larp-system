@@ -14,3 +14,7 @@ create table if not exists public.line_groups (
 );
 alter table public.line_groups enable row level security;
 revoke all on public.line_groups from anon, authenticated;
+
+-- 第二步：從群組名稱拆出來的日期時間、劇本（例「11/27 13:00 登雞入駐 @劇光燈」）
+alter table public.line_groups add column if not exists start_at        timestamptz;
+alter table public.line_groups add column if not exists script_name     text;

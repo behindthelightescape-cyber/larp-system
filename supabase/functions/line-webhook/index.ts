@@ -9,7 +9,7 @@
 //   npx supabase functions deploy line-webhook --no-verify-jwt --project-ref <project-ref>
 // ═══════════════════════════════════════════════════════════════════════════
 
-import { handleTeamEvent } from '../_shared/team.ts'
+import { handleTeamEvent, parseWhen, fmtDT } from '../_shared/team.ts'
 
 // ── 環境變數（在 Supabase Dashboard > Edge Functions > Secrets 設定）──────
 const LINE_CHANNEL_SECRET  = Deno.env.get('LINE_CHANNEL_SECRET')!        // LINE Bot Channel Secret，用於驗證簽名
@@ -446,6 +446,13 @@ const groupMemberName = async (groupId: string, userId: string): Promise<string>
   return ((await res.json()).displayName as string) || ''
 }
 
+const dbPatch = (table: string, filter: string, payload: Record<string, unknown>) =>
+  fetch(`${SUPABASE_URL}/rest/v1/${table}?${filter}`, {
+    method: 'PATCH',
+    headers: { ...dbHeaders, 'Prefer': 'return=minimal' },
+    body: JSON.stringify(payload),
+  })
+
 // 新增或更新（主鍵相同就合併欄位）
 const dbUpsert = (table: string, payload: Record<string, unknown>) =>
   fetch(`${SUPABASE_URL}/rest/v1/${table}`, {
@@ -463,6 +470,36 @@ const groupSummary = async (groupId: string): Promise<{ groupName?: string; pict
   return await res.json()
 }
 
+// 從群組名稱拆出日期時間和劇本，例：「11/27 13:00 登雞入駐 @劇光燈」
+// 「@劇光燈」是給客人看的地點，拿掉；結尾的「(9)」是 LINE 顯示的人數，保險起見也拿掉
+type GroupInfo = { start_at: string | null; script: string | null }
+const parseGroupName = (name: string): GroupInfo => {
+  const cleaned = name.replace(/[@＠]\S+/g, ' ').replace(/[（(]\d+[)）]\s*$/, ' ').trim()
+  const w = parseWhen(cleaned)
+  const ok = w.hasDate && w.hasTime && !!w.start_at
+  return { start_at: ok ? w.start_at : null, script: (ok && w.rest) ? w.rest : null }
+}
+const describeGroup = (g: GroupInfo) =>
+  g.start_at
+    ? `📅 ${fmtDT(g.start_at)}${g.script ? `《${g.script}》` : ''}`
+    : '（群組名稱裡沒看到日期時間，例如「11/27 13:00 劇本名」）'
+
+// 手動指令「群組名稱」：重讀一次群組名稱，更新記錄並回報拆出來的日期時間劇本
+// （LINE 沒有改名事件；不自動查，群組改名後打這個指令就好）
+const refreshGroupName = async (groupId: string, replyToken: string) => {
+  const { groupName, pictureUrl } = await groupSummary(groupId)
+  if (!groupName) { await lineReply(replyToken, [{ type: 'text', text: '燈燈讀不到群組名稱 😢' }]); return }
+  const g = parseGroupName(groupName)
+  const now = new Date().toISOString()
+  const r = await dbUpsert('line_groups', {
+    group_id: groupId, group_name: groupName, picture_url: pictureUrl || null,
+    start_at: g.start_at, script_name: g.script, left_at: null, updated_at: now,
+  })
+  console.log('refresh group name', groupId, groupName, g, 'save:', r.status)
+  const res = await lineReply(replyToken, [{ type: 'text', text: `📝 群組名稱：「${groupName}」\n${describeGroup(g)}` }])
+  console.log('refresh reply status:', res.status)
+}
+
 // 燈燈被拉進群組
 const handleBotJoined = async (event: Record<string, unknown>) => {
   const src = event.source as Record<string, unknown>
@@ -470,13 +507,15 @@ const handleBotJoined = async (event: Record<string, unknown>) => {
   const groupId = src.groupId as string
   const { groupName, pictureUrl } = await groupSummary(groupId)
   const now = new Date().toISOString()
+  const g = parseGroupName(groupName || '')
   const r = await dbUpsert('line_groups', {
     group_id: groupId, group_name: groupName || null, picture_url: pictureUrl || null,
+    start_at: g.start_at, script_name: g.script,
     joined_at: now, left_at: null, updated_at: now,
   })
-  console.log('join', groupId, groupName, 'save:', r.status)
+  console.log('join', groupId, groupName, g, 'save:', r.status)
   const hello = groupName
-    ? `大家好～我是劇光燈的燈燈 🕯️\n已經加入「${groupName}」囉！`
+    ? `大家好～我是劇光燈的燈燈 🕯️\n已經加入「${groupName}」囉！\n${describeGroup(g)}`
     : '大家好～我是劇光燈的燈燈 🕯️'
   const res = await lineReply(event.replyToken as string, [{ type: 'text', text: hello }])
   console.log('join reply status:', res.status)
@@ -527,10 +566,7 @@ const handleEvents = async (events: Record<string, unknown>[]) => {
       const gid = (event.source as Record<string, unknown>)?.groupId as string
       if (gid) {
         const now = new Date().toISOString()
-        const r = await fetch(`${SUPABASE_URL}/rest/v1/line_groups?group_id=eq.${encodeURIComponent(gid)}`, {
-          method: 'PATCH', headers: { ...dbHeaders, 'Prefer': 'return=minimal' },
-          body: JSON.stringify({ left_at: now, updated_at: now }),
-        })
+        const r = await dbPatch('line_groups', `group_id=eq.${encodeURIComponent(gid)}`, { left_at: now, updated_at: now })
         console.log('leave', gid, r.status)
       }
       continue
@@ -566,8 +602,16 @@ const handleEvents = async (events: Record<string, unknown>[]) => {
     const isRules  = cmd === '版規'
     const isSect   = cmd === '我的師門'
 
-    // 群組訊息且非指令 → 存進 group_messages
     const source = event.source as Record<string, unknown>
+
+    // ── 群組名稱指令：重讀群組名稱（改名後手動觸發）──────────────────────────
+    if (cmd === '群組名稱' && source.type === 'group' && source.groupId) {
+      try { await refreshGroupName(source.groupId as string, event.replyToken as string) }
+      catch (e) { console.error('refresh group name error:', e) }
+      continue
+    }
+
+    // 群組訊息且非指令 → 存進 group_messages
     if (source.type === 'group' && !isCard && !isMascot && !isTarot && !isRules && !isSect) {
       dbInsert('group_messages', {
         line_user_id: source.userId as string,

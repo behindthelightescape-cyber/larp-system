@@ -446,6 +446,42 @@ const groupMemberName = async (groupId: string, userId: string): Promise<string>
   return ((await res.json()).displayName as string) || ''
 }
 
+// 新增或更新（主鍵相同就合併欄位）
+const dbUpsert = (table: string, payload: Record<string, unknown>) =>
+  fetch(`${SUPABASE_URL}/rest/v1/${table}`, {
+    method: 'POST',
+    headers: { ...dbHeaders, 'Prefer': 'resolution=merge-duplicates,return=minimal' },
+    body: JSON.stringify(payload),
+  })
+
+// 群組名稱與頭像（不需要認證帳號）
+const groupSummary = async (groupId: string): Promise<{ groupName?: string; pictureUrl?: string }> => {
+  const res = await fetch(`https://api.line.me/v2/bot/group/${groupId}/summary`, {
+    headers: { 'Authorization': `Bearer ${LINE_CHANNEL_TOKEN}` },
+  })
+  if (!res.ok) { console.error('group summary', res.status, await res.text()); return {} }
+  return await res.json()
+}
+
+// 燈燈被拉進群組
+const handleBotJoined = async (event: Record<string, unknown>) => {
+  const src = event.source as Record<string, unknown>
+  if (src?.type !== 'group' || !src.groupId) return // 多人聊天室（room）沒有名稱，先不處理
+  const groupId = src.groupId as string
+  const { groupName, pictureUrl } = await groupSummary(groupId)
+  const now = new Date().toISOString()
+  const r = await dbUpsert('line_groups', {
+    group_id: groupId, group_name: groupName || null, picture_url: pictureUrl || null,
+    joined_at: now, left_at: null, updated_at: now,
+  })
+  console.log('join', groupId, groupName, 'save:', r.status)
+  const hello = groupName
+    ? `大家好～我是劇光燈的燈燈 🕯️\n已經加入「${groupName}」囉！`
+    : '大家好～我是劇光燈的燈燈 🕯️'
+  const res = await lineReply(event.replyToken as string, [{ type: 'text', text: hello }])
+  console.log('join reply status:', res.status)
+}
+
 // ── 事件處理 ───────────────────────────────────────────────────────────────
 // 逐一處理 LINE 傳來的 events 陣列
 // 只處理文字訊息（type=message, message.type=text）
@@ -479,6 +515,25 @@ const handleEvents = async (events: Record<string, unknown>[]) => {
       } catch (e) {
         console.error('team event error:', e)
       }
+    }
+
+    // ── 燈燈被拉進群組：讀群組名稱、記下來、打招呼 ───────────────────────────
+    if (event.type === 'join') {
+      try { await handleBotJoined(event) } catch (e) { console.error('join error:', e) }
+      continue
+    }
+    // ── 燈燈被踢出群組：記離開時間（leave 事件沒有 replyToken，不能說話）──────
+    if (event.type === 'leave') {
+      const gid = (event.source as Record<string, unknown>)?.groupId as string
+      if (gid) {
+        const now = new Date().toISOString()
+        const r = await fetch(`${SUPABASE_URL}/rest/v1/line_groups?group_id=eq.${encodeURIComponent(gid)}`, {
+          method: 'PATCH', headers: { ...dbHeaders, 'Prefer': 'return=minimal' },
+          body: JSON.stringify({ left_at: now, updated_at: now }),
+        })
+        console.log('leave', gid, r.status)
+      }
+      continue
     }
 
     // ── 有人加入群組：發送群組規則 ─────────────────────────────────────────

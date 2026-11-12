@@ -345,10 +345,36 @@ export function weekdayText(dateText: string): string {
   return '星期' + ds.map(([mo, d]) => WEEK[new Date(mdTime(mo, d) + 8 * 3600_000).getUTCDay()]).join('、')
 }
 
-async function insertRow(rowNum: number, values: string[], code: string) {
+// ── 公車表哪些欄是公式 ─────────────────────────────────────────────────────
+// header：表頭那格是公式（例如 ={"類型"; ARRAYFORMULA(...)} 整欄往下帶）→ 這欄任何一格都不能寫，寫了整欄會 #REF!
+// perRow：資料列每格各自有公式 → 新增列時從隔壁列複製公式，不寫值
+// 其他：手填欄，可以寫
+type Layout = { header: Set<number>; perRow: Set<number>; headerText: string[] }
+const LETTER = (c: number) => String.fromCharCode(65 + c)
+async function readLayout(): Promise<Layout> {
+  const range = `'${SHEET_NAME}'!A2:N12`
+  const res = await fetch(`${API}/${encodeURIComponent(range)}?valueRenderOption=FORMULA`, {
+    headers: { Authorization: `Bearer ${await googleToken()}` },
+  })
+  if (!res.ok) throw new Error(`讀取公車表公式失敗（${res.status}）`)
+  const v: string[][] = (await res.json()).values || []
+  const isF = (x: unknown) => typeof x === 'string' && x.startsWith('=')
+  const header = new Set<number>(), perRow = new Set<number>()
+  for (let c = 0; c < 14; c++) {
+    if (isF(v[0]?.[c])) header.add(c)
+    else if (v.slice(1).some(r => isF(r?.[c]))) perRow.add(c)
+  }
+  // 表頭文字（公式欄用 FORMATTED 讀不到，這裡只是給「公車表結構」顯示用）
+  return { header, perRow, headerText: (v[0] || []).map(x => String(x ?? '')) }
+}
+const canWrite = (L: Layout, c: number) => !L.header.has(c) && !L.perRow.has(c)
+export const MANUAL_COLS = [0, 5, 6, 8] // A 劇本、F 誠徵、G 日期、I 時間：一定是手填（是公式就不准開車）
+
+async function insertRow(rowNum: number, values: string[], code: string, L: Layout) {
   const tok = await googleToken()
-  // 1. 插入空白列（格式沿用上一列；插在第一筆資料時沿用下一列）
-  const res = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}:batchUpdate`, {
+  const sheetsApi = `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}:batchUpdate`
+  // 1. 插入空白列（格式、下拉選單沿用上一列；插在第一筆資料時沿用下一列）
+  const res = await fetch(sheetsApi, {
     method: 'POST', headers: { Authorization: `Bearer ${tok}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({ requests: [{ insertDimension: {
       range: { sheetId: BUS_SHEET_GID, dimension: 'ROWS', startIndex: rowNum - 1, endIndex: rowNum },
@@ -356,13 +382,27 @@ async function insertRow(rowNum: number, values: string[], code: string) {
     } }] }),
   })
   if (!res.ok) throw new Error(`公車表插入新列失敗（${res.status}）：${(await res.text()).slice(0, 200)}`)
-  // 2. 寫入 A～N 和 Z
+  // 2. 每列各自有公式的欄：從隔壁列複製公式
+  if (L.perRow.size) {
+    const src = rowNum > FIRST_DATA_ROW ? rowNum - 1 : rowNum + 1
+    const res3 = await fetch(sheetsApi, {
+      method: 'POST', headers: { Authorization: `Bearer ${tok}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ requests: [...L.perRow].map(c => ({ copyPaste: {
+        source: { sheetId: BUS_SHEET_GID, startRowIndex: src - 1, endRowIndex: src, startColumnIndex: c, endColumnIndex: c + 1 },
+        destination: { sheetId: BUS_SHEET_GID, startRowIndex: rowNum - 1, endRowIndex: rowNum, startColumnIndex: c, endColumnIndex: c + 1 },
+        pasteType: 'PASTE_FORMULA',
+      } })) }),
+    })
+    if (!res3.ok) throw new Error(`公車表複製公式失敗（${res3.status}）：${(await res3.text()).slice(0, 200)}`)
+  }
+  // 3. 只寫手填欄（有值的）和 Z 代碼；公式欄一格都不碰
+  const data = values.map((v, c) => ({ v, c }))
+    .filter(({ v, c }) => v !== '' && canWrite(L, c))
+    .map(({ v, c }) => ({ range: `'${SHEET_NAME}'!${LETTER(c)}${rowNum}`, values: [[v]] }))
+  data.push({ range: `'${SHEET_NAME}'!Z${rowNum}`, values: [[code]] })
   const res2 = await fetch(`${API}:batchUpdate`, {
     method: 'POST', headers: { Authorization: `Bearer ${tok}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ valueInputOption: 'RAW', data: [
-      { range: `'${SHEET_NAME}'!A${rowNum}:N${rowNum}`, values: [values] },
-      { range: `'${SHEET_NAME}'!Z${rowNum}`, values: [[code]] },
-    ] }),
+    body: JSON.stringify({ valueInputOption: 'RAW', data }),
   })
   if (!res2.ok) throw new Error(`公車表寫入新列失敗（${res2.status}）：${(await res2.text()).slice(0, 200)}`)
 }
@@ -419,6 +459,7 @@ export async function handleBusEvent(event: any, ctx: Ctx): Promise<boolean> {
     else if (/^(解除綁定|取消綁定)$/.test(text)) cmd = 'unbind'
     else if ((m = text.match(/^開車(?:\s+(?:誠徵|缺)?\s*(.*))?$/))) { cmd = 'create?'; arg = (m[1] || '').trim() }
     else if (/^(滿了|已滿|滿團)$/.test(text)) { cmd = 'want'; arg = '已滿' }
+    else if (/^公車表結構$/.test(text)) cmd = 'layout'
     else if ((m = text.match(/^(?:日期|改日期)\s+(.+)$/))) { cmd = 'date'; arg = m[1].trim() }
     else if ((m = text.match(/^(?:時間|改時間)\s+(.+)$/))) { cmd = 'time'; arg = m[1].trim() }
     else if ((m = text.match(/^(?:誠徵|缺)\s*(.+)$/))) { cmd = 'want'; arg = m[1] }
@@ -444,6 +485,14 @@ export async function handleBusEvent(event: any, ctx: Ctx): Promise<boolean> {
       const g = parseGroupName(name)
       const rows = await readSheet()
       await ctx.reply(token, [candidatesMessage(findCandidates(rows, g), g)])
+      return true
+    }
+
+    if (cmd === 'layout') {
+      const L = await readLayout()
+      const names = ['劇本', '類型', '人數', '反串', '價格', '誠徵', '日期', '星期', '時間', '時長', '換裝', '備註', '網站', '封面']
+      const lines = names.map((n, c) => `${LETTER(c)} ${n}：${L.header.has(c) ? '整欄公式（不寫）' : L.perRow.has(c) ? '每列公式（新增時複製）' : '手填'}`)
+      await say('📋 公車表結構\n' + lines.join('\n'))
       return true
     }
 
@@ -475,8 +524,11 @@ export async function handleBusEvent(event: any, ctx: Ctx): Promise<boolean> {
         await ctx.reply(token, msgs)
         return true
       }
+      const layout = await readLayout()
+      const bad = MANUAL_COLS.filter(c => !canWrite(layout, c))
+      if (bad.length) { await say(`公車表的 ${bad.map(LETTER).join('、')} 欄是公式，燈燈不敢新增列，請先打「公車表結構」給工程師看`); return true }
       const c = newCode()
-      await insertRow(at, buildRow(f.hit, g, want), c)
+      await insertRow(at, buildRow(f.hit, g, want), c, layout)
       const created = (await readSheet()).find(x => x.code === c)
       if (!created) { await say('新增完找不到那一列，請打開公車表檢查 😢'); return true }
       await dbPatch('line_groups', `group_id=eq.${encodeURIComponent(groupId)}`, {
@@ -535,8 +587,14 @@ export async function handleBusEvent(event: any, ctx: Ctx): Promise<boolean> {
       const v = arg.replace(/\s+/g, ' ').replace(/／/g, '/').replace(/：/g, ':')
       if (!v || v.length > 20) { await say(cmd === 'date' ? '格式：日期 12/20（或「日期 假日未定」）' : '格式：時間 14:00（或「時間 白天」）'); return true }
       const beforeLabel = rowLabel(r)
-      if (cmd === 'date') await writeCells([[`G${r.row}`, v], [`H${r.row}`, weekdayText(v)]])
-      else await writeCells([[`I${r.row}`, hhmm(v) || v]])
+      const layout = await readLayout()
+      const col = cmd === 'date' ? 6 : 8
+      if (!canWrite(layout, col)) { await say(`公車表的 ${LETTER(col)} 欄是公式，燈燈不能改`); return true }
+      if (cmd === 'date') {
+        const cells: [string, string][] = [[`G${r.row}`, v]]
+        if (canWrite(layout, 7)) cells.push([`H${r.row}`, weekdayText(v)]) // H 星期是公式就讓公式自己算
+        await writeCells(cells)
+      } else await writeCells([[`I${r.row}`, hhmm(v) || v]])
       await reposition(code)
       const after = (await readSheet()).find(x => x.code === code)
       if (after) {
@@ -553,6 +611,7 @@ export async function handleBusEvent(event: any, ctx: Ctx): Promise<boolean> {
       const v = arg.trim().replace(/\s+/g, ' ').replace(/(\d+)\s*([男女])/g, '$1$2').replace(/([男女])\s*(?=\d)/g, '$1 ')
       if (!v || v.length > 30) { await say('格式：誠徵 1男 1女，或打「滿了」'); return true }
       const before = r.want
+      if (!canWrite(await readLayout(), 5)) { await say('公車表的 F 欄是公式，燈燈不能改'); return true }
       await writeCell(`F${r.row}`, v)
       await dbPatch('line_groups', `group_id=eq.${encodeURIComponent(groupId)}`, {
         sheet_row: snapshot({ ...r, cells: r.cells.map((x, i) => i === COL.want ? v : x) }), updated_at: new Date().toISOString(),

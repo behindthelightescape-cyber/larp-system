@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs'
 import { spawnSync } from 'node:child_process'
 
 const file = process.argv[2]
-if (!file) { console.error('請給金鑰 JSON 的路徑：npm run sa:secret -- C:\Users\你\Downloads\xxx.json'); process.exit(1) }
+if (!file) { console.error('請給金鑰 JSON 的路徑：npm run sa:secret -- "D:/桌面/xxx.json"'); process.exit(1) }
 const j = JSON.parse(readFileSync(file, 'utf8'))
 if (!j.client_email || !j.private_key) { console.error('這不是服務帳號金鑰檔（缺 client_email / private_key）'); process.exit(1) }
 const b64 = Buffer.from(j.private_key, 'utf8').toString('base64')

@@ -7,6 +7,7 @@
 //   誠徵 1男 1女     改 F 欄（誠徵）
 //   滿了             F 欄改成「已滿」
 //   解除綁定         清掉 Z 欄代碼
+//   開車 誠徵 2男 1女 公車表上還沒有這車 → 用群組名稱＋劇本資料庫新增一列（照日期插進去），並綁定
 //
 // 綁定方式：在那列的 Z 欄寫一個燈燈代碼（例「燈-7KQ2MX」），之後只認代碼，列怎麼移動都不會改錯格。
 // App（公車管家）只讀到 N 欄、刪列的 GAS 只比對 A～L，Z 欄不影響它們。
@@ -205,6 +206,122 @@ const newCode = () => {
 }
 const snapshot = (r: BusRow) => r.cells.slice(0, 12) // A～L，之後成團匯入時用來接 Firestore
 
+// ── 開車：新增一列 ───────────────────────────────────────────────────────────
+const SCRIPT_SHEET = 'System劇本資料庫同步' // A 名稱 B 類型 C 價格 D 人數 E 男女 F 反串(O/X) G 換裝(O/X) H 時長 I 備註 J 網址 K 封面
+const BUS_SHEET_GID = 0
+type Script = { title: string; genre: string; price: string; people: string; cross: string; costume: string; hours: string; url: string; cover: string }
+
+async function readScripts(): Promise<Script[]> {
+  const range = `'${SCRIPT_SHEET}'!A2:K400`
+  const res = await fetch(`${API}/${encodeURIComponent(range)}?valueRenderOption=FORMATTED_VALUE`, {
+    headers: { Authorization: `Bearer ${await googleToken()}` },
+  })
+  if (!res.ok) throw new Error(`讀取劇本資料庫失敗（${res.status}）`)
+  const values: string[][] = (await res.json()).values || []
+  return values.map(r => r.map(x => String(x ?? '').trim())).filter(r => r[0]).map(r => ({
+    title: r[0], genre: r[1] || '', price: r[2] || '', people: r[4] || '', cross: r[5] || '', costume: r[6] || '',
+    hours: r[7] || '', url: r[9] || '', cover: r[10] || '',
+  }))
+}
+
+// 劇本名稱：完全一樣優先；否則「包含」且只有一本才算（「二十四橋」→「二十四橋明月夜」）
+function findScript(list: Script[], name: string): { hit?: Script; many?: Script[] } {
+  const s = norm(name)
+  const exact = list.find(x => norm(x.title) === s)
+  if (exact) return { hit: exact }
+  const part = list.filter(x => { const t = norm(x.title); return t.includes(s) || s.includes(t) })
+  return part.length === 1 ? { hit: part[0] } : { many: part.slice(0, 6) }
+}
+
+const tpeParts = (iso: string) => {
+  const d = new Date(new Date(iso).getTime() + 8 * 3600_000)
+  return { mo: d.getUTCMonth() + 1, d: d.getUTCDate(), wd: d.getUTCDay(), hh: String(d.getUTCHours()).padStart(2, '0'), mi: String(d.getUTCMinutes()).padStart(2, '0') }
+}
+const WEEK = ['日', '一', '二', '三', '四', '五', '六']
+export const normWant = (a: string) => a.trim().replace(/\s+/g, ' ').replace(/(\d+)\s*([男女])/g, '$1$2').replace(/([男女])\s*(?=\d)/g, '$1 ')
+
+// 新的一列 A～N，格式照公車表現有的寫法
+export function buildRow(sc: Script, startAt: string, want: string): string[] {
+  const t = tpeParts(startAt)
+  return [
+    sc.title, sc.genre, sc.people,
+    sc.cross === 'O' ? '可以反串' : '不建議反串',
+    sc.price, want, `${t.mo}/${t.d}`, `星期${WEEK[t.wd]}`, `${t.hh}:${t.mi}`, sc.hours,
+    sc.costume === 'O' ? '有換裝' : '無換裝',
+    '', sc.url, sc.cover,
+  ]
+}
+
+// 表上每列的大概時間（沒寫年份：比現在早 60 天以上的算明年）；讀不出日期的回傳 Infinity（排最後）
+function rowTime(r: BusRow, now = Date.now()): number {
+  const d = parseDates(r.date)[0]
+  if (!d) return Infinity
+  const y = new Date(now + 8 * 3600_000).getUTCFullYear()
+  const hm = hhmm(r.time) || '12:00'
+  const iso = (yy: number) => `${yy}-${String(d[0]).padStart(2, '0')}-${String(d[1]).padStart(2, '0')}T${hm}:00+08:00`
+  let ts = Date.parse(iso(y))
+  if (ts < now - 60 * 86400_000) ts = Date.parse(iso(y + 1))
+  return ts
+}
+
+// 插在第一個比它晚（或沒日期）的列前面；都比它早就接在最後一列後面
+export function insertRowNumber(rows: BusRow[], startAt: string): number {
+  const ts = new Date(startAt).getTime()
+  const later = rows.find(r => rowTime(r) > ts)
+  if (later) return later.row
+  return rows.length ? rows[rows.length - 1].row + 1 : FIRST_DATA_ROW
+}
+
+async function insertRow(rowNum: number, values: string[], code: string) {
+  const tok = await googleToken()
+  // 1. 插入空白列（格式沿用上一列；插在第一筆資料時沿用下一列）
+  const res = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}:batchUpdate`, {
+    method: 'POST', headers: { Authorization: `Bearer ${tok}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ requests: [{ insertDimension: {
+      range: { sheetId: BUS_SHEET_GID, dimension: 'ROWS', startIndex: rowNum - 1, endIndex: rowNum },
+      inheritFromBefore: rowNum > FIRST_DATA_ROW,
+    } }] }),
+  })
+  if (!res.ok) throw new Error(`公車表插入新列失敗（${res.status}）：${(await res.text()).slice(0, 200)}`)
+  // 2. 寫入 A～N 和 Z
+  const res2 = await fetch(`${API}:batchUpdate`, {
+    method: 'POST', headers: { Authorization: `Bearer ${tok}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ valueInputOption: 'RAW', data: [
+      { range: `'${SHEET_NAME}'!A${rowNum}:N${rowNum}`, values: [values] },
+      { range: `'${SHEET_NAME}'!Z${rowNum}`, values: [[code]] },
+    ] }),
+  })
+  if (!res2.ok) throw new Error(`公車表寫入新列失敗（${res2.status}）：${(await res2.text()).slice(0, 200)}`)
+}
+
+const groupKey = (name: string) => {
+  let h = 0
+  for (const ch of name) h = (h * 31 + ch.charCodeAt(0)) | 0
+  return (h >>> 0).toString(36)
+}
+
+function createPreview(sc: Script, startAt: string, want: string, groupName: string, insertAt: number) {
+  const v = buildRow(sc, startAt, want)
+  const line = (k: string, val: string) => ({ type: 'box', layout: 'baseline', spacing: 'md', contents: [
+    { type: 'text', text: k, color: '#888888', size: 'xs', flex: 2 },
+    { type: 'text', text: val || '—', color: '#ffffff', size: 'sm', flex: 5, wrap: true },
+  ] })
+  return {
+    type: 'flex', altText: `開車：${sc.title}`,
+    contents: { type: 'bubble', size: 'mega', body: {
+      type: 'box', layout: 'vertical', spacing: 'sm', backgroundColor: '#0d0d0d', paddingAll: '16px',
+      contents: [
+        { type: 'text', text: '🚌 要在公車表新增這車嗎？', color: GOLD, weight: 'bold', size: 'sm' },
+        line('劇本', v[0]), line('日期', `${v[6]}（${v[7].replace('星期', '')}）${v[8]}`), line('誠徵', v[5]),
+        line('人數', v[2]), line('價格', v[4]), line('類型', v[1]), line('反串／換裝', `${v[3]}・${v[10]}`), line('時長', v[9]),
+        { type: 'text', text: `會插在第 ${insertAt} 列（照日期排）`, color: '#666666', size: 'xxs', margin: 'md' },
+        { type: 'button', style: 'primary', color: GOLD, height: 'sm', margin: 'md',
+          action: { type: 'postback', label: '確定開車', data: `bus|create|${groupKey(groupName)}|${want}`, displayText: `確定開車 ${v[0]} ${v[6]} ${v[8]}` } },
+      ],
+    } },
+  }
+}
+
 // ── 群組事件入口：處理了回傳 true ─────────────────────────────────────────────
 type Ctx = { reply: (token: string, messages: unknown[]) => Promise<Response> }
 
@@ -227,6 +344,7 @@ export async function handleBusEvent(event: any, ctx: Ctx): Promise<boolean> {
     if (/^(綁定|綁定公車|綁公車)$/.test(text)) cmd = 'find'
     else if (/^(這車|這台車|這班|公車)$/.test(text)) cmd = 'show'
     else if (/^(解除綁定|取消綁定)$/.test(text)) cmd = 'unbind'
+    else if ((m = text.match(/^開車(?:\s+(?:誠徵|缺)?\s*(.*))?$/))) { cmd = 'create?'; arg = (m[1] || '').trim() }
     else if (/^(滿了|已滿|滿團)$/.test(text)) { cmd = 'want'; arg = '已滿' }
     else if ((m = text.match(/^(?:誠徵|缺)\s*(.+)$/))) { cmd = 'want'; arg = m[1] }
     else return false
@@ -249,6 +367,42 @@ export async function handleBusEvent(event: any, ctx: Ctx): Promise<boolean> {
       const g = parseGroupName(name)
       const rows = await readSheet()
       await ctx.reply(token, [candidatesMessage(findCandidates(rows, g), g)])
+      return true
+    }
+
+    if (cmd === 'create?' || cmd === 'create') {
+      const name: string = groupRow?.group_name || ''
+      if (code) { await say(`這個群組已經綁了公車表（${code}），要開新車請先「解除綁定」`); return true }
+      const g = parseGroupName(name)
+      if (!g.start_at || !g.script) { await say('先把群組名稱改成「日期 時間 劇本」，例如「11/28 14:00 殺死巫師 @劇光燈」，再打「群組名稱」讓燈燈重讀'); return true }
+      const want = normWant(cmd === 'create' ? post.slice(3).join('|') : arg)
+      if (want.length > 30) { await say('誠徵太長了，例如：開車 誠徵 2男 1女'); return true }
+      if (cmd === 'create' && post[2] !== groupKey(name)) { await say('群組名稱剛剛有變，請重打「開車」'); return true }
+      const [rows, scripts] = await Promise.all([readSheet(), readScripts()])
+      const dup = findCandidates(rows, g)
+      if (dup.exact) { await ctx.reply(token, [{ type: 'text', text: '公車表上已經有這車了，直接綁定就好：' }, candidatesMessage(dup, g)]); return true }
+      const f = findScript(scripts, g.script)
+      if (!f.hit) {
+        await say(f.many?.length
+          ? `劇本資料庫有好幾本像《${g.script}》：\n${f.many.map(x => '・' + x.title).join('\n')}\n請把群組名稱改成完整劇本名，再打「群組名稱」`
+          : `劇本資料庫找不到《${g.script}》，請確認群組名稱的劇本名稱`)
+        return true
+      }
+      const at = insertRowNumber(rows, g.start_at)
+      if (cmd === 'create?') {
+        const msgs: unknown[] = [createPreview(f.hit, g.start_at, want, name, at)]
+        if (!want) msgs.push({ type: 'text', text: '（還沒填誠徵，可以打「開車 誠徵 2男 1女」重來，或開完再打「誠徵 …」）' })
+        await ctx.reply(token, msgs)
+        return true
+      }
+      const c = newCode()
+      await insertRow(at, buildRow(f.hit, g.start_at, want), c)
+      const created = (await readSheet()).find(x => x.code === c)
+      if (!created) { await say('新增完找不到那一列，請打開公車表檢查 😢'); return true }
+      await dbPatch('line_groups', `group_id=eq.${encodeURIComponent(groupId)}`, {
+        sheet_code: c, sheet_row: snapshot(created), bound_at: new Date().toISOString(), bound_by: uid, updated_at: new Date().toISOString(),
+      })
+      await say(`✅ 已開車並綁定（第 ${created.row} 列）\n${rowLabel(created)}\n${wantLabel(created.want)}`)
       return true
     }
 
@@ -276,6 +430,11 @@ export async function handleBusEvent(event: any, ctx: Ctx): Promise<boolean> {
     if (!code) { await say('這個群組還沒綁公車表，先打「綁定」'); return true }
     const rows = await readSheet()
     const hits = rows.filter(x => x.code === code)
+    if (hits.length === 0 && cmd === 'unbind') {
+      await dbPatch('line_groups', `group_id=eq.${encodeURIComponent(groupId)}`, { sheet_code: null, updated_at: new Date().toISOString() })
+      await say(`公車表上已經沒有 ${code} 這列了，已解除這個群組的綁定`)
+      return true
+    }
     if (hits.length === 0) { await say(`公車表上找不到這個群組的車次（${code}），可能已經成團移除，或 Z 欄被清掉了`); return true }
     if (hits.length > 1) { await say(`公車表上有 ${hits.length} 列都是 ${code}，燈燈不敢亂改，請先整理 Z 欄`); return true }
     const r = hits[0]

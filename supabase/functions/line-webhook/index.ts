@@ -490,7 +490,19 @@ const refreshGroupName = async (groupId: string, replyToken: string) => {
 }
 
 // 燈燈被拉進群組
-const handleBotJoined = async (event: Record<string, unknown>) => {
+// 招呼語底下的指令介紹（只列有開的功能）
+const commandGuide = (features: Record<string, boolean>, bus: boolean) => {
+  const items: string[] = []
+  if (features['feature_summon']) items.push('・召喚：叫出你的燈燈')
+  if (features['feature_card'])   items.push('・我的名片：冒險者名片')
+  if (features['feature_tarot'])  items.push('・占卜：抽一張今日塔羅')
+  if (features['feature_sect'])   items.push('・我的師門：看看你的師門')
+  if (features['feature_rules'])  items.push('・版規：群組規則')
+  if (bus)                        items.push('・這車：這團的公車資訊')
+  return items.length ? `\n\n✨ 在群組打這些字，燈燈就會出現：\n${items.join('\n')}` : ''
+}
+
+const handleBotJoined = async (event: Record<string, unknown>, features: Record<string, boolean>) => {
   const src = event.source as Record<string, unknown>
   if (src?.type !== 'group' || !src.groupId) return // 多人聊天室（room）沒有名稱，先不處理
   const groupId = src.groupId as string
@@ -503,9 +515,9 @@ const handleBotJoined = async (event: Record<string, unknown>) => {
     joined_at: now, left_at: null, updated_at: now,
   })
   console.log('join', groupId, groupName, g, 'save:', r.status)
-  const hello = groupName
+  const hello = (groupName
     ? `各位安安！ 我是劇光燈的燈燈\n已經加入「${groupName}」囉！\n${describeGroup(g)}`
-    : '各位安安！ 我是劇光燈的燈燈'
+    : '各位安安！ 我是劇光燈的燈燈') + commandGuide(features, sheetReady() && looksLikeBus(g))
   const messages: unknown[] = [{ type: 'text', text: hello }]
   // 有接公車表、名稱裡有劇本 → 順便找找看是哪一車
   if (sheetReady() && looksLikeBus(g)) {
@@ -560,7 +572,7 @@ const handleEvents = async (events: Record<string, unknown>[]) => {
 
     // ── 燈燈被拉進群組：讀群組名稱、記下來、打招呼 ───────────────────────────
     if (event.type === 'join') {
-      try { await handleBotJoined(event) } catch (e) { console.error('join error:', e) }
+      try { await handleBotJoined(event, features) } catch (e) { console.error('join error:', e) }
       continue
     }
     // ── 燈燈被踢出群組：記離開時間（leave 事件沒有 replyToken，不能說話）──────

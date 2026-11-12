@@ -92,3 +92,133 @@ export async function busAppCheck(): Promise<string> {
     `自訂過的公版：${custom.length ? custom.map(k => NAMES[k] || k).join('、') : '（都用預設）'}`,
   ].join('\n')
 }
+
+// ── 通知公版（照公車管家 App v2.3.1 的 DEFAULT_NOTIFICATION_TEMPLATES / noticeVars / fillNotice）──
+// 妘兒在 App 設定裡改過的版本（settings.notificationTemplates）優先；沒改過才用這裡的預設。
+const DEFAULT_TEMPLATES: Record<string, string> = {
+  payment: `@All 各位！已滿團訂場惹🐱 那妘兒不免俗的要先來跟大家收個錢錢惹💗
+
+再麻煩大家 LINE Pay 場地費
+一個人 {{價格}}$ 給我！
+
+{{LINE Pay 提示}}
+
+如果沒有 LINE Pay 的可以轉帳到以下帳戶：
+{{銀行代碼}}
+{{銀行帳號}}
+
+如果有要使用優惠券或早鳥務必轉帳前告知我喔！！！
+非常感謝大家 💗
+
+遲到將會壓縮到遊戲時間，若是遲到30分鐘將會沒收所有訂金並取消場次，還請注意。
+
+遊戲地點：劇光燈（{{地址}}）
+{{地圖網址}}
+
+{{飲食提醒}}
+
+現在也可以點店內的熱騰騰餐點啦！
+菜單抵家：{{菜單網址}}
+
+{{調酒提醒}}
+
+🌸 公車禮儀注意事項 🌸
+有鑑於近期有收到相關客訴，請大家互相尊重，不要對車友有肢體騷擾、言語騷擾。若收到客訴並查證屬實，將列入公車黑名單，不再提供幫組車服務；但仍歡迎自行組團來遊玩。
+
+謝謝大家配合跟見諒 🌸`,
+  reminder: `各位車友提醒一下～💗
+《{{劇本名稱}}》{{日期}} {{時間}} 即將開場！
+
+目前還有 {{未付款人數}} 位款項尚未確認，再麻煩有未付款的夥伴盡快完成匯款，若已匯款請私訊我協助核對。
+
+謝謝大家！妘兒導遊等大家上車 🚍`,
+  eve: `@All 明天就要發車啦！🚍💗
+
+🎭 劇本：《{{劇本名稱}}》
+📅 日期：{{日期}}
+⏰ 開場時間：{{時間}}
+📍 地點：劇光燈（{{地址}}）
+{{地圖網址}}
+
+記得準時抵達！遲到會壓縮遊戲時間；如有特殊狀況請提早私訊妘兒。
+{{行前飲食提醒}}
+{{行前調酒提醒}}
+明天見啦～٩(ˊᗜˋ*)و`,
+  paymentFoodNormal: `遊戲過程中可以飲食，也可以外食、叫外送，但建議先買好糧食直接帶來呦～`,
+  paymentFoodRestricted: `⚠️ 此場遊戲流程不太方便吃東西，建議先吃飽再來，避免影響遊戲體驗喔！`,
+  paymentAlcohol: `🍸 此場會提供調酒，開車的夥伴請勿飲酒，也可以自備飲料代替喔～`,
+  eveFoodNormal: `🍽️ 這場可以邊玩邊吃，也可以外食、叫外送，記得先準備好糧食喔～`,
+  eveFoodRestricted: `🍽️ 這場遊戲流程不太方便吃東西，建議先吃飽再來喔！`,
+  eveAlcohol: `🍸 這場有調酒，開車的夥伴請勿飲酒，也可以自備飲料。`,
+}
+export type NoticeKind = 'payment' | 'reminder' | 'eve'
+export const NOTICE_LABEL: Record<NoticeKind, string> = { payment: '收款通知', reminder: '催款', eve: '行前提醒' }
+
+const s_ = (x: unknown) => String(x ?? '').trim()
+const amt = (n: unknown) => Number(n || 0).toLocaleString('zh-TW')
+const twDate = (iso: string) => { if (!iso) return '日期待定'; const [, m, d] = iso.split('-'); return `${+m}/${+d}` }
+const htmlDate = (iso: string) => {
+  if (!iso) return '日期待定'
+  const wd = new Date(`${iso}T12:00:00+08:00`).getUTCDay()
+  return `${twDate(iso)}（${'日一二三四五六'[wd]}）`
+}
+const hhmm = (raw: unknown) => {
+  const v = s_(raw)
+  const c = v.match(/^(\d{1,2}):(\d{1,2})(?::00)?$/)
+  if (c && +c[1] <= 23 && +c[2] <= 59) return `${c[1].padStart(2, '0')}:${c[2].padStart(2, '0')}`
+  const l = v.match(/^(\d{1,2})\.(0|5)?$/)
+  if (l && +l[1] <= 23) return `${l[1].padStart(2, '0')}:${l[2] === '5' ? '30' : '00'}`
+  return '時間待定'
+}
+// deno-lint-ignore no-explicit-any
+const activeMembers = (g: any) => (g.members || []).filter((m: any) => m.role !== 'staff' && !m.leftAt)
+
+// deno-lint-ignore no-explicit-any
+export function renderNotice(kind: NoticeKind, g: any, st: any): string {
+  const tpl = (k: string) => { const c = st?.notificationTemplates?.[k]; return typeof c === 'string' ? c : DEFAULT_TEMPLATES[k] }
+  let raw = tpl(kind)
+  // App 的相容處理：舊版收款公版寫死「可飲食」那句 → 換成 {{飲食提醒}}，且只留第一個
+  const legacyFood = '遊戲過程中可以飲食，也可以外食、叫外送，但建議先買好糧食直接帶來呦～'
+  if (kind === 'payment' && raw.includes(legacyFood)) {
+    raw = raw.replace(legacyFood, '{{飲食提醒}}')
+    let first = true
+    raw = raw.replace(/\{\{飲食提醒\}\}/g, () => { if (first) { first = false; return '{{飲食提醒}}' } return '' })
+  }
+  const avoid = g.avoidEating === true
+  const vars: Record<string, string> = {
+    '劇本名稱': s_(g.title) || '劇本待定', '日期': htmlDate(g.date), '短日期': twDate(g.date),
+    '時間': hhmm(g.time), '小時點': hhmm(g.time), '價格': amt(g.price),
+    '未付款人數': String(activeMembers(g).filter((m: any) => m.paymentStatus !== 'paid').length),
+    'LINE Pay 提示': st?.linePay || '請使用 LINE Pay 付款',
+    '銀行代碼': st?.bankCode || '【請先設定銀行代碼】',
+    '銀行帳號': st?.bankAccount || '【請先設定銀行帳號】',
+    '地址': st?.address || '', '地圖網址': st?.mapUrl || '', '菜單網址': st?.menuUrl || '',
+    '調酒提醒': g.hasAlcohol === true ? tpl('paymentAlcohol') : '',
+    '飲食提醒': tpl(avoid ? 'paymentFoodRestricted' : 'paymentFoodNormal'),
+    '行前飲食提醒': tpl(avoid ? 'eveFoodRestricted' : 'eveFoodNormal'),
+    '行前調酒提醒': g.hasAlcohol === true ? tpl('eveAlcohol') : '',
+  }
+  const out = raw.replace(/\{\{([^{}]+)\}\}/g, (all, name) => Object.prototype.hasOwnProperty.call(vars, name) ? vars[name] : all)
+  return out.replace(/\n[ \t]*\n[ \t]*\n+/g, '\n\n').trim()
+}
+
+// 文字裡的「@All」→ LINE 真的 tag 全部人（textV2 mention all）；文字有其他大括號就退回一般文字
+export function noticeMessage(text: string) {
+  if (!text.includes('@All') || /[{}]/.test(text)) return { type: 'text', text }
+  return {
+    type: 'textV2', text: text.replace(/@All/g, '{all}'),
+    substitution: { all: { type: 'mention', mentionee: { type: 'all' } } },
+  }
+}
+
+// 找出這個 LINE 群組對應的公車管家團：劇本名稱＋日期（＋時間），排除取消的
+const normT = (x: string) => x.replace(/[\s　《》「」『』]/g, '').toLowerCase()
+// deno-lint-ignore no-explicit-any
+export async function findAppGroup(q: { script: string; date: string; time?: string }): Promise<{ hit?: any; many?: any[] }> {
+  const s = normT(q.script)
+  const all = (await listGroups()).filter(g => g.status !== 'cancelled' && g.date === q.date)
+  const byTitle = all.filter(g => { const t = normT(s_(g.title)); return t && (t === s || t.includes(s) || s.includes(t)) })
+  const byTime = q.time ? byTitle.filter(g => hhmm(g.time) === q.time) : byTitle
+  const list = byTime.length ? byTime : byTitle
+  return list.length === 1 ? { hit: list[0] } : { many: list }
+}

@@ -9,6 +9,7 @@
 //   解除綁定         清掉 Z 欄代碼
 //   日期 12/20       改 G 欄（日期）＋H 欄（星期），照日期重新排位置；也可以寫「日期 假日未定」
 //   時間 14:00       改 I 欄；也可以寫「時間 白天」
+//   收款通知／行前提醒／催款  從公車管家（成團後的團）讀資料，套妘兒自訂的公版，直接發在群組（回覆，不算則數）
 //   開車 誠徵 2男 1女 公車表上還沒有這車 → 用群組名稱＋劇本資料庫新增一列（照日期插進去），並綁定
 //
 // 綁定方式：在那列的 Z 欄寫一個燈燈代碼（例「燈-7KQ2MX」），之後只認代碼，列怎麼移動都不會改錯格。
@@ -20,7 +21,7 @@
 // ═══════════════════════════════════════════════════════════════════════════
 
 import { parseWhen, fmtDT, fmtDate } from './team.ts'
-import { busAppReady, busAppCheck } from './busapp.ts'
+import { busAppReady, busAppCheck, getSettings, findAppGroup, renderNotice, noticeMessage, NOTICE_LABEL, type NoticeKind } from './busapp.ts'
 
 const env = (k: string) => Deno.env.get(k) || ''
 const SUPABASE_URL = env('SUPABASE_URL')
@@ -462,6 +463,9 @@ export async function handleBusEvent(event: any, ctx: Ctx): Promise<boolean> {
     else if (/^(滿了|已滿|滿團)$/.test(text)) { cmd = 'want'; arg = '已滿' }
     else if (/^公車表結構$/.test(text)) cmd = 'layout'
     else if (/^公車管家檢查$/.test(text)) cmd = 'appcheck'
+    else if (/^(收款通知|收款)$/.test(text)) { cmd = 'notice'; arg = 'payment' }
+    else if (/^(行前提醒|行前通知)$/.test(text)) { cmd = 'notice'; arg = 'eve' }
+    else if (/^(催款|催款通知)$/.test(text)) { cmd = 'notice'; arg = 'reminder' }
     else if ((m = text.match(/^(?:日期|改日期)\s+(.+)$/))) { cmd = 'date'; arg = m[1].trim() }
     else if ((m = text.match(/^(?:時間|改時間)\s+(.+)$/))) { cmd = 'time'; arg = m[1].trim() }
     else if ((m = text.match(/^(?:誠徵|缺)\s*(.+)$/))) { cmd = 'want'; arg = m[1] }
@@ -473,12 +477,12 @@ export async function handleBusEvent(event: any, ctx: Ctx): Promise<boolean> {
   // 「這車」大家都能看；其他要權限
   // 誠徵／滿了／日期／時間 是聊天常見的詞，不是導遊打的就當一般訊息放過；綁定／開車／解除綁定才回「只有導遊」
   if (cmd !== 'show' && !(await isEditor(uid))) {
-    if (['want', 'date', 'time'].includes(cmd)) return false
+    if (['want', 'date', 'time', 'notice'].includes(cmd)) return false
     await say('這個指令只有導遊可以用喔 🙏')
     return true
   }
 
-  const groupRow = (await dbGet(`line_groups?group_id=eq.${encodeURIComponent(groupId)}&select=group_name,sheet_code&limit=1`))?.[0]
+  const groupRow = (await dbGet(`line_groups?group_id=eq.${encodeURIComponent(groupId)}&select=group_name,sheet_code,sheet_row&limit=1`))?.[0]
   const code: string = groupRow?.sheet_code || ''
 
   try {
@@ -487,6 +491,41 @@ export async function handleBusEvent(event: any, ctx: Ctx): Promise<boolean> {
       const g = parseGroupName(name)
       const rows = await readSheet()
       await ctx.reply(token, [candidatesMessage(findCandidates(rows, g), g)])
+      return true
+    }
+
+    if (cmd === 'notice') {
+      const kind = arg as NoticeKind
+      if (!busAppReady()) { await say('燈燈還沒拿到公車管家的登入（BUS_REFRESH_TOKEN 未設定）'); return true }
+      // 用群組名稱找；名稱沒日期就用最後綁定時看到的公車表那列
+      const g = parseGroupName(groupRow?.group_name || '')
+      let script = g.script || '', date = '', time = ''
+      if (g.hasDate && g.start_at) {
+        const t = new Date(new Date(g.start_at).getTime() + 8 * 3600_000)
+        date = t.toISOString().slice(0, 10)
+        if (g.hasTime) time = t.toISOString().slice(11, 16)
+      } else if (Array.isArray(groupRow?.sheet_row) && groupRow.sheet_row[0]) {
+        const row: string[] = groupRow.sheet_row
+        const d = parseDates(row[6] || '')[0]
+        if (d) {
+          script = row[0]
+          const t = new Date(mdTime(d[0], d[1]) + 8 * 3600_000)
+          date = t.toISOString().slice(0, 10)
+          time = hhmm(row[8] || '')
+        }
+      }
+      if (!script || !date) { await say('燈燈看不出這是哪一團：群組名稱要有日期和劇本，例如「11/28 14:00 殺死巫師 @劇光燈」'); return true }
+      const [found, st] = await Promise.all([findAppGroup({ script, date, time: time || undefined }), getSettings()])
+      if (!found.hit) {
+        await say(found.many?.length
+          ? `公車管家裡 ${date.slice(5).replace('-', '/')} 有好幾團對得上《${script}》：\n${found.many.map((x: any) => `・${x.title} ${x.time || ''}`).join('\n')}\n請把群組名稱的時間寫清楚`
+          : `公車管家裡找不到 ${date.slice(5).replace('-', '/')}${time ? ' ' + time : ''}《${script}》這團。\n要先在 App 按「一鍵成團」匯入，燈燈才發得了${NOTICE_LABEL[kind]}`)
+        return true
+      }
+      const text = renderNotice(kind, found.hit, st)
+      let res = await ctx.reply(token, [noticeMessage(text)])
+      if (!res.ok) { console.error('notice textV2 failed', res.status, await res.text()); res = await ctx.reply(token, [{ type: 'text', text }]) }
+      console.log('notice', kind, found.hit.id, res.status)
       return true
     }
 

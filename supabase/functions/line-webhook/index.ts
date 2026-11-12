@@ -10,6 +10,7 @@
 // ═══════════════════════════════════════════════════════════════════════════
 
 import { handleTeamEvent, parseWhen, fmtDT } from '../_shared/team.ts'
+import { handleBusEvent, sheetReady, readSheet, findCandidates, candidatesMessage } from '../_shared/bus.ts'
 
 // ── 環境變數（在 Supabase Dashboard > Edge Functions > Secrets 設定）──────
 const LINE_CHANNEL_SECRET  = Deno.env.get('LINE_CHANNEL_SECRET')!        // LINE Bot Channel Secret，用於驗證簽名
@@ -517,7 +518,13 @@ const handleBotJoined = async (event: Record<string, unknown>) => {
   const hello = groupName
     ? `大家好～我是劇光燈的燈燈 🕯️\n已經加入「${groupName}」囉！\n${describeGroup(g)}`
     : '大家好～我是劇光燈的燈燈 🕯️'
-  const res = await lineReply(event.replyToken as string, [{ type: 'text', text: hello }])
+  const messages: unknown[] = [{ type: 'text', text: hello }]
+  // 有接公車表、名稱裡有劇本 → 順便找找看是哪一班
+  if (sheetReady() && g.script) {
+    try { messages.push(candidatesMessage(findCandidates(await readSheet(), g), g)) }
+    catch (e) { console.error('join bus lookup error:', e) }
+  }
+  const res = await lineReply(event.replyToken as string, messages)
   console.log('join reply status:', res.status)
 }
 
@@ -546,6 +553,13 @@ const handleEvents = async (events: Record<string, unknown>[]) => {
 
   for (const event of events) {
     console.log('event.type:', event.type)
+
+    // ── 公車表指令（綁定／這班／誠徵／滿了／解除綁定）─────────────────────────
+    try {
+      if (await handleBusEvent(event, { reply: lineReply })) continue
+    } catch (e) {
+      console.error('bus event error:', e)
+    }
 
     // ── 揪團指令（規格 docs/group-session-api.md）：是揪團指令就處理完跳下一則 ──
     if (features['feature_team']) {

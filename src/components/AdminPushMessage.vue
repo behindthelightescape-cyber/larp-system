@@ -23,9 +23,10 @@ const emptyFilter = () => ({
   login_status: '', last_login_after: '', last_login_before: '',
   play_count_min: '', play_count_max: '',
   last_played_after: '', last_played_before: '',
-  played_scripts: [], played_scripts_min: '', not_played_scripts: [],
+  played_scripts: [], played_scripts_min: '', played_scripts_max: '', not_played_scripts: [],
   achievement_id: '', achievement_missing_max: '', achievement_mode: '',
   categories: [], branches: [], has_coupon: false,
+  exclude_presale_buyers: false, exclude_pushed_days: '',
 })
 const MISSING_TAG = '{缺少劇本}'
 const filter = ref(emptyFilter())
@@ -283,6 +284,9 @@ watch(() => filter.value.login_status, (v) => {
   if (v === 'never') { filter.value.last_login_after = ''; filter.value.last_login_before = '' }
 })
 
+// 雙11 七本（傘靈、相思骨、將雪、二十四橋、花吃、殯儀館、神奈川）
+const DOUBLE11_SCRIPTS = [52, 46, 33, 7, 64, 48, 23]
+const useDouble11Scripts = () => { filter.value.played_scripts = [...DOUBLE11_SCRIPTS] }
 const selectedAchievement = computed(() => achievements.value.find(a => a.id === filter.value.achievement_id))
 const insertMissingTag = () => { blocks.value[0].text += MISSING_TAG }
 const useAchievementTemplate = () => {
@@ -728,14 +732,36 @@ const testSend = async () => {
                   {{ scriptTitle(id) }} <button @click="removeScript(p.field, id)" aria-label="移除">×</button>
                 </span>
               </div>
+              <button v-if="p.field === 'played_scripts'" class="link" @click="useDouble11Scripts">選雙11 七本</button>
               <label v-if="p.field === 'played_scripts' && filter.played_scripts.length > 1" class="min-row">
-                至少玩過其中
-                <input v-model="filter.played_scripts_min" type="number" min="1" :max="filter.played_scripts.length" class="input tiny" placeholder="1" />
+                玩過其中
+                <input v-model="filter.played_scripts_min" type="number" min="0" :max="filter.played_scripts.length" class="input tiny" :placeholder="filter.played_scripts_max !== '' ? '0' : '1'" />
+                ～
+                <input v-model="filter.played_scripts_max" type="number" min="0" :max="filter.played_scripts.length" class="input tiny" placeholder="不限" />
                 部
               </label>
             </div>
           </div>
           <p class="hint">例：新劇本上線，推給「玩過前作」但「還沒玩過新作」的人。</p>
+        </fieldset>
+
+        <fieldset>
+          <legend>排除</legend>
+          <div class="row">
+            <label class="check">
+              <input v-model="filter.exclude_presale_buyers" type="checkbox" /> 已買雙11預售票（待匯款／待查帳／已發券）
+            </label>
+            <label>最近收過推播
+              <select v-model="filter.exclude_pushed_days" class="input" style="width: 150px;">
+                <option value="">不排除</option>
+                <option :value="1">今天收過</option>
+                <option :value="2">近 2 天收過</option>
+                <option :value="3">近 3 天收過</option>
+                <option :value="7">近 7 天收過</option>
+              </select>
+            </label>
+          </div>
+          <p class="hint">連續兩天推同一個人容易被封鎖，建議至少排除「今天收過」。</p>
         </fieldset>
 
         <p v-if="activeFilterCount === 0" class="hint warn">目前沒有任何條件，會發給全部會員。</p>

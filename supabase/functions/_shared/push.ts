@@ -27,6 +27,7 @@ export type Filter = {
   last_played_before?: string  // 最後遊玩日期 <=
   played_scripts?: number[]     // 玩過其中至少 played_scripts_min 部（預設 1 = 任一）
   played_scripts_min?: number
+  played_scripts_max?: number  // 最多玩過其中幾部（搭配 min=0 可篩「只玩過 0～1 部」）
   not_played_scripts?: number[] // 這些都沒玩過
   achievement_id?: string       // 成就差一點：還沒解鎖、只差 1～achievement_missing_max 部劇本
   achievement_missing_max?: number
@@ -35,6 +36,8 @@ export type Filter = {
   categories?: string[]         // 玩過其中任一類型
   branches?: string[]           // 去過其中任一分店
   has_coupon?: boolean          // 有未使用、未過期的票券
+  exclude_presale_buyers?: boolean // 排除已買預售票（待匯款／待查帳／已發券）
+  exclude_pushed_days?: number     // 排除最近 N 天（含今天，台灣日期）收過推播的人；1＝今天
 }
 
 // exclude_ids：在後台「瀏覽完整名單」手動排除的人（發送、預約到期時都會排除）
@@ -134,7 +137,8 @@ async function resolveFilter(f: Filter): Promise<Resolved> {
   const lastAfter = f.last_played_after ? Date.parse(`${f.last_played_after}T00:00:00+08:00`) : null
   const lastBefore = f.last_played_before ? Date.parse(`${f.last_played_before}T23:59:59+08:00`) : null
   const played = nonEmpty(f.played_scripts)?.map(Number)
-  const playedMin = Math.max(1, num(f.played_scripts_min) ?? 1)
+  const playedMax = num(f.played_scripts_max)
+  const playedMin = Math.max(0, num(f.played_scripts_min) ?? (playedMax !== null ? 0 : 1))
   const notPlayed = nonEmpty(f.not_played_scripts)?.map(Number)
   const categories = nonEmpty(f.categories)
   const branches = nonEmpty(f.branches)
@@ -194,7 +198,11 @@ async function resolveFilter(f: Filter): Promise<Resolved> {
       if (playCountMax !== null && count > playCountMax) return false
       if (lastAfter !== null && (!s || s.last < lastAfter)) return false
       if (lastBefore !== null && (!s || s.last > lastBefore)) return false
-      if (played && played.filter((x) => s?.scripts.has(x)).length < playedMin) return false
+      if (played) {
+        const n = played.filter((x) => s?.scripts.has(x)).length
+        if (n < playedMin) return false
+        if (playedMax !== null && n > playedMax) return false
+      }
       if (notPlayed && notPlayed.some((x) => s?.scripts.has(x))) return false
       if (categories && !categories.some((c) => s?.cats.has(c))) return false
       if (branches && !branches.some((b) => s?.branches.has(b))) return false
@@ -224,6 +232,30 @@ async function resolveFilter(f: Filter): Promise<Resolved> {
     )
     const set = new Set(rows.map((r) => r.user_id))
     ids = ids.filter((id) => set.has(id))
+  }
+
+  // 5. 排除已買預售票
+  if (f.exclude_presale_buyers === true) {
+    const rows = await fetchAll<{ user_id: string | null }>(
+      () => supabase.from('presale_orders').select('user_id').in('status', ['awaiting_payment', 'reviewing', 'issued'])
+        .not('user_id', 'is', null).order('id'),
+      '預售訂單',
+    )
+    const set = new Set(rows.map((r) => r.user_id))
+    ids = ids.filter((id) => !set.has(id))
+  }
+
+  // 6. 排除最近收過推播（連續兩天推同一個人容易被封鎖）
+  const pushedDays = num(f.exclude_pushed_days)
+  if (pushedDays !== null && pushedDays >= 1) {
+    const todayTw = new Date(Date.now() + 8 * 3600e3).toISOString().slice(0, 10)
+    const since = new Date(Date.parse(`${todayTw}T00:00:00+08:00`) - (pushedDays - 1) * 86400e3).toISOString()
+    const rows = await fetchAll<{ user_id: string }>(
+      () => supabase.from('push_log_recipients').select('user_id').eq('status', 'sent').gte('created_at', since).order('id'),
+      '推播紀錄',
+    )
+    const set = new Set(rows.map((r) => r.user_id))
+    ids = ids.filter((id) => !set.has(id))
   }
 
   return { ids, lastPlayed, missing }

@@ -2,8 +2,8 @@
 // 燈燈 × 公車表單（Google Sheet「劇光燈 揪團清單」）
 //
 // 一個 LINE 群組綁定 Sheet 上的一列，之後在群組裡就能更新那一列：
-//   綁定             用群組名稱（例「11/28 14:00 殺死巫師 @劇光燈」）找出對應的班次，按按鈕綁定
-//   這班             看綁定的那列目前內容（大家都能用）
+//   綁定             用群組名稱（例「11/28 14:00 殺死巫師 @劇光燈」）找出對應的車次，按按鈕綁定
+//   這車             看綁定的那列目前內容（大家都能用）
 //   誠徵 1男 1女     改 F 欄（誠徵）
 //   滿了             F 欄改成「已滿」
 //   解除綁定         清掉 Z 欄代碼
@@ -104,7 +104,7 @@ async function writeCell(a1: string, value: string) {
   if (!res.ok) throw new Error(`寫入公車表失敗（${res.status}）：${(await res.text()).slice(0, 200)}`)
 }
 
-// ── 比對：群組名稱 ↔ 班次 ────────────────────────────────────────────────────
+// ── 比對：群組名稱 ↔ 車次 ────────────────────────────────────────────────────
 const norm = (s: string) => s.replace(/[\s　《》「」『』]/g, '').toLowerCase()
 
 // 「12/1、3」「11/30、12/2」→ [[12,1],[12,3]]…
@@ -161,10 +161,10 @@ const wantLabel = (w: string) => w ? `誠徵 ${w}` : '誠徵（空白）'
 export function candidatesMessage(c: { exact: boolean; rows: BusRow[] }, g: GroupInfo) {
   if (!c.rows.length) {
     return { type: 'text', text: g.script
-      ? `🔍 公車表上找不到《${g.script}》${g.start_at ? ` ${fmtDT(g.start_at)}` : ''} 這班`
+      ? `🔍 公車表上找不到《${g.script}》${g.start_at ? ` ${fmtDT(g.start_at)}` : ''} 這車`
       : '🔍 群組名稱裡沒看到劇本和日期時間，例如「11/28 14:00 殺死巫師 @劇光燈」' }
   }
-  const head = c.exact ? '🚌 公車表上找到這班，是這個群組的嗎？' : '🚌 時間對不上，但有這些同劇本的班次：'
+  const head = c.exact ? '🚌 公車表上找到這車，是這個群組的嗎？' : '🚌 時間對不上，但有這些同劇本的車次：'
   return {
     type: 'flex', altText: '綁定公車表',
     contents: {
@@ -179,7 +179,7 @@ export function candidatesMessage(c: { exact: boolean; rows: BusRow[] }, g: Grou
               { type: 'text', text: rowLabel(r), color: '#ffffff', size: 'sm', wrap: true },
               { type: 'text', text: wantLabel(r.want) + (r.code ? `・已綁 ${r.code}` : ''), color: '#999999', size: 'xs', wrap: true },
               { type: 'button', style: 'primary', color: GOLD, height: 'sm',
-                action: { type: 'postback', label: '綁定這班', data: `bus|bind|${r.row}|${rowKey(r)}`, displayText: `綁定 ${r.title} ${r.date} ${r.time}` } },
+                action: { type: 'postback', label: '綁定這車', data: `bus|bind|${r.row}|${rowKey(r)}`, displayText: `綁定 ${r.title} ${r.date} ${r.time}` } },
             ],
           })),
         ],
@@ -225,7 +225,7 @@ export async function handleBusEvent(event: any, ctx: Ctx): Promise<boolean> {
     const text = String(event.message.text || '').trim().replace(/^[!！]\s*/, '')
     let m: RegExpMatchArray | null
     if (/^(綁定|綁定公車|綁公車)$/.test(text)) cmd = 'find'
-    else if (/^(這班|這班公車|公車)$/.test(text)) cmd = 'show'
+    else if (/^(這車|這台車|這班|公車)$/.test(text)) cmd = 'show'
     else if (/^(解除綁定|取消綁定)$/.test(text)) cmd = 'unbind'
     else if (/^(滿了|已滿|滿團)$/.test(text)) { cmd = 'want'; arg = '已滿' }
     else if ((m = text.match(/^(?:誠徵|缺)\s*(.+)$/))) { cmd = 'want'; arg = m[1] }
@@ -234,7 +234,7 @@ export async function handleBusEvent(event: any, ctx: Ctx): Promise<boolean> {
 
   if (!sheetReady()) { await say('燈燈還沒接上公車表（Google 服務帳號未設定）'); return true }
 
-  // 「這班」大家都能看；其他要權限
+  // 「這車」大家都能看；其他要權限
   if (cmd !== 'show' && !(await isEditor(uid))) {
     await say('這個指令只有導遊可以用喔 🙏')
     return true
@@ -257,7 +257,7 @@ export async function handleBusEvent(event: any, ctx: Ctx): Promise<boolean> {
       const rows = await readSheet()
       const r = rows.find(x => x.row === rowNum)
       if (!r || rowKey(r) !== key) { await say('公車表剛剛有變動，請重打「綁定」再選一次'); return true }
-      if (r.code && r.code !== code) { await say(`這班已經綁了別的群組（${r.code}）。要換的話，先到那個群組打「解除綁定」，或直接清掉 Z 欄`); return true }
+      if (r.code && r.code !== code) { await say(`這車已經綁了別的群組（${r.code}）。要換的話，先到那個群組打「解除綁定」，或直接清掉 Z 欄`); return true }
       // 這個群組原本綁別列 → 先清掉舊的
       if (code && r.code !== code) {
         const old = rows.filter(x => x.code === code)
@@ -276,7 +276,7 @@ export async function handleBusEvent(event: any, ctx: Ctx): Promise<boolean> {
     if (!code) { await say('這個群組還沒綁公車表，先打「綁定」'); return true }
     const rows = await readSheet()
     const hits = rows.filter(x => x.code === code)
-    if (hits.length === 0) { await say(`公車表上找不到這個群組的班次（${code}），可能已經成團移除，或 Z 欄被清掉了`); return true }
+    if (hits.length === 0) { await say(`公車表上找不到這個群組的車次（${code}），可能已經成團移除，或 Z 欄被清掉了`); return true }
     if (hits.length > 1) { await say(`公車表上有 ${hits.length} 列都是 ${code}，燈燈不敢亂改，請先整理 Z 欄`); return true }
     const r = hits[0]
 

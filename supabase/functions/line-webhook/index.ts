@@ -519,7 +519,7 @@ const handleBotJoined = async (event: Record<string, unknown>) => {
     ? `大家好～我是劇光燈的燈燈 🕯️\n已經加入「${groupName}」囉！\n${describeGroup(g)}`
     : '大家好～我是劇光燈的燈燈 🕯️'
   const messages: unknown[] = [{ type: 'text', text: hello }]
-  // 有接公車表、名稱裡有劇本 → 順便找找看是哪一班
+  // 有接公車表、名稱裡有劇本 → 順便找找看是哪一車
   if (sheetReady() && g.script) {
     try { messages.push(candidatesMessage(findCandidates(await readSheet(), g), g)) }
     catch (e) { console.error('join bus lookup error:', e) }
@@ -554,7 +554,7 @@ const handleEvents = async (events: Record<string, unknown>[]) => {
   for (const event of events) {
     console.log('event.type:', event.type)
 
-    // ── 公車表指令（綁定／這班／誠徵／滿了／解除綁定）─────────────────────────
+    // ── 公車表指令（綁定／這車／誠徵／滿了／解除綁定）─────────────────────────
     try {
       if (await handleBusEvent(event, { reply: lineReply })) continue
     } catch (e) {

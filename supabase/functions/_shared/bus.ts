@@ -448,6 +448,19 @@ type Ctx = { reply: (token: string, messages: unknown[]) => Promise<Response> }
 
 export async function handleBusEvent(event: any, ctx: Ctx): Promise<boolean> {
   const src = event.source || {}
+  // 「公車文」：群組、私訊都可以，大家都能看
+  if (event.type === 'message' && event.message?.type === 'text' && /^[!！]?\s*公車文$/.test(String(event.message.text || '').trim())) {
+    try {
+      if (!sheetReady()) throw new Error('GOOGLE_SA 未設定')
+      const { busPostMessages } = await import('./buspost.ts')
+      const res = await ctx.reply(event.replyToken, await busPostMessages())
+      if (!res.ok) console.error('buspost reply', res.status, await res.text())
+    } catch (e) {
+      console.error('buspost error:', e)
+      await ctx.reply(event.replyToken, [{ type: 'text', text: '😢 燈燈現在讀不到公車表，等一下再試試看' }])
+    }
+    return true
+  }
   if (src.type !== 'group' || !src.groupId) return false
   const groupId: string = src.groupId
   const uid: string = src.userId || ''

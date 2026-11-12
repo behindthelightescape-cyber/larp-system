@@ -504,8 +504,8 @@ const handleBotJoined = async (event: Record<string, unknown>) => {
   })
   console.log('join', groupId, groupName, g, 'save:', r.status)
   const hello = groupName
-    ? `大家好～我是劇光燈的燈燈 🕯️\n已經加入「${groupName}」囉！\n${describeGroup(g)}`
-    : '大家好～我是劇光燈的燈燈 🕯️'
+    ? `各位安安！ 我是劇光燈的燈燈\n已經加入「${groupName}」囉！\n${describeGroup(g)}`
+    : '各位安安！ 我是劇光燈的燈燈'
   const messages: unknown[] = [{ type: 'text', text: hello }]
   // 有接公車表、名稱裡有劇本 → 順便找找看是哪一車
   if (sheetReady() && looksLikeBus(g)) {

@@ -9,6 +9,7 @@
 //   解除綁定         清掉 Z 欄代碼
 //   日期 12/20       改 G 欄（日期）＋H 欄（星期），照日期重新排位置；也可以寫「日期 假日未定」
 //   時間 14:00       改 I 欄；也可以寫「時間 白天」
+//   備註 無法使用生日優惠   改 L 欄（整格換掉）；「清除備註」清空
 //   收款通知／行前提醒／催款  從公車管家（成團後的團）讀資料，套妘兒自訂的公版，直接發在群組（回覆，不算則數）
 //   開車 誠徵 2男 1女 公車表上還沒有這車 → 用群組名稱＋劇本資料庫新增一列（照日期插進去），並綁定
 //
@@ -468,6 +469,8 @@ export async function handleBusEvent(event: any, ctx: Ctx): Promise<boolean> {
     else if (/^(催款|催款通知)$/.test(text)) { cmd = 'notice'; arg = 'reminder' }
     else if ((m = text.match(/^(?:日期|改日期)\s+(.+)$/))) { cmd = 'date'; arg = m[1].trim() }
     else if ((m = text.match(/^(?:時間|改時間)\s+(.+)$/))) { cmd = 'time'; arg = m[1].trim() }
+    else if ((m = text.match(/^(?:備註|改備註)\s+([\s\S]+)$/))) { cmd = 'note'; arg = m[1].trim() }
+    else if (/^(清除備註|刪除備註)$/.test(text)) { cmd = 'note'; arg = '' }
     else if ((m = text.match(/^(?:誠徵|缺)\s*(.+)$/))) { cmd = 'want'; arg = m[1] }
     else return false
   } else return false
@@ -477,7 +480,7 @@ export async function handleBusEvent(event: any, ctx: Ctx): Promise<boolean> {
   // 「這車」大家都能看；其他要權限
   // 誠徵／滿了／日期／時間 是聊天常見的詞，不是導遊打的就當一般訊息放過；綁定／開車／解除綁定才回「只有導遊」
   if (cmd !== 'show' && !(await isEditor(uid))) {
-    if (['want', 'date', 'time', 'notice'].includes(cmd)) return false
+    if (['want', 'date', 'time', 'notice', 'note'].includes(cmd)) return false
     await say('這個指令只有導遊可以用喔 🙏')
     return true
   }
@@ -654,6 +657,15 @@ export async function handleBusEvent(event: any, ctx: Ctx): Promise<boolean> {
       await say(`✅ 公車表已更新\n${beforeLabel}\n→ ${after ? rowLabel(after) : '（重新讀取失敗，請看公車表）'}` +
         (after && after.row !== r.row ? `\n（照日期移到第 ${after.row} 列）` : '') +
         '\n\n燈燈小提醒：群組名稱也要記得改唷！')
+      return true
+    }
+
+    if (cmd === 'note') {
+      if (arg.length > 200) { await say('備註太長了（最多 200 字）'); return true }
+      if (!canWrite(await readLayout(), 11)) { await say('公車表的 L 欄是公式，燈燈不能改'); return true }
+      const before = r.cells[COL.notes]
+      await writeCell(`L${r.row}`, arg)
+      await say(`✅ 公車表備註已更新\n${rowLabel(r)}\n${before ? `原本：${before}\n` : ''}${arg ? `現在：${arg}` : '現在：（空白）'}`)
       return true
     }
 

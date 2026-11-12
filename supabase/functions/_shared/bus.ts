@@ -21,7 +21,7 @@
 //   會改 Sheet 的指令只有 group_settings.bus_editors 裡的會員編號（逗號分隔）能用
 // ═══════════════════════════════════════════════════════════════════════════
 
-import { parseWhen, fmtDT, fmtDate } from './team.ts'
+import { parseWhen, fmtDT, fmtDate, fmtTime } from './team.ts'
 import { busAppReady, busAppCheck, getSettings, findAppGroup, renderNotice, noticeMessage, NOTICE_LABEL, type NoticeKind } from './busapp.ts'
 
 const env = (k: string) => Deno.env.get(k) || ''
@@ -148,10 +148,9 @@ export function parseGroupName(name: string): GroupInfo {
 // 名稱看起來是一車（有日期，或用 XX 標未定）
 export const looksLikeBus = (g: GroupInfo) => !!g.script && (g.hasDate || g.tbd)
 export const whenText = (g: GroupInfo) =>
-  !g.hasDate || !g.start_at ? '日期未定' : g.hasTime ? fmtDT(g.start_at) : `${fmtDate(g.start_at)} 時間未定`
-export const describeGroup = (g: GroupInfo) => looksLikeBus(g)
-  ? `📅 ${whenText(g)}《${g.script}》`
-  : '（群組名稱裡沒看到日期時間，例如「11/27 13:00 劇本名」；還沒定可以寫「XX/XX 劇本名」）'
+  !g.hasDate || !g.start_at ? '日期未定' : g.hasTime ? `${fmtDate(g.start_at)}${fmtTime(g.start_at)}` : `${fmtDate(g.start_at)} 時間未定`
+// 群組名稱拆出來的車子資訊（兩行）；看不出是一車就回空字串
+export const describeGroup = (g: GroupInfo) => looksLikeBus(g) ? `🚌 ${g.script}\n📅 ${whenText(g)}` : ''
 
 
 // 回傳候選：exact = 劇本、日期、時間都對；否則列出劇本對得上的（最多 4 個）
@@ -179,16 +178,22 @@ const rowKey = (r: BusRow) => {
   for (const ch of `${r.title}|${r.date}|${r.time}`) h = (h * 31 + ch.charCodeAt(0)) | 0
   return (h >>> 0).toString(36)
 }
-const rowLabel = (r: BusRow) => `${r.title}｜${r.date}${r.cells[COL.weekday] ? `（${r.cells[COL.weekday].replace('星期', '')}）` : ''} ${r.time}`
-const wantLabel = (w: string) => w ? `誠徵 ${w}` : '誠徵（空白）'
+// 公車表一列的日期時間：「11/28（六）14:00」
+const rowWhen = (r: BusRow) => `${r.date}${r.cells[COL.weekday] ? `（${r.cells[COL.weekday].replace('星期', '')}）` : ''}${r.time ? (r.cells[COL.weekday] ? '' : ' ') + r.time : ''}`
+// 單行（卡片、改前改後用）：「殺死巫師 11/28（六）14:00」
+const rowLabel = (r: BusRow) => `${r.title} ${rowWhen(r)}`
+const wantLabel = (w: string) => w ? `誠徵 ${w}` : '誠徵（還沒填）'
+// 車子資訊（固定三行）
+const carInfo = (r: BusRow, withWant = true) =>
+  `🚌 ${r.title}\n📅 ${rowWhen(r)}` + (withWant ? `\n🙋 ${wantLabel(r.want)}` : '')
 
 export function candidatesMessage(c: { exact: boolean; rows: BusRow[] }, g: GroupInfo) {
   if (!c.rows.length) {
     return { type: 'text', text: g.script
-      ? `🔍 公車表上找不到《${g.script}》${whenText(g)} 這車，要新增可以打「開車 誠徵 2男 1女」`
-      : '🔍 群組名稱裡沒看到劇本和日期時間，例如「11/28 14:00 殺死巫師 @劇光燈」' }
+      ? `🔍 公車表上沒有《${g.script}》${whenText(g)}這車\n\n💡 要新增就打「開車 誠徵 2男 1女」`
+      : '⚠️ 群組名稱看不出是哪一車\n請改成這樣，再打「群組名稱」：\n11/28 14:00 殺死巫師 @劇光燈\n（還沒定就寫 XX/XX）' }
   }
-  const head = c.exact ? '🚌 公車表上找到這車，是這個群組的嗎？' : '🚌 時間對不上，但有這些同劇本的車次：'
+  const head = c.exact ? '🚌 找到了！是這車嗎？' : '🤔 時間對不上，是其中一車嗎？'
   return {
     type: 'flex', altText: '綁定公車表',
     contents: {
@@ -201,9 +206,9 @@ export function candidatesMessage(c: { exact: boolean; rows: BusRow[] }, g: Grou
             type: 'box', layout: 'vertical', spacing: 'xs', paddingTop: '6px',
             contents: [
               { type: 'text', text: rowLabel(r), color: '#ffffff', size: 'sm', wrap: true },
-              { type: 'text', text: wantLabel(r.want) + (r.code ? `・已綁 ${r.code}` : ''), color: '#999999', size: 'xs', wrap: true },
+              { type: 'text', text: wantLabel(r.want) + (r.code ? `・已綁別的群組` : ''), color: '#999999', size: 'xs', wrap: true },
               { type: 'button', style: 'primary', color: GOLD, height: 'sm',
-                action: { type: 'postback', label: '綁定這車', data: `bus|bind|${r.row}|${rowKey(r)}`, displayText: `綁定 ${r.title} ${r.date} ${r.time}` } },
+                action: { type: 'postback', label: '就是這車', data: `bus|bind|${r.row}|${rowKey(r)}`, displayText: `綁定 ${r.title} ${r.date} ${r.time}` } },
             ],
           })),
         ],
@@ -427,12 +432,12 @@ function createPreview(sc: Script, g: GroupInfo, want: string, groupName: string
     contents: { type: 'bubble', size: 'mega', body: {
       type: 'box', layout: 'vertical', spacing: 'sm', backgroundColor: '#0d0d0d', paddingAll: '16px',
       contents: [
-        { type: 'text', text: '🚌 要在公車表新增這車嗎？', color: GOLD, weight: 'bold', size: 'sm' },
-        line('劇本', v[0]), line('日期', `${v[6]}${v[7] ? `（${v[7].replace('星期', '')}）` : ''} ${v[8] || '時間未定'}`), line('誠徵', v[5]),
+        { type: 'text', text: '🚌 要幫你開這車嗎？', color: GOLD, weight: 'bold', size: 'sm' },
+        line('劇本', v[0]), line('日期', `${v[6]}${v[7] ? `（${v[7].replace('星期', '')}）` : ''}${v[7] ? '' : ' '}${v[8] || '時間未定'}`), line('誠徵', v[5] || '還沒填'),
         line('人數', v[2]), line('價格', v[4]), line('類型', v[1]), line('反串／換裝', `${v[3]}・${v[10]}`), line('時長', v[9]),
-        { type: 'text', text: `會插在第 ${insertAt} 列（照日期排）`, color: '#666666', size: 'xxs', margin: 'md' },
+        { type: 'text', text: `會放在公車表第 ${insertAt} 列`, color: '#666666', size: 'xxs', margin: 'md' },
         { type: 'button', style: 'primary', color: GOLD, height: 'sm', margin: 'md',
-          action: { type: 'postback', label: '確定開車', data: `bus|create|${groupKey(groupName)}|${want}`, displayText: `確定開車 ${v[0]} ${v[6]} ${v[8]}` } },
+          action: { type: 'postback', label: '發車！', data: `bus|create|${groupKey(groupName)}|${want}`, displayText: `確定開車 ${v[0]} ${v[6]} ${v[8]}` } },
       ],
     } },
   }
@@ -475,13 +480,13 @@ export async function handleBusEvent(event: any, ctx: Ctx): Promise<boolean> {
     else return false
   } else return false
 
-  if (!sheetReady()) { await say('燈燈還沒接上公車表（Google 服務帳號未設定）'); return true }
+  if (!sheetReady()) { console.error('bus: GOOGLE_SA 未設定'); await say('⚠️ 燈燈現在連不上公車表，等一下再試試看'); return true }
 
   // 「這車」大家都能看；其他要權限
   // 誠徵／滿了／日期／時間 是聊天常見的詞，不是導遊打的就當一般訊息放過；綁定／開車／解除綁定才回「只有導遊」
   if (cmd !== 'show' && !(await isEditor(uid))) {
     if (['want', 'date', 'time', 'notice', 'note'].includes(cmd)) return false
-    await say('這個指令只有導遊可以用喔 🙏')
+    await say('🔒 這個要導遊才能用唷～')
     return true
   }
 
@@ -499,7 +504,7 @@ export async function handleBusEvent(event: any, ctx: Ctx): Promise<boolean> {
 
     if (cmd === 'notice') {
       const kind = arg as NoticeKind
-      if (!busAppReady()) { await say('燈燈還沒拿到公車管家的登入（BUS_REFRESH_TOKEN 未設定）'); return true }
+      if (!busAppReady()) { console.error('bus: BUS_REFRESH_TOKEN 未設定'); await say('⚠️ 燈燈現在連不上公車管家，等一下再試試看'); return true }
       // 用群組名稱找；名稱沒日期就用最後綁定時看到的公車表那列
       const g = parseGroupName(groupRow?.group_name || '')
       let script = g.script || '', date = '', time = ''
@@ -517,12 +522,12 @@ export async function handleBusEvent(event: any, ctx: Ctx): Promise<boolean> {
           time = hhmm(row[8] || '')
         }
       }
-      if (!script || !date) { await say('燈燈看不出這是哪一團：群組名稱要有日期和劇本，例如「11/28 14:00 殺死巫師 @劇光燈」'); return true }
+      if (!script || !date) { await say('⚠️ 群組名稱看不出是哪一車\n請改成這樣，再打「群組名稱」：\n11/28 14:00 殺死巫師 @劇光燈\n（還沒定就寫 XX/XX）'); return true }
       const [found, st] = await Promise.all([findAppGroup({ script, date, time: time || undefined }), getSettings()])
       if (!found.hit) {
         await say(found.many?.length
-          ? `公車管家裡 ${date.slice(5).replace('-', '/')} 有好幾團對得上《${script}》：\n${found.many.map((x: any) => `・${x.title} ${x.time || ''}`).join('\n')}\n請把群組名稱的時間寫清楚`
-          : `公車管家裡找不到 ${date.slice(5).replace('-', '/')}${time ? ' ' + time : ''}《${script}》這團。\n要先在 App 按「一鍵成團」匯入，燈燈才發得了${NOTICE_LABEL[kind]}`)
+          ? `⚠️ 公車管家裡同一天有好幾團《${script}》：\n${found.many.map((x: any) => `・${x.title} ${x.time || ''}`).join('\n')}\n請把群組名稱的時間寫清楚唷`
+          : `⚠️ 公車管家裡還沒有這團\n請先在 App 按「一鍵成團」，我才發得了${NOTICE_LABEL[kind]}`)
         return true
       }
       const text = renderNotice(kind, found.hit, st)
@@ -533,7 +538,7 @@ export async function handleBusEvent(event: any, ctx: Ctx): Promise<boolean> {
     }
 
     if (cmd === 'appcheck') {
-      await say(busAppReady() ? await busAppCheck() : '燈燈還沒拿到公車管家的登入（BUS_REFRESH_TOKEN 未設定）')
+      await say(busAppReady() ? await busAppCheck() : '⚠️ 燈燈現在連不上公車管家（BUS_REFRESH_TOKEN 未設定）')
       return true
     }
 
@@ -547,43 +552,43 @@ export async function handleBusEvent(event: any, ctx: Ctx): Promise<boolean> {
 
     if (cmd === 'create?' || cmd === 'create') {
       const name: string = groupRow?.group_name || ''
-      if (code) { await say(`這個群組已經綁了公車表（${code}），要開新車請先「解除綁定」`); return true }
+      if (code) { await say('⚠️ 這個群組已經綁了一車\n要開新車，請先打「解除綁定」'); return true }
       const g = parseGroupName(name)
-      if (!looksLikeBus(g)) { await say('先把群組名稱改成「日期 時間 劇本」，例如「11/28 14:00 殺死巫師 @劇光燈」；還沒定的寫「XX/XX 殺死巫師」。改好再打「群組名稱」讓燈燈重讀'); return true }
+      if (!looksLikeBus(g)) { await say('⚠️ 群組名稱看不出是哪一車\n請改成這樣，再打「群組名稱」：\n11/28 14:00 殺死巫師 @劇光燈\n（還沒定就寫 XX/XX）'); return true }
       const want = normWant(cmd === 'create' ? post.slice(3).join('|') : arg)
-      if (want.length > 30) { await say('誠徵太長了，例如：開車 誠徵 2男 1女'); return true }
-      if (cmd === 'create' && post[2] !== groupKey(name)) { await say('群組名稱剛剛有變，請重打「開車」'); return true }
+      if (want.length > 30) { await say('💡 誠徵太長了，要這樣打：「開車 誠徵 2男 1女」'); return true }
+      if (cmd === 'create' && post[2] !== groupKey(name)) { await say('⚠️ 群組名稱剛剛改過了，再打一次「開車」唷'); return true }
       const [rows, scripts] = await Promise.all([readSheet(), readScripts()])
       const dup = findCandidates(rows, g)
-      if (dup.exact) { await ctx.reply(token, [{ type: 'text', text: '公車表上已經有這車了，直接綁定就好：' }, candidatesMessage(dup, g)]); return true }
+      if (dup.exact) { await ctx.reply(token, [{ type: 'text', text: '公車表上已經有這車囉，直接綁定就好👇' }, candidatesMessage(dup, g)]); return true }
       const f = findScript(scripts, g.script!)
       if (!f.hit) {
         await say(f.many?.length
-          ? `劇本資料庫有好幾本像《${g.script}》：\n${f.many.map(x => '・' + x.title).join('\n')}\n請把群組名稱改成完整劇本名，再打「群組名稱」`
-          : `劇本資料庫找不到《${g.script}》，請確認群組名稱的劇本名稱`)
+          ? `⚠️ 有好幾本像《${g.script}》：\n${f.many.map(x => '・' + x.title).join('\n')}\n請把群組名稱改成完整的劇本名，再打「群組名稱」`
+          : `⚠️ 劇本清單裡找不到《${g.script}》\n請確認群組名稱的劇本名稱`)
         return true
       }
       const at = insertRowNumber(rows, g)
       if (cmd === 'create?') {
         const msgs: unknown[] = [createPreview(f.hit, g, want, name, at)]
         const tips: string[] = []
-        if (!want) tips.push('還沒填誠徵：可以打「開車 誠徵 2男 1女」重來，或開完再打「誠徵 …」')
-        if (!g.hasDate || !g.hasTime) tips.push('日期時間還沒定：開完之後打「日期 12/20」「時間 14:00」（或「日期 假日未定」「時間 白天」）')
-        if (tips.length) msgs.push({ type: 'text', text: tips.map(t => '・' + t).join('\n') })
+        if (!want) tips.push('「誠徵 2男 1女」')
+        if (!g.hasDate || !g.hasTime) tips.push('「日期 12/20」「時間 14:00」')
+        if (tips.length) msgs.push({ type: 'text', text: '💡 開完之後可以再補：\n' + tips.join('\n') })
         await ctx.reply(token, msgs)
         return true
       }
       const layout = await readLayout()
       const bad = MANUAL_COLS.filter(c => !canWrite(layout, c))
-      if (bad.length) { await say(`公車表的 ${bad.map(LETTER).join('、')} 欄是公式，燈燈不敢新增列，請先打「公車表結構」給工程師看`); return true }
+      if (bad.length) { console.error('bus: 手填欄變成公式', bad.map(LETTER)); await say('⚠️ 這格是公車表自動帶出來的，燈燈改不了唷'); return true }
       const c = newCode()
       await insertRow(at, buildRow(f.hit, g, want), c, layout)
       const created = (await readSheet()).find(x => x.code === c)
-      if (!created) { await say('新增完找不到那一列，請打開公車表檢查 😢'); return true }
+      if (!created) { console.error('bus: 新增後找不到', c); await say('😢 燈燈開車時跌倒了，請看一下公車表有沒有多出這車'); return true }
       await dbPatch('line_groups', `group_id=eq.${encodeURIComponent(groupId)}`, {
         sheet_code: c, sheet_row: snapshot(created), bound_at: new Date().toISOString(), bound_by: uid, updated_at: new Date().toISOString(),
       })
-      await say(`✅ 已開車並綁定（第 ${created.row} 列）\n${rowLabel(created)}\n${wantLabel(created.want)}`)
+      await say(`✅ 發車囉！已經放上公車表、也綁好這個群組了\n${carInfo(created)}`)
       return true
     }
 
@@ -591,11 +596,11 @@ export async function handleBusEvent(event: any, ctx: Ctx): Promise<boolean> {
       const rowNum = +post[2], key = post[3]
       const rows = await readSheet()
       const r = rows.find(x => x.row === rowNum)
-      if (!r || rowKey(r) !== key) { await say('公車表剛剛有變動，請重打「綁定」再選一次'); return true }
+      if (!r || rowKey(r) !== key) { await say('⚠️ 公車表剛剛有人動過，再打一次「綁定」重選唷'); return true }
       if (r.code && r.code !== code) {
         // Z 欄有代碼但沒有任何群組在用（例如手動刪列、復原留下的）→ 當作空的，直接換成這個群組的
         const owner = await dbGet(`line_groups?sheet_code=eq.${encodeURIComponent(r.code)}&select=group_id&limit=1`)
-        if (Array.isArray(owner) && owner.length) { await say(`這車已經綁了別的群組（${r.code}）。要換的話，先到那個群組打「解除綁定」，或直接清掉 Z 欄`); return true }
+        if (Array.isArray(owner) && owner.length) { await say(`⚠️ 這車已經綁在別的群組了（${r.code}）\n要換的話，先到那個群組打「解除綁定」`); return true }
         r.code = ''
       }
       // 這個群組原本綁別列 → 先清掉舊的
@@ -608,43 +613,43 @@ export async function handleBusEvent(event: any, ctx: Ctx): Promise<boolean> {
       await dbPatch('line_groups', `group_id=eq.${encodeURIComponent(groupId)}`, {
         sheet_code: c, sheet_row: snapshot(r), bound_at: new Date().toISOString(), bound_by: uid, updated_at: new Date().toISOString(),
       })
-      await say(`✅ 已綁定\n${rowLabel(r)}\n${wantLabel(r.want)}\n\n之後在這裡打「誠徵 1男 1女」「滿了」「日期 12/20」「時間 14:00」，燈燈就會更新公車表`)
+      await say(`✅ 綁好囉！\n${carInfo(r)}\n\n💡 之後在這裡打這些，我就幫你改公車表：\n「誠徵 1男 1女」「滿了」\n「日期 12/20」「時間 14:00」\n「備註 …」`)
       return true
     }
 
     // 以下都需要已綁定
-    if (!code) { await say('這個群組還沒綁公車表，先打「綁定」'); return true }
+    if (!code) { await say('這個群組還沒有綁車唷～\n請導遊打「綁定」'); return true }
     const rows = await readSheet()
     const hits = rows.filter(x => x.code === code)
     if (hits.length === 0 && cmd === 'unbind') {
       await dbPatch('line_groups', `group_id=eq.${encodeURIComponent(groupId)}`, { sheet_code: null, updated_at: new Date().toISOString() })
-      await say(`公車表上已經沒有 ${code} 這列了，已解除這個群組的綁定`)
+      await say('✅ 解除綁定囉（這車已經不在公車表上了）')
       return true
     }
-    if (hits.length === 0) { await say(`公車表上找不到這個群組的車次（${code}），可能已經成團移除，或 Z 欄被清掉了`); return true }
-    if (hits.length > 1) { await say(`公車表上有 ${hits.length} 列都是 ${code}，燈燈不敢亂改，請先整理 Z 欄`); return true }
+    if (hits.length === 0) { await say('這車已經不在公車表上囉（可能已經成團）🎉'); return true }
+    if (hits.length > 1) { console.error('bus: 代碼重複', code, hits.map(h => h.row)); await say('😢 燈燈在公車表上找到兩車一樣的，先不改了，請導遊看一下公車表'); return true }
     const r = hits[0]
 
     if (cmd === 'show') {
       const site = r.cells[12] // M 欄：劇本介紹網站（公式帶出來的）
-      await say(`🚌 ${rowLabel(r)}\n${wantLabel(r.want)}` + (/^https?:\/\//.test(site) ? `\n📖 劇本介紹：${site}` : ''))
+      await say(carInfo(r) + (/^https?:\/\//.test(site) ? `\n📖 ${site}` : ''))
       return true
     }
 
     if (cmd === 'unbind') {
       await writeCell(`Z${r.row}`, '')
       await dbPatch('line_groups', `group_id=eq.${encodeURIComponent(groupId)}`, { sheet_code: null, updated_at: new Date().toISOString() })
-      await say(`已解除綁定：${rowLabel(r)}`)
+      await say(`✅ 解除綁定囉\n${carInfo(r, false)}`)
       return true
     }
 
     if (cmd === 'date' || cmd === 'time') {
       const v = arg.replace(/\s+/g, ' ').replace(/／/g, '/').replace(/：/g, ':')
-      if (!v || v.length > 20) { await say(cmd === 'date' ? '格式：日期 12/20（或「日期 假日未定」）' : '格式：時間 14:00（或「時間 白天」）'); return true }
-      const beforeLabel = rowLabel(r)
+      if (!v || v.length > 20) { await say(cmd === 'date' ? '💡 要這樣打：「日期 12/20」或「日期 假日未定」' : '💡 要這樣打：「時間 14:00」或「時間 白天」'); return true }
+      const beforeLabel = rowWhen(r)
       const layout = await readLayout()
       const col = cmd === 'date' ? 6 : 8
-      if (!canWrite(layout, col)) { await say(`公車表的 ${LETTER(col)} 欄是公式，燈燈不能改`); return true }
+      if (!canWrite(layout, col)) { await say('⚠️ 這格是公車表自動帶出來的，燈燈改不了唷'); return true }
       if (cmd === 'date') {
         const cells: [string, string][] = [[`G${r.row}`, v]]
         if (canWrite(layout, 7)) cells.push([`H${r.row}`, weekdayText(v)]) // H 星期是公式就讓公式自己算
@@ -655,37 +660,36 @@ export async function handleBusEvent(event: any, ctx: Ctx): Promise<boolean> {
       if (after) {
         await dbPatch('line_groups', `group_id=eq.${encodeURIComponent(groupId)}`, { sheet_row: snapshot(after), updated_at: new Date().toISOString() })
       }
-      await say(`✅ 公車表已更新\n${beforeLabel}\n→ ${after ? rowLabel(after) : '（重新讀取失敗，請看公車表）'}` +
-        (after && after.row !== r.row ? `\n（照日期移到第 ${after.row} 列）` : '') +
+      await say(`✅ ${cmd === 'date' ? '日期' : '時間'}改好囉\n${beforeLabel} ➜ ${after ? rowWhen(after) : v}` +
         '\n\n燈燈小提醒：群組名稱也要記得改唷！')
       return true
     }
 
     if (cmd === 'note') {
-      if (arg.length > 200) { await say('備註太長了（最多 200 字）'); return true }
-      if (!canWrite(await readLayout(), 11)) { await say('公車表的 L 欄是公式，燈燈不能改'); return true }
+      if (arg.length > 200) { await say('💡 備註太長了，最多 200 字唷'); return true }
+      if (!canWrite(await readLayout(), 11)) { await say('⚠️ 這格是公車表自動帶出來的，燈燈改不了唷'); return true }
       const before = r.cells[COL.notes]
       await writeCell(`L${r.row}`, arg)
-      await say(`✅ 公車表備註已更新\n${rowLabel(r)}\n${before ? `原本：${before}\n` : ''}${arg ? `現在：${arg}` : '現在：（空白）'}`)
+      await say(`✅ 備註改好囉\n🚌 ${rowLabel(r)}\n${before ? `原本：${before}\n` : ''}現在：${arg || '（空白）'}`)
       return true
     }
 
     if (cmd === 'want') {
       // 「1男1女」→「1男 1女」，跟表上的寫法一致
       const v = arg.trim().replace(/\s+/g, ' ').replace(/(\d+)\s*([男女])/g, '$1$2').replace(/([男女])\s*(?=\d)/g, '$1 ')
-      if (!v || v.length > 30) { await say('格式：誠徵 1男 1女，或打「滿了」'); return true }
+      if (!v || v.length > 30) { await say('💡 要這樣打：「誠徵 1男 1女」或「滿了」'); return true }
       const before = r.want
-      if (!canWrite(await readLayout(), 5)) { await say('公車表的 F 欄是公式，燈燈不能改'); return true }
+      if (!canWrite(await readLayout(), 5)) { await say('⚠️ 這格是公車表自動帶出來的，燈燈改不了唷'); return true }
       await writeCell(`F${r.row}`, v)
       await dbPatch('line_groups', `group_id=eq.${encodeURIComponent(groupId)}`, {
         sheet_row: snapshot({ ...r, cells: r.cells.map((x, i) => i === COL.want ? v : x) }), updated_at: new Date().toISOString(),
       })
-      await say(`✅ 公車表已更新\n${rowLabel(r)}\n誠徵 ${before || '（空白）'} → ${v}`)
+      await say(`✅ 誠徵改好囉\n🚌 ${rowLabel(r)}\n${before || '（空白）'} ➜ ${v}`)
       return true
     }
   } catch (e) {
     console.error('bus error:', e)
-    await say('燈燈改公車表的時候出錯了 😢 ' + String((e as Error).message || e).slice(0, 80))
+    await say('😢 燈燈改公車表時跌倒了，等一下再試試看')
     return true
   }
   return false

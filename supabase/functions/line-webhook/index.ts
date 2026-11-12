@@ -477,7 +477,7 @@ const groupSummary = async (groupId: string): Promise<{ groupName?: string; pict
 // （LINE 沒有改名事件；不自動查，群組改名後打這個指令就好）
 const refreshGroupName = async (groupId: string, replyToken: string) => {
   const { groupName, pictureUrl } = await groupSummary(groupId)
-  if (!groupName) { await lineReply(replyToken, [{ type: 'text', text: '燈燈讀不到群組名稱 😢' }]); return }
+  if (!groupName) { await lineReply(replyToken, [{ type: 'text', text: '😢 燈燈讀不到群組名稱，等一下再試試看' }]); return }
   const g = parseGroupName(groupName)
   const now = new Date().toISOString()
   const r = await dbUpsert('line_groups', {
@@ -485,7 +485,9 @@ const refreshGroupName = async (groupId: string, replyToken: string) => {
     start_at: g.start_at, script_name: looksLikeBus(g) ? g.script : null, left_at: null, updated_at: now,
   })
   console.log('refresh group name', groupId, groupName, g, 'save:', r.status)
-  const res = await lineReply(replyToken, [{ type: 'text', text: `📝 群組名稱：「${groupName}」\n${describeGroup(g)}` }])
+  const res = await lineReply(replyToken, [{ type: 'text', text: looksLikeBus(g)
+    ? `📝 讀到新的群組名稱囉\n${describeGroup(g)}`
+    : '⚠️ 群組名稱看不出是哪一車\n請改成這樣，再打「群組名稱」：\n11/28 14:00 殺死巫師 @劇光燈\n（還沒定就寫 XX/XX）' }])
   console.log('refresh reply status:', res.status)
 }
 
@@ -493,12 +495,12 @@ const refreshGroupName = async (groupId: string, replyToken: string) => {
 // 招呼語底下的指令介紹（只列有開的功能）
 const commandGuide = (features: Record<string, boolean>, bus: boolean) => {
   const items: string[] = []
-  if (features['feature_summon']) items.push('・召喚：叫出你的燈燈')
-  if (features['feature_card'])   items.push('・我的名片：冒險者名片')
-  if (features['feature_tarot'])  items.push('・占卜：抽一張今日塔羅')
-  if (features['feature_sect'])   items.push('・我的師門：看看你的師門')
-  if (bus)                        items.push('・這車：這團的公車資訊')
-  return items.length ? `\n\n✨ 在群組打這些字，燈燈就會出現：\n${items.join('\n')}` : ''
+  if (features['feature_summon']) items.push('・召喚｜叫出你的燈燈')
+  if (features['feature_card'])   items.push('・我的名片｜冒險者名片')
+  if (features['feature_tarot'])  items.push('・占卜｜抽一張今日塔羅')
+  if (features['feature_sect'])   items.push('・我的師門｜看看你的師門')
+  if (bus)                        items.push('・這車｜這車的資訊')
+  return items.length ? `\n\n✨ 在群組打這些字叫我出來玩：\n${items.join('\n')}` : ''
 }
 
 const handleBotJoined = async (event: Record<string, unknown>, features: Record<string, boolean>) => {
@@ -515,8 +517,9 @@ const handleBotJoined = async (event: Record<string, unknown>, features: Record<
   })
   console.log('join', groupId, groupName, g, 'save:', r.status)
   const hello = (groupName
-    ? `大家安安🧡 我是劇光燈的燈燈\n已經加入「${groupName}」囉！\n${describeGroup(g)}`
-    : '大家安安🧡 我是劇光燈的燈燈') + commandGuide(features, sheetReady() && looksLikeBus(g))
+    && looksLikeBus(g)
+    ? `大家安安🧡 我是劇光燈的燈燈！\n這次陪大家搭的車是👇\n${describeGroup(g)}`
+    : '大家安安🧡 我是劇光燈的燈燈！') + commandGuide(features, sheetReady() && looksLikeBus(g))
   const messages: unknown[] = [{ type: 'text', text: hello }]
   // 有接公車表、名稱裡有劇本 → 順便找找看是哪一車
   if (sheetReady() && looksLikeBus(g)) {

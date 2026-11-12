@@ -227,16 +227,32 @@ const newCode = () => {
 const snapshot = (r: BusRow) => r.cells.slice(0, 12) // A～L，之後成團匯入時用來接 Firestore
 
 // ── 開車：新增一列 ───────────────────────────────────────────────────────────
-const SCRIPT_SHEET = 'System劇本資料庫同步' // A 名稱 B 類型 C 價格 D 人數 E 男女 F 反串(O/X) G 換裝(O/X) H 時長 I 備註 J 網址 K 封面
+const SCRIPT_SHEET_GID = 1761985532 // 劇本資料庫分頁（用編號找，分頁改名也不怕）：A 名稱 B 類型 C 價格 D 人數 E 男女 F 反串(O/X) G 換裝(O/X) H 時長 I 備註 J 網址 K 封面
 const BUS_SHEET_GID = 0
 type Script = { title: string; genre: string; price: string; people: string; cross: string; costume: string; hours: string; url: string; cover: string }
 
+// 分頁編號 → 分頁名稱（Sheets API 的範圍要用名稱）
+let sheetTitles: Record<number, string> | null = null
+async function sheetTitle(gid: number): Promise<string> {
+  if (!sheetTitles) {
+    const res = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}?fields=sheets.properties(sheetId,title)`, {
+      headers: { Authorization: `Bearer ${await googleToken()}` },
+    })
+    if (!res.ok) throw new Error(`讀取分頁清單失敗（${res.status}）`)
+    sheetTitles = {}
+    for (const sh of (await res.json()).sheets || []) sheetTitles[sh.properties.sheetId] = sh.properties.title
+  }
+  const t = sheetTitles[gid]
+  if (!t) throw new Error(`找不到編號 ${gid} 的分頁`)
+  return t
+}
+
 async function readScripts(): Promise<Script[]> {
-  const range = `'${SCRIPT_SHEET}'!A2:K400`
+  const range = `'${(await sheetTitle(SCRIPT_SHEET_GID)).replace(/'/g, "''")}'!A2:K400`
   const res = await fetch(`${API}/${encodeURIComponent(range)}?valueRenderOption=FORMATTED_VALUE`, {
     headers: { Authorization: `Bearer ${await googleToken()}` },
   })
-  if (!res.ok) throw new Error(`讀取劇本資料庫失敗（${res.status}）`)
+  if (!res.ok) throw new Error(`讀取劇本資料庫失敗（${res.status}）：${(await res.text()).slice(0, 120)}`)
   const values: string[][] = (await res.json()).values || []
   return values.map(r => r.map(x => String(x ?? '').trim())).filter(r => r[0]).map(r => ({
     title: r[0], genre: r[1] || '', price: r[2] || '', people: r[4] || '', cross: r[5] || '', costume: r[6] || '',

@@ -20,6 +20,7 @@
 // ═══════════════════════════════════════════════════════════════════════════
 
 import { parseWhen, fmtDT, fmtDate } from './team.ts'
+import { busAppReady, busAppCheck } from './busapp.ts'
 
 const env = (k: string) => Deno.env.get(k) || ''
 const SUPABASE_URL = env('SUPABASE_URL')
@@ -460,6 +461,7 @@ export async function handleBusEvent(event: any, ctx: Ctx): Promise<boolean> {
     else if ((m = text.match(/^開車(?:\s+(?:誠徵|缺)?\s*(.*))?$/))) { cmd = 'create?'; arg = (m[1] || '').trim() }
     else if (/^(滿了|已滿|滿團)$/.test(text)) { cmd = 'want'; arg = '已滿' }
     else if (/^公車表結構$/.test(text)) cmd = 'layout'
+    else if (/^公車管家檢查$/.test(text)) cmd = 'appcheck'
     else if ((m = text.match(/^(?:日期|改日期)\s+(.+)$/))) { cmd = 'date'; arg = m[1].trim() }
     else if ((m = text.match(/^(?:時間|改時間)\s+(.+)$/))) { cmd = 'time'; arg = m[1].trim() }
     else if ((m = text.match(/^(?:誠徵|缺)\s*(.+)$/))) { cmd = 'want'; arg = m[1] }
@@ -485,6 +487,11 @@ export async function handleBusEvent(event: any, ctx: Ctx): Promise<boolean> {
       const g = parseGroupName(name)
       const rows = await readSheet()
       await ctx.reply(token, [candidatesMessage(findCandidates(rows, g), g)])
+      return true
+    }
+
+    if (cmd === 'appcheck') {
+      await say(busAppReady() ? await busAppCheck() : '燈燈還沒拿到公車管家的登入（BUS_REFRESH_TOKEN 未設定）')
       return true
     }
 

@@ -497,7 +497,6 @@ const commandGuide = (features: Record<string, boolean>, bus: boolean) => {
   if (features['feature_card'])   items.push('・我的名片：冒險者名片')
   if (features['feature_tarot'])  items.push('・占卜：抽一張今日塔羅')
   if (features['feature_sect'])   items.push('・我的師門：看看你的師門')
-  if (features['feature_rules'])  items.push('・版規：群組規則')
   if (bus)                        items.push('・這車：這團的公車資訊')
   return items.length ? `\n\n✨ 在群組打這些字，燈燈就會出現：\n${items.join('\n')}` : ''
 }

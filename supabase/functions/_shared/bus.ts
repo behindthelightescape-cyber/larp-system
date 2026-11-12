@@ -543,7 +543,12 @@ export async function handleBusEvent(event: any, ctx: Ctx): Promise<boolean> {
       const rows = await readSheet()
       const r = rows.find(x => x.row === rowNum)
       if (!r || rowKey(r) !== key) { await say('公車表剛剛有變動，請重打「綁定」再選一次'); return true }
-      if (r.code && r.code !== code) { await say(`這車已經綁了別的群組（${r.code}）。要換的話，先到那個群組打「解除綁定」，或直接清掉 Z 欄`); return true }
+      if (r.code && r.code !== code) {
+        // Z 欄有代碼但沒有任何群組在用（例如手動刪列、復原留下的）→ 當作空的，直接換成這個群組的
+        const owner = await dbGet(`line_groups?sheet_code=eq.${encodeURIComponent(r.code)}&select=group_id&limit=1`)
+        if (Array.isArray(owner) && owner.length) { await say(`這車已經綁了別的群組（${r.code}）。要換的話，先到那個群組打「解除綁定」，或直接清掉 Z 欄`); return true }
+        r.code = ''
+      }
       // 這個群組原本綁別列 → 先清掉舊的
       if (code && r.code !== code) {
         const old = rows.filter(x => x.code === code)

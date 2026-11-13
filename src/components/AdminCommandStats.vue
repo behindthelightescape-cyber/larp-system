@@ -3,7 +3,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { supabase } from '../supabase'
 
-const COMMANDS = ['召喚', '我的名片', '占卜', '我的師門', '版規', '這車', '公車文', '指令']
+const COMMANDS = ['召喚', '我的名片', '占卜', '我的師門', '版規', '這車', '公車文', '指令', '打招呼']
 const RANGES = [
   { days: 7, label: '近 7 天' },
   { days: 30, label: '近 30 天' },

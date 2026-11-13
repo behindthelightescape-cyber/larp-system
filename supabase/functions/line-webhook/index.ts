@@ -84,7 +84,9 @@ const getLevelInfo = (exp: number) => {
 // 品牌主色（金色）
 const GOLD = '#D4AF37'
 // 記到 line_command_log 的指令（後台「指令使用次數」）
-const LOGGED_COMMANDS = new Set(['召喚', '我的名片', '占卜', '我的師門', '版規', '這車', '公車文', '指令'])
+const LOGGED_COMMANDS = new Set(['召喚', '我的名片', '占卜', '我的師門', '版規', '這車', '公車文', '指令', '打招呼'])
+// 打招呼也叫出互動選單（整句只有招呼才算，句尾可加 ～!！~ 或燈燈）
+const GREETING = /^(?:泥豪|你好|妳好|您好|哈囉|哈摟|嗨|安安|大家好|大家安安|hi|hello|hey)+(?:燈燈)?[\s～~!！。.、]*$|^燈燈[\s～~!！]*$/i
 
 // 過濾 email 格式的 display_name，避免顯示個資
 const safeName = (n: unknown): string => {
@@ -627,7 +629,7 @@ const handleEvents = async (events: Record<string, unknown>[]) => {
     // ── 指令使用紀錄（後台看次數）────────────────────────────────────────────
     if (event.type === 'message' && (event.message as Record<string, unknown>)?.type === 'text') {
       const c = String((event.message as Record<string, unknown>).text || '').trim().replace(/^[!！]\s*/, '')
-      const logged = c === '這台車' || c === '這班' ? '這車' : ['說明', '功能', '燈燈指令'].includes(c) ? '指令' : c
+      const logged = c === '這台車' || c === '這班' ? '這車' : ['說明', '功能', '燈燈指令'].includes(c) ? '指令' : GREETING.test(c) ? '打招呼' : c
       if (LOGGED_COMMANDS.has(logged)) {
         const src = event.source as Record<string, unknown>
         try {
@@ -684,13 +686,16 @@ const handleEvents = async (events: Record<string, unknown>[]) => {
       continue
     }
 
-    // ── 「指令」：叫出互動選單 ─────────────────────────────────────────────
+    // ── 「指令」或打招呼（泥豪、你好、嗨…）：叫出互動選單 ──────────────────────
     {
       const m = event.message as Record<string, unknown> | undefined
-      if (event.type === 'message' && m?.type === 'text'
-          && /^[!！]?\s*(指令|說明|功能|燈燈指令)$/.test(String(m.text || '').trim())) {
+      const t = String(m?.text || '').trim().replace(/^[!！]\s*/, '')
+      const isMenu = /^(指令|說明|功能|燈燈指令)$/.test(t)
+      const isHi = GREETING.test(t)
+      if (event.type === 'message' && m?.type === 'text' && (isMenu || isHi)) {
         const src = event.source as Record<string, unknown>
-        const menu = playMenu(features, src?.type === 'group' ? await isBusGroup(String(src.groupId || '')) : false)
+        const menu = playMenu(features, src?.type === 'group' ? await isBusGroup(String(src.groupId || '')) : false,
+          isHi ? '泥豪呀～我是燈燈 🧡\n點按鈕跟我玩 ✨' : undefined)
         if (menu) await lineReply(event.replyToken as string, [menu])
         continue
       }

@@ -159,7 +159,7 @@ export const describeGroup = (g: GroupInfo) => looksLikeBus(g) ? `🚌 ${g.scrip
 export function findCandidates(rows: BusRow[], g: GroupInfo): { exact: boolean; rows: BusRow[] } {
   if (!g.script) return { exact: false, rows: [] }
   const s = norm(g.script)
-  const titleOk = (r: BusRow) => { const t = norm(r.title); return t === s || t.includes(s) || s.includes(t) }
+  const titleOk = (r: BusRow) => { const t = norm(r.title); return t === s || t.includes(s) || s.includes(t) || oneOff(t, s) }
   let mo = 0, d = 0, tm = ''
   if (g.hasDate && g.start_at) {
     const tpe = new Date(new Date(g.start_at).getTime() + 8 * 3600_000)
@@ -276,7 +276,14 @@ function findScript(list: Script[], name: string): { hit?: Script; many?: Script
   const exact = list.find(x => norm(x.title) === s)
   if (exact) return { hit: exact }
   const part = list.filter(x => { const t = norm(x.title); return t.includes(s) || s.includes(t) })
-  return part.length === 1 ? { hit: part[0] } : { many: part.slice(0, 6) }
+  if (part.length) return part.length === 1 ? { hit: part[0] } : { many: part.slice(0, 6) }
+  // 錯一個字（例如「登雞入駐」→ 登記入駐）：只有一本就當它，發車前預覽卡片會再讓導遊確認
+  const near = list.filter(x => oneOff(norm(x.title), s))
+  return near.length === 1 ? { hit: near[0] } : { many: near.slice(0, 6) }
+}
+const oneOff = (a: string, b: string) => {
+  const x = [...a], y = [...b]
+  return x.length === y.length && x.length >= 3 && x.filter((c, i) => c !== y[i]).length === 1
 }
 
 const tpeParts = (iso: string) => {

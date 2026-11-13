@@ -31,15 +31,12 @@ const sendToDisplay = async () => {
       .map(h => h.games?.scripts?.title)
       .filter(Boolean)
 
-    // 弟子（被我推坑的人）
+    // 弟子（被我推坑的人）：users 有 RLS，玩家只讀得到自己那列，直接查會是 0 → 用 RPC（跟師門樹同一支）
     let disciples    = []
     let discipleCount = 0
     if (user.my_referral_code) {
-      const { data: refs } = await supabase
-        .from('users')
-        .select('display_name')
-        .eq('referred_by', user.my_referral_code)
-      disciples     = (refs || []).map(r => r.display_name)
+      const { data: refs } = await supabase.rpc('get_disciples_by_codes', { p_codes: [user.my_referral_code] })
+      disciples     = (refs || []).map(r => r.display_name || '冒險者')
       discipleCount = disciples.length
     }
 
@@ -66,6 +63,11 @@ const sendToDisplay = async () => {
           const url = items?.find(i => i.id === id)?.img_url
           if (url) doll.layers[cat] = url
         }
+      }
+      // 沒裝備的部位補預設圖（跟首頁一樣，例如預設表情）
+      const { data: noneDefaults } = await supabase.from('wardrobe_none_defaults').select('category, img_url')
+      for (const nd of noneDefaults || []) {
+        if (nd.img_url && !doll.layers[nd.category]) doll.layers[nd.category] = nd.img_url
       }
     } catch (e) {
       console.warn('讀取穿搭失敗，畫面會顯示預設燈燈', e)

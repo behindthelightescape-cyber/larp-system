@@ -247,6 +247,10 @@ const loadDollForUser = async (userId, doll) => {
     .from('wardrobe_bases').select('img_url')
     .eq('is_default', true).eq('is_active', true).single()
   if (base?.img_url) dollBaseUrl.value = base.img_url
+  // 沒裝備的部位補預設圖（舊版手機沒送 doll 時用）
+  const { data: noneDefaults } = await supabase.from('wardrobe_none_defaults').select('category, img_url')
+  const defaults = Object.fromEntries((noneDefaults || []).filter(n => n.img_url).map(n => [n.category, n.img_url]))
+  dollLayers.value = { ...defaults }
 
   if (!userId) return
   const { data: eq } = await supabase
@@ -267,7 +271,7 @@ const loadDollForUser = async (userId, doll) => {
   const { data: items } = await supabase
     .from('wardrobe_items').select('id, category, img_url').in('id', ids)
   if (!items) return
-  const layers = {}
+  const layers = { ...defaults }
   for (const [cat, id] of Object.entries(eq.equipped)) {
     const item = items.find(i => i.id === id)
     if (item?.img_url) layers[cat] = item.img_url

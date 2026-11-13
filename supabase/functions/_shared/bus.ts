@@ -11,7 +11,7 @@
 //   時間 14:00       改 I 欄；也可以寫「時間 白天」
 //   備註 無法使用生日優惠   改 L 欄（整格換掉）；「清除備註」清空
 //   收款通知／行前提醒／催款  從公車管家（成團後的團）讀資料，套妘兒自訂的公版，直接發在群組（回覆，不算則數）
-//   開車 誠徵 2男 1女 公車表上還沒有這車 → 用群組名稱＋劇本資料庫新增一列（照日期插進去），並綁定
+//   開車 3男 1女      公車表上還沒有這車 → 用群組名稱＋劇本資料庫新增一列（照日期插進去），並綁定
 //
 // 綁定方式：在那列的 Z 欄寫一個燈燈代碼（例「燈-7KQ2MX」），之後只認代碼，列怎麼移動都不會改錯格。
 // App（公車管家）只讀到 N 欄、刪列的 GAS 只比對 A～L，Z 欄不影響它們。
@@ -190,7 +190,7 @@ const carInfo = (r: BusRow, withWant = true) =>
 export function candidatesMessage(c: { exact: boolean; rows: BusRow[] }, g: GroupInfo) {
   if (!c.rows.length) {
     return { type: 'text', text: g.script
-      ? `🔍 公車表上沒有《${g.script}》${whenText(g)}這車\n\n💡 要新增就打「開車 誠徵 2男 1女」`
+      ? `🔍 公車表上沒有《${g.script}》${whenText(g)}這車\n\n💡 要新增就打「開車 2男 1女」`
       : '⚠️ 群組名稱看不出是哪一車\n請改成這樣，再打「群組名稱」：\n11/28 14:00 殺死巫師 @劇光燈\n（還沒定就寫 XX/XX）' }
   }
   const head = c.exact ? '🚌 找到了！是這車嗎？' : '🤔 時間對不上，是其中一車嗎？'
@@ -478,7 +478,7 @@ export async function handleBusEvent(event: any, ctx: Ctx): Promise<boolean> {
     if (/^(綁定|綁定公車|綁公車)$/.test(text)) cmd = 'find'
     else if (/^(這車|這台車|這班|公車)$/.test(text)) cmd = 'show'
     else if (/^(解除綁定|取消綁定)$/.test(text)) cmd = 'unbind'
-    else if ((m = text.match(/^開車(?:\s+(?:誠徵|缺)?\s*(.*))?$/))) { cmd = 'create?'; arg = (m[1] || '').trim() }
+    else if ((m = text.match(/^開車\s*(?:(?:誠徵|缺)\s*)?(\d.*)?$/))) { cmd = 'create?'; arg = (m[1] || '').trim() }
     else if (/^(滿了|已滿|滿團)$/.test(text)) { cmd = 'want'; arg = '已滿' }
     else if (/^公車表結構$/.test(text)) cmd = 'layout'
     else if (/^公車管家檢查$/.test(text)) cmd = 'appcheck'
@@ -569,7 +569,7 @@ export async function handleBusEvent(event: any, ctx: Ctx): Promise<boolean> {
       const g = parseGroupName(name)
       if (!looksLikeBus(g)) { await say('⚠️ 群組名稱看不出是哪一車\n請改成這樣，再打「群組名稱」：\n11/28 14:00 殺死巫師 @劇光燈\n（還沒定就寫 XX/XX）'); return true }
       const want = normWant(cmd === 'create' ? post.slice(3).join('|') : arg)
-      if (want.length > 30) { await say('💡 誠徵太長了，要這樣打：「開車 誠徵 2男 1女」'); return true }
+      if (want.length > 30) { await say('💡 誠徵太長了，要這樣打：「開車 2男 1女」'); return true }
       if (cmd === 'create' && post[2] !== groupKey(name)) { await say('⚠️ 群組名稱剛剛改過了，再打一次「開車」唷'); return true }
       const [rows, scripts] = await Promise.all([readSheet(), readScripts()])
       const dup = findCandidates(rows, g)

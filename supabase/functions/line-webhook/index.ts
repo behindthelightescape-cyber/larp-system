@@ -84,7 +84,7 @@ const getLevelInfo = (exp: number) => {
 // 品牌主色（金色）
 const GOLD = '#D4AF37'
 // 記到 line_command_log 的指令（後台「指令使用次數」）
-const LOGGED_COMMANDS = new Set(['召喚', '我的名片', '占卜', '我的師門', '版規', '這車', '公車文'])
+const LOGGED_COMMANDS = new Set(['召喚', '我的名片', '占卜', '我的師門', '版規', '這車', '公車文', '指令'])
 
 // 過濾 email 格式的 display_name，避免顯示個資
 const safeName = (n: unknown): string => {
@@ -496,6 +496,51 @@ const refreshGroupName = async (groupId: string, replyToken: string) => {
 
 // 燈燈被拉進群組
 // 招呼語底下的指令介紹（只列有開的功能）
+// ── 互動選單：點按鈕＝幫玩家在群組打那個指令，直接試玩 ──────────────────────
+// 打招呼、新成員加入、打「指令／說明」時出現
+const playItems = (features: Record<string, boolean>, bus: boolean) => {
+  const items: { cmd: string; desc: string }[] = []
+  if (features['feature_summon']) items.push({ cmd: '召喚', desc: '叫出你的燈燈' })
+  if (features['feature_card'])   items.push({ cmd: '我的名片', desc: '冒險者名片' })
+  if (features['feature_tarot'])  items.push({ cmd: '占卜', desc: '抽一張今日塔羅' })
+  if (features['feature_sect'])   items.push({ cmd: '我的師門', desc: '看看你的師門' })
+  if (bus)                        items.push({ cmd: '這車', desc: '這車的資訊' })
+  return items
+}
+const playMenu = (features: Record<string, boolean>, bus: boolean, title = '點下面的按鈕跟燈燈玩 ✨') => {
+  const items = playItems(features, bus)
+  if (!items.length) return null
+  return {
+    type: 'flex',
+    altText: '燈燈可以做這些事，點按鈕試試看',
+    contents: {
+      type: 'bubble', size: 'kilo',
+      body: {
+        type: 'box', layout: 'vertical', backgroundColor: '#0d0d0d', paddingAll: '16px', spacing: 'sm',
+        contents: [
+          { type: 'text', text: title, color: GOLD, weight: 'bold', size: 'sm', wrap: true },
+          { type: 'text', text: '也可以直接在群組打按鈕上的字', color: '#777777', size: 'xxs', wrap: true },
+          ...items.map(it => ({
+            type: 'box', layout: 'horizontal', backgroundColor: '#1a1a1a', cornerRadius: '8px',
+            paddingAll: '10px', margin: 'sm', alignItems: 'center',
+            action: { type: 'message', label: it.cmd, text: it.cmd },
+            contents: [
+              { type: 'text', text: it.cmd, color: '#ffffff', weight: 'bold', size: 'sm', flex: 0 },
+              { type: 'text', text: it.desc, color: '#999999', size: 'xs', align: 'end', flex: 1 },
+            ],
+          })),
+        ],
+      },
+    },
+  }
+}
+// 這個群組是不是一車（決定選單要不要放「這車」）
+const isBusGroup = async (groupId: string) => {
+  if (!sheetReady() || !groupId) return false
+  const row = (await dbGet(`line_groups?group_id=eq.${encodeURIComponent(groupId)}&select=group_name&limit=1`))?.[0]
+  return looksLikeBus(parseGroupName(row?.group_name || ''))
+}
+
 const commandGuide = (features: Record<string, boolean>, bus: boolean) => {
   const items: string[] = []
   if (features['feature_summon']) items.push('・召喚｜叫出你的燈燈')
@@ -519,11 +564,13 @@ const handleBotJoined = async (event: Record<string, unknown>, features: Record<
     joined_at: now, left_at: null, updated_at: now,
   })
   console.log('join', groupId, groupName, g, 'save:', r.status)
-  const hello = (groupName
-    && looksLikeBus(g)
+  const bus = sheetReady() && looksLikeBus(g)
+  const hello = groupName && looksLikeBus(g)
     ? `大家安安🧡 我是劇光燈的燈燈！\n這次陪大家搭的車是👇\n${describeGroup(g)}`
-    : '大家安安🧡 我是劇光燈的燈燈！') + commandGuide(features, sheetReady() && looksLikeBus(g))
-  const messages: unknown[] = [{ type: 'text', text: hello }]
+    : '大家安安🧡 我是劇光燈的燈燈！'
+  const menu = playMenu(features, bus)
+  const messages: unknown[] = [{ type: 'text', text: menu ? hello : hello + commandGuide(features, bus) }]
+  if (menu) messages.push(menu)
   // 有接公車表、名稱裡有劇本 → 順便找找看是哪一車
   if (sheetReady() && looksLikeBus(g)) {
     try { messages.push(candidatesMessage(findCandidates(await readSheet(), g), g)) }
@@ -580,7 +627,7 @@ const handleEvents = async (events: Record<string, unknown>[]) => {
     // ── 指令使用紀錄（後台看次數）────────────────────────────────────────────
     if (event.type === 'message' && (event.message as Record<string, unknown>)?.type === 'text') {
       const c = String((event.message as Record<string, unknown>).text || '').trim().replace(/^[!！]\s*/, '')
-      const logged = c === '這台車' || c === '這班' ? '這車' : c
+      const logged = c === '這台車' || c === '這班' ? '這車' : ['說明', '功能', '燈燈指令'].includes(c) ? '指令' : c
       if (LOGGED_COMMANDS.has(logged)) {
         const src = event.source as Record<string, unknown>
         try {
@@ -630,9 +677,23 @@ const handleEvents = async (events: Record<string, unknown>[]) => {
       const replyToken = event.replyToken as string
       const settingsData = await dbGet('group_settings?key=eq.join_rules&limit=1')
       const rulesText = (settingsData?.[0]?.value as string) || '歡迎加入劇光燈！'
-      const replyRes = await lineReply(replyToken, [buildRulesCard(rulesText)])
+      const gid = String((event.source as Record<string, unknown>)?.groupId || '')
+      const menu = playMenu(features, await isBusGroup(gid), '歡迎上車！點按鈕跟燈燈打個招呼 ✨')
+      const replyRes = await lineReply(replyToken, [buildRulesCard(rulesText), ...(menu ? [menu] : [])])
       console.log('memberJoined reply status:', replyRes.status, await replyRes.text())
       continue
+    }
+
+    // ── 「指令」：叫出互動選單 ─────────────────────────────────────────────
+    {
+      const m = event.message as Record<string, unknown> | undefined
+      if (event.type === 'message' && m?.type === 'text'
+          && /^[!！]?\s*(指令|說明|功能|燈燈指令)$/.test(String(m.text || '').trim())) {
+        const src = event.source as Record<string, unknown>
+        const menu = playMenu(features, src?.type === 'group' ? await isBusGroup(String(src.groupId || '')) : false)
+        if (menu) await lineReply(event.replyToken as string, [menu])
+        continue
+      }
     }
 
     if (event.type !== 'message') continue

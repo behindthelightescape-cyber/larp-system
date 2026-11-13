@@ -19,6 +19,7 @@ import AdminDisplayAds from '../components/AdminDisplayAds.vue'
 import AdminPoints from '../components/AdminPoints.vue'
 import AdminGroupSettings from '../components/AdminGroupSettings.vue'
 import AdminLineFeatures from '../components/AdminLineFeatures.vue'
+import AdminCommandStats from '../components/AdminCommandStats.vue'
 import AdminTarot from '../components/AdminTarot.vue'
 import AdminPresale from '../components/AdminPresale.vue'
 
@@ -395,6 +396,7 @@ const goToMember = async (legacyId) => {
 
       <div v-if="currentTab === 'line_features'" class="panel active">
         <AdminLineFeatures />
+        <AdminCommandStats />
       </div>
 
       <div v-if="currentTab === 'line_group'" class="panel active">

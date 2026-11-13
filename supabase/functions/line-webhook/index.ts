@@ -82,6 +82,8 @@ const getLevelInfo = (exp: number) => {
 
 // 品牌主色（金色）
 const GOLD = '#D4AF37'
+// 記到 line_command_log 的指令（後台「指令使用次數」）
+const LOGGED_COMMANDS = new Set(['召喚', '我的名片', '占卜', '我的師門', '版規', '這車', '公車文'])
 
 // 過濾 email 格式的 display_name，避免顯示個資
 const safeName = (n: unknown): string => {
@@ -555,6 +557,18 @@ const handleEvents = async (events: Record<string, unknown>[]) => {
 
   for (const event of events) {
     console.log('event.type:', event.type)
+
+    // ── 指令使用紀錄（後台看次數）────────────────────────────────────────────
+    if (event.type === 'message' && (event.message as Record<string, unknown>)?.type === 'text') {
+      const c = String((event.message as Record<string, unknown>).text || '').trim().replace(/^[!！]\s*/, '')
+      const logged = c === '這台車' || c === '這班' ? '這車' : c
+      if (LOGGED_COMMANDS.has(logged)) {
+        const src = event.source as Record<string, unknown>
+        try {
+          await dbInsert('line_command_log', { command: logged, line_user_id: src?.userId ?? null, group_id: src?.groupId ?? null })
+        } catch (e) { console.error('command log error:', e) }
+      }
+    }
 
     // ── 公車表指令（綁定／這車／誠徵／滿了／解除綁定）─────────────────────────
     try {

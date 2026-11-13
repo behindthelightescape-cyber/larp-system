@@ -137,6 +137,8 @@ export type GroupInfo = { start_at: string | null; script: string | null; hasDat
 const PLACEHOLDER = /\S*[XxＸｘ]{2}\S*/g
 export function parseGroupName(name: string): GroupInfo {
   const base = name.replace(/[@＠]\S+/g, ' ').replace(/[（(]\d+[)）]\s*$/, ' ')
+    // 多天「12/1、3」「12/1、12/3」：只用第一天排序配對，後面的日期拿掉，免得混進劇本名
+    .replace(/(\d{1,2}[\/／]\d{1,2})(?:\s*[、,，]\s*(?:\d{1,2}[\/／])?\d{1,2}(?![\d:：]))+/g, '$1')
   const tbd = /[XxＸｘ]{2}/.test(base)
   const cleaned = base.replace(PLACEHOLDER, ' ').replace(/\s+/g, ' ').trim()
   let w = parseWhen(cleaned)

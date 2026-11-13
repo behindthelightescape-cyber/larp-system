@@ -10,8 +10,8 @@
 // ═══════════════════════════════════════════════════════════════════════════
 
 import { handleTeamEvent, parseWhen, fmtDT } from '../_shared/team.ts'
-import { trackMembers, syncCommand } from '../_shared/busmembers.ts'
-import { handleBusEvent, isEditor, sheetReady, readSheet, findCandidates, candidatesMessage, parseGroupName, describeGroup, looksLikeBus } from '../_shared/bus.ts'
+import { trackMembers, rosterCommand, rosterJoin } from '../_shared/busmembers.ts'
+import { handleBusEvent, sheetReady, readSheet, findCandidates, candidatesMessage, parseGroupName, describeGroup, looksLikeBus } from '../_shared/bus.ts'
 
 // ── 環境變數（在 Supabase Dashboard > Edge Functions > Secrets 設定）──────
 const LINE_CHANNEL_SECRET  = Deno.env.get('LINE_CHANNEL_SECRET')!        // LINE Bot Channel Secret，用於驗證簽名
@@ -84,7 +84,7 @@ const getLevelInfo = (exp: number) => {
 // 品牌主色（金色）
 const GOLD = '#D4AF37'
 // 記到 line_command_log 的指令（後台「指令使用次數」）
-const LOGGED_COMMANDS = new Set(['召喚', '我的名片', '占卜', '我的師門', '版規', '這車', '公車文', '指令', '打招呼'])
+const LOGGED_COMMANDS = new Set(['召喚', '我的名片', '占卜', '我的師門', '版規', '這車', '公車文', '指令', '打招呼', '名單'])
 // 打招呼也叫出互動選單（整句只有招呼才算，句尾可加 ～!！~ 或燈燈）
 const GREETING = /^(?:泥豪|你好|妳好|您好|哈囉|哈摟|嗨|安安|大家好|大家安安|hi|hello|hey)+(?:燈燈)?[\s～~!！。.、]*$|^燈燈[\s～~!！]*$/i
 
@@ -507,6 +507,7 @@ const playItems = (features: Record<string, boolean>, bus: boolean) => {
   if (features['feature_tarot'])  items.push({ cmd: '占卜', desc: '抽一張今日塔羅' })
   if (features['feature_sect'])   items.push({ cmd: '我的師門', desc: '看看你的師門' })
   if (bus)                        items.push({ cmd: '這車', desc: '這車的資訊' })
+  if (bus)                        items.push({ cmd: '名單', desc: '看誰在車上・登記上車' })
   return items
 }
 const playMenu = (features: Record<string, boolean>, bus: boolean, title = '點下面的按鈕跟燈燈玩 ✨') => {
@@ -612,24 +613,32 @@ const handleEvents = async (events: Record<string, unknown>[]) => {
     console.log('event.type:', event.type)
     background.push(trackMembers(event).catch(e => console.error('trackMembers error:', e)))
 
-    // ── 導遊「同步名單」：群組成員 → 公車管家團員名單 ─────────────────────────
+    // ── 「名單」：車友名單（公車群組才有，其他群組讓給揪團的「名單」）＋「我也在車上」按鈕 ──
     {
       const src = event.source as Record<string, unknown>
       const m = event.message as Record<string, unknown> | undefined
-      if (event.type === 'message' && m?.type === 'text' && src?.type === 'group'
-          && /^[!！]?\s*(同步名單|名單同步)$/.test(String(m.text || '').trim())) {
-        const text = await isEditor(String(src.userId || ''))
-          ? await syncCommand(String(src.groupId))
-          : '🔒 這個要導遊才能用唷～'
-        await lineReply(event.replyToken as string, [{ type: 'text', text }])
-        continue
+      const pb = event.postback as Record<string, unknown> | undefined
+      if (src?.type === 'group' && src.groupId) {
+        const gid = String(src.groupId)
+        if (event.type === 'postback' && pb?.data === 'roster|join') {
+          try { await lineReply(event.replyToken as string, [await rosterJoin(gid, String(src.userId || ''))]) }
+          catch (e) { console.error('roster join:', e); await lineReply(event.replyToken as string, [{ type: 'text', text: '😢 燈燈記名單時跌倒了，等一下再試試看' }]) }
+          continue
+        }
+        if (event.type === 'message' && m?.type === 'text'
+            && /^[!！]?\s*(名單|車友名單|同步名單|名單同步)$/.test(String(m.text || '').trim())
+            && await isBusGroup(gid)) {
+          try { await lineReply(event.replyToken as string, [await rosterCommand(gid)]) }
+          catch (e) { console.error('roster:', e); await lineReply(event.replyToken as string, [{ type: 'text', text: '😢 燈燈翻名單時跌倒了，等一下再試試看' }]) }
+          continue
+        }
       }
     }
 
     // ── 指令使用紀錄（後台看次數）────────────────────────────────────────────
     if (event.type === 'message' && (event.message as Record<string, unknown>)?.type === 'text') {
       const c = String((event.message as Record<string, unknown>).text || '').trim().replace(/^[!！]\s*/, '')
-      const logged = c === '這台車' || c === '這班' ? '這車' : ['說明', '功能', '燈燈指令'].includes(c) ? '指令' : GREETING.test(c) ? '打招呼' : c
+      const logged = c === '這台車' || c === '這班' ? '這車' : ['說明', '功能', '燈燈指令'].includes(c) ? '指令' : ['車友名單', '同步名單', '名單同步'].includes(c) ? '名單' : GREETING.test(c) ? '打招呼' : c
       if (LOGGED_COMMANDS.has(logged)) {
         const src = event.source as Record<string, unknown>
         try {

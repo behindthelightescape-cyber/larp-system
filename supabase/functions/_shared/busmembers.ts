@@ -7,12 +7,12 @@
 //     ・導遊（bus_editors）不加；取消、已結帳、已結束的團不加
 //     ・退出群組只記在這裡，不會幫忙下車（下車牽涉退款，留給妘兒在 App 處理）
 //   還沒成團時，同一群組 10 分鐘最多去公車管家找一次團
-//   導遊打「同步名單」→ 馬上同步並回報
+//   打「名單」→ 同步並列出燈燈認得的車友；沒在上面的按「我也在車上」
 //
 //   限制：燈燈進群前就在、而且一直沒說話的人抓不到（LINE 要認證帳號才能拿完整成員名單）
 // ═══════════════════════════════════════════════════════════════════════════
 
-import { appQuery } from './bus.ts'
+import { appQuery, looksLikeBus, parseGroupName } from './bus.ts'
 import { busAppReady, findAppGroup, addLineMembers, type AddResult } from './busapp.ts'
 
 const env = (k: string) => Deno.env.get(k) || ''
@@ -61,11 +61,16 @@ export async function trackMembers(event: any): Promise<void> {
     return
   }
 
+  if (event.type === 'postback' && String(event.postback?.data || '').startsWith('roster|')) return // rosterJoin 自己處理
   const joined = event.type === 'memberJoined'
   const userIds: string[] = joined
     ? (event.joined?.members || []).map((m: { userId?: string }) => m.userId).filter(Boolean)
     : (['message', 'postback'].includes(event.type) && src.userId ? [src.userId] : [])
   if (!userIds.length) return
+
+  // 只記「公車群組」：名稱看得出是一車、綁過公車表、或已經對到公車管家的團；一般群組不記
+  const grp = (await dbGet(`line_groups?group_id=${eq(groupId)}&select=group_name,sheet_row,sheet_code,app_group_id,app_sync_tried_at&limit=1`))?.[0]
+  if (!grp || !(grp.app_group_id || grp.sheet_code || looksLikeBus(parseGroupName(grp.group_name || '')))) return
 
   let needSync = joined
   for (const uid of userIds) {
@@ -83,8 +88,6 @@ export async function trackMembers(event: any): Promise<void> {
   }
   if (!needSync || !busAppReady()) return
 
-  const grp = (await dbGet(`line_groups?group_id=${eq(groupId)}&select=group_name,sheet_row,app_group_id,app_sync_tried_at&limit=1`))?.[0]
-  if (!grp) return
   // 還沒對到團：10 分鐘最多找一次（新成員加入時不等）
   if (!grp.app_group_id && !joined && grp.app_sync_tried_at && Date.now() - new Date(grp.app_sync_tried_at).getTime() < RETRY_MS) return
   try { await syncGroup(groupId, grp) } catch (e) { console.error('busmembers sync:', e) }
@@ -136,25 +139,69 @@ async function syncGroup(groupId: string, grp: any): Promise<SyncResult> {
   return { ok: true, title, res, known: list.length }
 }
 
-// ── 導遊指令「同步名單」 ───────────────────────────────────────────────────
+// ── 「名單」：大家都能看燈燈認得誰；沒在上面的按按鈕上車 ─────────────────────
+//   順便同步到公車管家（已成團才會寫）；名單只列名字，不顯示付款狀態
+const GOLD = '#D4AF37'
 // deno-lint-ignore no-explicit-any
-export async function syncCommand(groupId: string): Promise<string> {
-  if (!busAppReady()) return '⚠️ 燈燈現在連不上公車管家，等一下再試試看'
+async function rosterFlex(groupId: string, note = ''): Promise<any> {
   const grp = (await dbGet(`line_groups?group_id=${eq(groupId)}&select=group_name,sheet_row,app_group_id,app_sync_tried_at&limit=1`))?.[0]
-  if (!grp) return '⚠️ 燈燈還不認得這個群組，打「群組名稱」讓我讀一下'
-  let r: SyncResult
-  try { r = await syncGroup(groupId, grp) } catch (e) { console.error('同步名單:', e); return '😢 燈燈同步名單時跌倒了，等一下再試試看' }
-  if (!r.ok) {
-    if (r.reason === 'name') return '⚠️ 群組名稱看不出是哪一車\n請改成這樣，再打「群組名稱」：\n11/28 14:00 殺死巫師 @劇光燈\n（還沒定就寫 XX/XX）'
-    if (r.reason === 'many') return '⚠️ 公車管家裡同一天有好幾團同劇本\n請把群組名稱的時間寫清楚唷'
-    return '⚠️ 公車管家裡還沒有這團\n請先在 App 按「一鍵成團」，我再把名單寫進去'
+  let r: SyncResult | null = null
+  if (grp && busAppReady()) {
+    try { r = await syncGroup(groupId, grp) } catch (e) { console.error('名單 sync:', e) }
   }
-  const { res, known } = r
-  if (res.skipped) return `⚠️ ${res.skipped}，燈燈就不動名單了`
-  const lines = ['✅ 名單同步好囉']
-  if (res.added.length) lines.push(`➕ 新加入：${res.added.join('、')}`)
-  if (res.linked.length) lines.push(`🔗 對上 LINE：${res.linked.join('、')}`)
-  if (!res.added.length && !res.linked.length) lines.push('名單沒有要更新的')
-  lines.push('', `💡 燈燈目前認得群組裡 ${known} 位玩家（導遊不算）`, '還沒說過話的人我抓不到，請大家在群組說句話～')
-  return lines.join('\n')
+  const [rows, editors] = await Promise.all([
+    dbGet(`line_group_members?group_id=${eq(groupId)}&left_at=is.null&display_name=not.is.null&select=line_user_id,display_name,app_member_id,first_seen_at&order=first_seen_at.asc`),
+    editorIds(),
+  ])
+  const list = (Array.isArray(rows) ? rows : []).filter((x: { line_user_id: string }) => !editors.has(x.line_user_id))
+  const inApp = !!(r?.ok && !r.res.skipped)
+  const status = r?.ok
+    ? (r.res.skipped ? `公車管家：${r.res.skipped}，名單不再更新` : '✅ 已同步到公車管家')
+    : '⏳ 還沒成團，成團後燈燈會自動把大家加進名單'
+  const names = list.map((x: { display_name: string; app_member_id?: string }, i: number) => ({
+    type: 'text', size: 'sm', wrap: true, color: '#dddddd', margin: 'sm',
+    text: `${i + 1}. ${x.display_name}${inApp && !x.app_member_id ? '（下次同步）' : ''}`,
+  }))
+  return {
+    type: 'flex', altText: `🚌 車友名單（${list.length} 位）`,
+    contents: {
+      type: 'bubble', size: 'kilo',
+      body: {
+        type: 'box', layout: 'vertical', backgroundColor: '#0d0d0d', paddingAll: '16px', spacing: 'none',
+        contents: [
+          ...(note ? [{ type: 'text', text: note, color: '#ffffff', weight: 'bold', size: 'sm', wrap: true, margin: 'none' }, { type: 'separator', color: '#262626', margin: 'md' }] : []),
+          { type: 'text', text: `🚌 車友名單（${list.length} 位）`, color: GOLD, weight: 'bold', size: 'md', margin: note ? 'md' : 'none' },
+          { type: 'text', text: status, color: '#888888', size: 'xxs', wrap: true, margin: 'xs' },
+          ...(names.length ? names : [{ type: 'text', text: '燈燈還不認得任何車友', color: '#888888', size: 'sm', margin: 'md' }]),
+          { type: 'text', text: '名單上沒有你？點下面按鈕上車 👇', color: '#bbbbbb', size: 'xs', wrap: true, margin: 'lg' },
+        ],
+      },
+      footer: {
+        type: 'box', layout: 'vertical', backgroundColor: '#080808', paddingAll: '12px',
+        contents: [{
+          type: 'button', style: 'primary', color: GOLD, height: 'sm',
+          action: { type: 'postback', label: '我也在車上 🙋', data: 'roster|join', displayText: '我也在車上 🙋' },
+        }],
+      },
+    },
+  }
+}
+
+// 打「名單」
+// deno-lint-ignore no-explicit-any
+export async function rosterCommand(groupId: string): Promise<any> {
+  return await rosterFlex(groupId)
+}
+
+// 按「我也在車上」：記下這個人、同步，回最新名單
+// deno-lint-ignore no-explicit-any
+export async function rosterJoin(groupId: string, userId: string): Promise<any> {
+  if ((await editorIds()).has(userId)) return { type: 'text', text: '導遊不用上名單唷～😆' }
+  const p = await lineProfile(groupId, userId)
+  if (!p?.name) return { type: 'text', text: '😢 燈燈讀不到你的 LINE 名稱，等一下再試試看' }
+  await dbUpsert('line_group_members', {
+    group_id: groupId, line_user_id: userId, display_name: p.name, picture_url: p.picture || null,
+    last_seen_at: new Date().toISOString(), left_at: null,
+  })
+  return await rosterFlex(groupId, `✅ ${p.name} 上車囉！`)
 }

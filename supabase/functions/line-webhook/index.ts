@@ -538,10 +538,21 @@ const playMenu = (features: Record<string, boolean>, bus: boolean, title = '點�
   }
 }
 // 這個群組是不是一車（決定選單要不要放「這車」）
+// 名稱看得出是一車、綁過公車表、或已經對到公車管家的團，都算（跟 busmembers 記成員的條件一樣）
 const isBusGroup = async (groupId: string) => {
   if (!sheetReady() || !groupId) return false
-  const row = (await dbGet(`line_groups?group_id=eq.${encodeURIComponent(groupId)}&select=group_name&limit=1`))?.[0]
-  return looksLikeBus(parseGroupName(row?.group_name || ''))
+  const row = (await dbGet(`line_groups?group_id=eq.${encodeURIComponent(groupId)}&select=group_name,sheet_code,app_group_id&limit=1`))?.[0]
+  return !!(row?.sheet_code || row?.app_group_id || looksLikeBus(parseGroupName(row?.group_name || '')))
+}
+
+// 回覆失敗（多半是 Flex 格式被 LINE 退）→ 記下錯誤（後台查得到），再用純文字補回
+const replyOr = async (replyToken: string, messages: unknown[], fallback: string, tag: string) => {
+  const res = await lineReply(replyToken, messages)
+  if (res.ok) return
+  const err = (await res.text()).slice(0, 900)
+  console.error(tag, 'reply failed', res.status, err)
+  await dbInsert('line_command_log', { command: `__error:${tag}`, line_user_id: `${res.status} ${err}` })
+  if (fallback) await lineReply(replyToken, [{ type: 'text', text: fallback }])
 }
 
 const commandGuide = (features: Record<string, boolean>, bus: boolean) => {
@@ -621,14 +632,14 @@ const handleEvents = async (events: Record<string, unknown>[]) => {
       if (src?.type === 'group' && src.groupId) {
         const gid = String(src.groupId)
         if (event.type === 'postback' && pb?.data === 'roster|join') {
-          try { await lineReply(event.replyToken as string, [await rosterJoin(gid, String(src.userId || ''))]) }
+          try { await replyOr(event.replyToken as string, [await rosterJoin(gid, String(src.userId || ''))], '✅ 記到名單囉', 'rosterJoin') }
           catch (e) { console.error('roster join:', e); await lineReply(event.replyToken as string, [{ type: 'text', text: '😢 燈燈記名單時跌倒了，等一下再試試看' }]) }
           continue
         }
         if (event.type === 'message' && m?.type === 'text'
             && /^[!！]?\s*(名單|車友名單|同步名單|名單同步)$/.test(String(m.text || '').trim())
             && await isBusGroup(gid)) {
-          try { await lineReply(event.replyToken as string, [await rosterCommand(gid)]) }
+          try { await replyOr(event.replyToken as string, [await rosterCommand(gid)], '😢 名單卡片出不來，工程這邊查一下', 'roster') }
           catch (e) { console.error('roster:', e); await lineReply(event.replyToken as string, [{ type: 'text', text: '😢 燈燈翻名單時跌倒了，等一下再試試看' }]) }
           continue
         }
@@ -705,7 +716,7 @@ const handleEvents = async (events: Record<string, unknown>[]) => {
         const src = event.source as Record<string, unknown>
         const menu = playMenu(features, src?.type === 'group' ? await isBusGroup(String(src.groupId || '')) : false,
           isHi ? '泥豪呀～我是燈燈 🧡\n點按鈕跟我玩 ✨' : undefined)
-        if (menu) await lineReply(event.replyToken as string, [menu])
+        if (menu) await replyOr(event.replyToken as string, [menu], commandGuide(features, false).trim(), 'menu')
         continue
       }
     }

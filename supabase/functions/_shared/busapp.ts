@@ -1,8 +1,10 @@
 // ═══════════════════════════════════════════════════════════════════════════
-// 燈燈 × 公車管家 App（Firebase 專案 spotlight-bus-manager）— 只讀
+// 燈燈 × 公車管家 App（Firebase 專案 spotlight-bus-manager）
 //
-// 用妘兒（擁有者）的 refresh token 換 ID token，再用 Firestore REST API 讀資料。
-// 權限跟她在 App 登入時一樣，由 Firestore 規則把關；燈燈這邊只讀不寫。
+// 用妘兒（擁有者）的 refresh token 換 ID token，再用 Firestore REST API 讀寫。
+// 權限跟她在 App 登入時一樣，由 Firestore 規則把關。
+// 唯一會寫的：把 LINE 群組成員加進那團的團員名單（addLineMembers）—
+//   只改 members、logs 兩欄，帶 updateTime 前提（App 同時存檔就重讀再試），不動其他欄位、不刪人、不改付款。
 // Secrets：BUS_REFRESH_TOKEN
 // 資料位置：users/{OWNER_UID}/settings/main（通知公版、銀行帳號…）、users/{OWNER_UID}/groups/{id}（成團後的團）
 // ═══════════════════════════════════════════════════════════════════════════
@@ -222,3 +224,91 @@ export async function findAppGroup(q: { script: string; date: string; time?: str
   const list = byTime.length ? byTime : byTitle
   return list.length === 1 ? { hit: list[0] } : { many: list }
 }
+
+// ── 寫入：LINE 群組成員 → 團員名單 ─────────────────────────────────────────────
+// 直接改 Firestore 原始格式（不經 decode 再 encode），其他團員的欄位原封不動
+// deno-lint-ignore no-explicit-any
+const fsVal = (v: any): any =>
+  v === null || v === undefined ? { nullValue: null }
+  : typeof v === 'string' ? { stringValue: v }
+  : typeof v === 'boolean' ? { booleanValue: v }
+  : typeof v === 'number' ? (Number.isInteger(v) ? { integerValue: String(v) } : { doubleValue: v })
+  : { stringValue: String(v) }
+// deno-lint-ignore no-explicit-any
+const fsMap = (o: Record<string, any>) => ({ mapValue: { fields: Object.fromEntries(Object.entries(o).map(([k, v]) => [k, fsVal(v)])) } })
+const normName = (x: string) => String(x || '').replace(/[\s　]/g, '').toLowerCase()
+
+export type LinePerson = { lineUserId: string; name: string }
+export type AddResult = { added: string[]; linked: string[]; already: string[]; ids: Record<string, string>; skipped?: string }
+
+// 團的狀態不適合再加人：取消、已結帳（App 用團員名單算結帳簽章，結帳後加人會讓結帳變「過期」）、已經開場過
+// deno-lint-ignore no-explicit-any
+export function appGroupClosed(g: any): string {
+  if (g.status === 'cancelled') return '這團已取消'
+  if (g.settlement?.settledAt) return '這團已結帳'
+  const today = new Date(Date.now() + 8 * 3600_000).toISOString().slice(0, 10)
+  if (typeof g.date === 'string' && g.date && g.date < today) return '這團已經結束'
+  return ''
+}
+
+export async function addLineMembers(appGroupId: string, people: LinePerson[]): Promise<AddResult> {
+  const url = `${DOCS}/${BASE}/groups/${encodeURIComponent(appGroupId)}`
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const res = await fetch(url, { headers: { Authorization: `Bearer ${await idToken()}` } })
+    if (!res.ok) throw new Error(`讀取公車管家團務失敗（${res.status}）：${(await res.text()).slice(0, 150)}`)
+    const doc = await res.json()
+    const fields = doc.fields || {}
+    const g = decodeFields(fields)
+    const closed = appGroupClosed(g)
+    if (closed) return { added: [], linked: [], already: [], ids: {}, skipped: closed }
+
+    // deno-lint-ignore no-explicit-any
+    const values: any[] = structuredClone(fields.members?.arrayValue?.values || [])
+    // deno-lint-ignore no-explicit-any
+    const logs: any[] = structuredClone(fields.logs?.arrayValue?.values || [])
+    // deno-lint-ignore no-explicit-any
+    const cur = () => values.map(v => decode(v) as any)
+    const out: AddResult = { added: [], linked: [], already: [], ids: {} }
+    for (const p of people) {
+      const ms = cur()
+      const mine = ms.find(m => m.lineUserId === p.lineUserId)
+      if (mine) { out.already.push(p.name); out.ids[p.lineUserId] = mine.id; continue }
+      // 妘兒已經手動或截圖匯入同名的人 → 補上 LINE 帳號就好，不重複加
+      const i = ms.findIndex(m => !m.lineUserId && !m.leftAt && normName(m.name) === normName(p.name))
+      if (i >= 0) {
+        values[i].mapValue.fields.lineUserId = { stringValue: p.lineUserId }
+        out.linked.push(p.name); out.ids[p.lineUserId] = ms[i].id; continue
+      }
+      const id = crypto.randomUUID()
+      values.push(fsMap({
+        id, name: p.name, role: 'player',
+        amountDue: Number(g.price || 0), amountPaid: 0, paymentStatus: 'unpaid', paymentNote: '',
+        joinedAt: new Date().toISOString(), leftAt: null, refundAmount: 0,
+        lineUserId: p.lineUserId, addedBy: '燈燈',
+      }))
+      out.added.push(p.name); out.ids[p.lineUserId] = id
+    }
+    if (!out.added.length && !out.linked.length) return out
+    const text = [
+      out.added.length ? `燈燈從 LINE 群組加入 ${out.added.length} 位：${out.added.join('、')}` : '',
+      out.linked.length ? `燈燈對上 LINE 帳號：${out.linked.join('、')}` : '',
+    ].filter(Boolean).join('；')
+    logs.push(fsMap({ id: crypto.randomUUID(), at: new Date().toISOString(), text }))
+
+    const q = `updateMask.fieldPaths=members&updateMask.fieldPaths=logs&currentDocument.updateTime=${encodeURIComponent(doc.updateTime)}`
+    const w = await fetch(`${url}?${q}`, {
+      method: 'PATCH',
+      headers: { Authorization: `Bearer ${await idToken()}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ fields: { members: { arrayValue: { values } }, logs: { arrayValue: { values: logs } } } }),
+    })
+    if (w.ok) return out
+    const err = await w.text()
+    // 讀完到寫入之間 App 剛好存檔 → 重讀再試
+    if ((w.status === 400 || w.status === 409) && /FAILED_PRECONDITION|ABORTED|precondition/i.test(err)) { console.warn('addLineMembers: 團務剛被改過，重試', attempt + 1); continue }
+    throw new Error(`寫入公車管家失敗（${w.status}）：${err.slice(0, 200)}`)
+  }
+  throw new Error('寫入公車管家失敗：團務一直在變動，等一下再試')
+}
+
+// deno-lint-ignore no-explicit-any
+export const getAppGroup = (id: string): Promise<any | null> => getDoc(`groups/${encodeURIComponent(id)}`)

@@ -19,6 +19,7 @@
     "sql:aud11": "supabase db query --linked -f supabase/push_audience_double11.sql",
     "sql:groups": "supabase db query --linked -f supabase/line_groups.sql",
     "sql:cmdlog": "supabase db query --linked -f supabase/line_command_log.sql",
+    "sql:members": "supabase db query --linked -f supabase/line_group_members.sql",
     "sa:secret": "node scripts/set-google-sa.mjs",
     "sql:editors": "supabase db query --linked -f supabase/bus_editors.sql",
     "deploy:team-mock": "npx supabase functions deploy team-mock-api --no-verify-jwt --project-ref cqbiozfappfwfcahtxfm",

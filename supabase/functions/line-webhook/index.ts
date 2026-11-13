@@ -10,7 +10,8 @@
 // ═══════════════════════════════════════════════════════════════════════════
 
 import { handleTeamEvent, parseWhen, fmtDT } from '../_shared/team.ts'
-import { handleBusEvent, sheetReady, readSheet, findCandidates, candidatesMessage, parseGroupName, describeGroup, looksLikeBus } from '../_shared/bus.ts'
+import { trackMembers, syncCommand } from '../_shared/busmembers.ts'
+import { handleBusEvent, isEditor, sheetReady, readSheet, findCandidates, candidatesMessage, parseGroupName, describeGroup, looksLikeBus } from '../_shared/bus.ts'
 
 // ── 環境變數（在 Supabase Dashboard > Edge Functions > Secrets 設定）──────
 const LINE_CHANNEL_SECRET  = Deno.env.get('LINE_CHANNEL_SECRET')!        // LINE Bot Channel Secret，用於驗證簽名
@@ -555,8 +556,26 @@ const handleEvents = async (events: Record<string, unknown>[]) => {
   }
   console.log('features:', features)
 
+  // 群組成員紀錄＋寫進公車管家：跟其他處理同時跑，全部事件處理完再等它們結束
+  const background: Promise<void>[] = []
+
   for (const event of events) {
     console.log('event.type:', event.type)
+    background.push(trackMembers(event).catch(e => console.error('trackMembers error:', e)))
+
+    // ── 導遊「同步名單」：群組成員 → 公車管家團員名單 ─────────────────────────
+    {
+      const src = event.source as Record<string, unknown>
+      const m = event.message as Record<string, unknown> | undefined
+      if (event.type === 'message' && m?.type === 'text' && src?.type === 'group'
+          && /^[!！]?\s*(同步名單|名單同步)$/.test(String(m.text || '').trim())) {
+        const text = await isEditor(String(src.userId || ''))
+          ? await syncCommand(String(src.groupId))
+          : '🔒 這個要導遊才能用唷～'
+        await lineReply(event.replyToken as string, [{ type: 'text', text }])
+        continue
+      }
+    }
 
     // ── 指令使用紀錄（後台看次數）────────────────────────────────────────────
     if (event.type === 'message' && (event.message as Record<string, unknown>)?.type === 'text') {
@@ -870,6 +889,7 @@ const handleEvents = async (events: Record<string, unknown>[]) => {
       console.log('sect reply status:', replyRes.status, await replyRes.text())
     }
   }
+  await Promise.allSettled(background)
 }
 
 // ── 主 Handler ─────────────────────────────────────────────────────────────

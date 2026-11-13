@@ -233,12 +233,34 @@ export function candidatesMessage(c: { exact: boolean; rows: BusRow[] }, g: Grou
 }
 
 // ── 權限 ─────────────────────────────────────────────────────────────────────
-async function isEditor(lineUserId: string): Promise<boolean> {
+export async function isEditor(lineUserId: string): Promise<boolean> {
   const s = await dbGet('group_settings?key=eq.bus_editors&select=value&limit=1')
   const ids = String(s?.[0]?.value || '').split(/[,，\s]+/).map((x: string) => x.replace(/^#/, '').trim()).filter(Boolean)
   if (!ids.length || !lineUserId) return false
   const u = await dbGet(`users?id=eq.${encodeURIComponent(lineUserId)}&select=legacy_id&limit=1`)
   return ids.includes(String(u?.[0]?.legacy_id || ''))
+}
+
+// 這個 LINE 群組在公車管家裡要找哪一團：用群組名稱；名稱沒日期就用最後綁定時看到的公車表那列
+// deno-lint-ignore no-explicit-any
+export function appQuery(groupRow: any): { script: string; date: string; time: string } | null {
+  const g = parseGroupName(groupRow?.group_name || '')
+  let script = g.script || '', date = '', time = ''
+  if (g.hasDate && g.start_at) {
+    const t = new Date(new Date(g.start_at).getTime() + 8 * 3600_000)
+    date = t.toISOString().slice(0, 10)
+    if (g.hasTime) time = t.toISOString().slice(11, 16)
+  } else if (Array.isArray(groupRow?.sheet_row) && groupRow.sheet_row[0]) {
+    const row: string[] = groupRow.sheet_row
+    const d = parseDates(row[6] || '')[0]
+    if (d) {
+      script = row[0]
+      const t = new Date(mdTime(d[0], d[1]) + 8 * 3600_000)
+      date = t.toISOString().slice(0, 10)
+      time = hhmm(row[8] || '')
+    }
+  }
+  return script && date ? { script, date, time } : null
 }
 
 // ── 代碼 ─────────────────────────────────────────────────────────────────────
@@ -540,23 +562,7 @@ export async function handleBusEvent(event: any, ctx: Ctx): Promise<boolean> {
     if (cmd === 'notice') {
       const kind = arg as NoticeKind
       if (!busAppReady()) { console.error('bus: BUS_REFRESH_TOKEN 未設定'); await say('⚠️ 燈燈現在連不上公車管家，等一下再試試看'); return true }
-      // 用群組名稱找；名稱沒日期就用最後綁定時看到的公車表那列
-      const g = parseGroupName(groupRow?.group_name || '')
-      let script = g.script || '', date = '', time = ''
-      if (g.hasDate && g.start_at) {
-        const t = new Date(new Date(g.start_at).getTime() + 8 * 3600_000)
-        date = t.toISOString().slice(0, 10)
-        if (g.hasTime) time = t.toISOString().slice(11, 16)
-      } else if (Array.isArray(groupRow?.sheet_row) && groupRow.sheet_row[0]) {
-        const row: string[] = groupRow.sheet_row
-        const d = parseDates(row[6] || '')[0]
-        if (d) {
-          script = row[0]
-          const t = new Date(mdTime(d[0], d[1]) + 8 * 3600_000)
-          date = t.toISOString().slice(0, 10)
-          time = hhmm(row[8] || '')
-        }
-      }
+      const { script, date, time } = appQuery(groupRow) || { script: '', date: '', time: '' }
       if (!script || !date) { await say('⚠️ 群組名稱看不出是哪一車\n請改成這樣，再打「群組名稱」：\n11/28 14:00 殺死巫師 @劇光燈\n（還沒定就寫 XX/XX）'); return true }
       const [found, st] = await Promise.all([findAppGroup({ script, date, time: time || undefined }), getSettings()])
       if (!found.hit) {

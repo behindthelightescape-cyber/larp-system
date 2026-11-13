@@ -133,24 +133,37 @@ const hhmm = (t: string) => {
 // 群組名稱：「11/28 14:00 殺死巫師 @劇光燈」
 // 還沒定的寫 XX：「XX/XX 傘靈」（日期未定）、「12/20 XX:XX 傘靈」（時間未定）
 // start_at：有日期就有（沒時間先當 12:00，只用來排序）；tbd：名稱裡有 XX
-export type GroupInfo = { start_at: string | null; script: string | null; hasDate: boolean; hasTime: boolean; tbd: boolean }
+export type GroupInfo = { start_at: string | null; script: string | null; hasDate: boolean; hasTime: boolean; tbd: boolean; days?: string }
 const PLACEHOLDER = /\S*[XxＸｘ]{2}\S*/g
 export function parseGroupName(name: string): GroupInfo {
+  let days = ''
   const base = name.replace(/[@＠]\S+/g, ' ').replace(/[（(]\d+[)）]\s*$/, ' ')
-    // 多天「12/1、3」「12/1、12/3」：只用第一天排序配對，後面的日期拿掉，免得混進劇本名
-    .replace(/(\d{1,2}[\/／]\d{1,2})(?:\s*[、,，]\s*(?:\d{1,2}[\/／])?\d{1,2}(?![\d:：]))+/g, '$1')
+    // 多天「11/27、28」「12/1、12/3」：整串記在 days（顯示、寫公車表用），排序配對用第一天；後面的日期拿掉，免得混進劇本名
+    .replace(/(\d{1,2}[\/／]\d{1,2})(?:\s*[、,，]\s*(?:\d{1,2}[\/／])?\d{1,2}(?![\d:：]))+/, (all, first) => {
+      days = all.replace(/／/g, '/').replace(/\s*[,，]\s*|\s*、\s*/g, '、'); return first })
   const tbd = /[XxＸｘ]{2}/.test(base)
   const cleaned = base.replace(PLACEHOLDER, ' ').replace(/\s+/g, ' ').trim()
   let w = parseWhen(cleaned)
   let hasTime = w.hasTime
   if (w.hasDate && !w.hasTime) { w = parseWhen(cleaned + ' 12:00'); hasTime = false }
   const hasDate = w.hasDate && !!w.start_at
-  return { start_at: hasDate ? w.start_at : null, script: w.rest || null, hasDate, hasTime: hasDate && hasTime, tbd }
+  return { start_at: hasDate ? w.start_at : null, script: w.rest || null, hasDate, hasTime: hasDate && hasTime, tbd, ...(hasDate && days ? { days } : {}) }
 }
 // 名稱看起來是一車（有日期，或用 XX 標未定）
 export const looksLikeBus = (g: GroupInfo) => !!g.script && (g.hasDate || g.tbd)
-export const whenText = (g: GroupInfo) =>
-  !g.hasDate || !g.start_at ? '日期未定' : g.hasTime ? `${fmtDate(g.start_at)}${fmtTime(g.start_at)}` : `${fmtDate(g.start_at)} 時間未定`
+// 多天：11/27（五）、28（六）
+const daysText = (days: string) => {
+  let lastMo = 0
+  return parseDates(days).map(([mo, d]) => {
+    const wd = WEEK[new Date(mdTime(mo, d) + 8 * 3600_000).getUTCDay()]
+    const t = `${mo === lastMo ? '' : mo + '/'}${d}（${wd}）`; lastMo = mo; return t
+  }).join('、')
+}
+export const whenText = (g: GroupInfo) => {
+  if (!g.hasDate || !g.start_at) return '日期未定'
+  const date = g.days ? daysText(g.days) : fmtDate(g.start_at)
+  return g.hasTime ? `${date}${fmtTime(g.start_at)}` : `${date} 時間未定`
+}
 // 群組名稱拆出來的車子資訊（兩行）；看不出是一車就回空字串
 export const describeGroup = (g: GroupInfo) => looksLikeBus(g) ? `🚌 ${g.script}\n📅 ${whenText(g)}` : ''
 
@@ -300,7 +313,7 @@ export function buildRow(sc: Script, g: GroupInfo, want: string): string[] {
     sc.title, sc.genre, sc.people,
     sc.cross === 'O' ? '可以反串' : '不建議反串',
     sc.price, want,
-    t ? `${t.mo}/${t.d}` : '日期未定', t ? `星期${WEEK[t.wd]}` : '', t && g.hasTime ? `${t.hh}:${t.mi}` : '',
+    t ? (g.days || `${t.mo}/${t.d}`) : '日期未定', t ? (g.days ? weekdayText(g.days) : `星期${WEEK[t.wd]}`) : '', t && g.hasTime ? `${t.hh}:${t.mi}` : '',
     sc.hours,
     sc.costume === 'O' ? '有換裝' : '無換裝',
     '', sc.url, sc.cover,

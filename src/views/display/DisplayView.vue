@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, nextTick, onMounted, onUnmounted, watch } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { supabase } from '../../supabase'
 import { DOLL_FRONT_LAYERS } from '../../config/paperdoll'
 
@@ -111,7 +111,6 @@ const dollBgStyle = ref({})
 // ── 影片廣告 ──
 const ads            = ref([])
 const currentAdIndex = ref(0)
-const videoEl        = ref(null)
 const currentAdData  = computed(() => {
   const ad = ads.value[currentAdIndex.value]
   if (!ad) return null
@@ -124,27 +123,36 @@ const loadAds = async () => {
     .select('id, title, type, content_url, video_url, text_title, text_body, text_accent, order_index')
     .eq('is_active', true)
     .order('order_index')
-  if (data?.length) ads.value = data
+  if (data) ads.value = data // 全部下架時也要清空
+}
+
+// 每換一次 +1：同一支廣告重播（只有一支、或互動播完回來）時 key 也會變，影片才會從頭重播
+const adCycle = ref(0)
+
+// 靜態廣告（圖片、文字、QR）計時自動換下一支；影片播完（@ended）或載入失敗（@error）換下一支
+const SLIDE_MS = { image: 8000, text: 9000, qr: 15000 }
+const VIDEO_MAX_MS = 10 * 60_000 // 影片卡住（網路斷、沒觸發 ended）的保底
+let slideTimer = null
+const clearSlideTimer = () => { if (slideTimer) { clearTimeout(slideTimer); slideTimer = null } }
+const scheduleCurrentAd = () => {
+  clearSlideTimer()
+  const ad = currentAdData.value
+  if (!ad || phase.value !== 'waiting') return
+  slideTimer = setTimeout(nextAd, ad.type === 'video' ? VIDEO_MAX_MS : (SLIDE_MS[ad.type] || 8000))
 }
 
 const nextAd = () => {
   if (!ads.value.length) return
   currentAdIndex.value = (currentAdIndex.value + 1) % ads.value.length
+  adCycle.value++
+  scheduleCurrentAd()
 }
 
-// 靜態廣告（圖片、文字、QR）計時自動換下一支
-let slideTimer = null
-const clearSlideTimer = () => { if (slideTimer) { clearTimeout(slideTimer); slideTimer = null } }
-const startSlideTimer = (ms) => { clearSlideTimer(); slideTimer = setTimeout(nextAd, ms) }
-
-watch(currentAdData, (ad) => {
+// 影片網址失效：停一下再換（避免全部都壞時瘋狂連續切換）
+const onVideoError = () => {
   clearSlideTimer()
-  if (!ad) return
-  if (ad.type === 'image') startSlideTimer(8000)
-  else if (ad.type === 'text') startSlideTimer(7000)
-  else if (ad.type === 'qr') startSlideTimer(15000)
-  // video: @ended 事件處理
-}, { immediate: true })
+  slideTimer = setTimeout(nextAd, 3000)
+}
 
 // 管理員改了播放清單，畫面端即時更新
 let adsChannel = null
@@ -153,6 +161,8 @@ const subscribeAds = () => {
     .on('postgres_changes', { event: '*', schema: 'public', table: 'display_ads' }, async () => {
       await loadAds()
       currentAdIndex.value = 0
+      adCycle.value++
+      scheduleCurrentAd()
     })
     .subscribe()
 }
@@ -290,22 +300,37 @@ const goToPage = (nextPage) => {
   schedulePage(nextPage)
 }
 
+// 這位玩家要播哪幾頁：數字是 0 的頁（新玩家的天數、場數、弟子）跳過
+const pageSeq = ref([0, 1, 2, 3, 4, 5, 6])
+const buildPageSeq = (p) => [
+  0,
+  ...(p.daysJoined > 0 ? [1] : []),
+  ...(p.historyCount > 0 ? [2] : []),
+  3, 4,
+  ...(p.discipleCount > 0 ? [5] : []),
+  6,
+]
+const pageNo = computed(() => pageSeq.value.indexOf(currentPage.value) + 1)
+
 const schedulePage = (page) => {
-  if (page >= PAGE_DURATIONS.length) {
+  const next = pageSeq.value[pageSeq.value.indexOf(page) + 1]
+  if (next === undefined) {
     // 全部播完，回到 waiting 並換新 session
     pageTimers.push(setTimeout(async () => {
       bgmFadeOut()
       phase.value = 'waiting'
       player.value = null
       currentPage.value = 0
+      // 回到廣告：換下一支並重新計時（不然圖片／文字廣告會停住不動）
+      nextAd()
       sessionChannel?.unsubscribe()
       await generateSession()
       subscribeSession()
       startPolling()
-    }, 1000))
+    }, PAGE_DURATIONS[page]))
     return
   }
-  pageTimers.push(setTimeout(() => goToPage(page + 1), PAGE_DURATIONS[page]))
+  pageTimers.push(setTimeout(() => goToPage(next), PAGE_DURATIONS[page]))
 }
 
 const triggerPageAnimations = (page) => {
@@ -376,6 +401,7 @@ const startShow = async (playerData) => {
   clearSlideTimer()
   try {
     player.value = playerData
+    pageSeq.value = buildPageSeq(playerData)
     await loadDollForUser(playerData.userId ?? null, playerData.doll)
     displayLevel.value = displayGames.value = displayDays.value = displayExp.value = 0
     currentPage.value = 0
@@ -386,7 +412,7 @@ const startShow = async (playerData) => {
   } catch (err) {
     console.error('startShow 失敗:', err)
     phase.value = 'waiting'
-    if (ads.value.length) startSlideTimer(8000)
+    scheduleCurrentAd()
   } finally {
     _showLock = false
   }
@@ -418,6 +444,7 @@ onMounted(async () => {
     pixelShift.value = nextShift()
   }, 60000)
   await loadAds()
+  scheduleCurrentAd()
   subscribeAds()
   await generateSession()
   subscribeSession()
@@ -446,12 +473,13 @@ const timeStr = computed(() =>
 const dateStr = computed(() =>
   now.value.toLocaleDateString('zh-TW', { year: 'numeric', month: '2-digit', day: '2-digit', weekday: 'short' })
 )
-const expPct = computed(() =>
-  player.value ? Math.min((player.value.exp / player.value.nextExp) * 100, 100) : 0
-)
-const displayExpPct = computed(() =>
-  player.value ? Math.min((displayExp.value / player.value.nextExp) * 100, 100) : 0
-)
+// 滿等：經驗值已經超過最後一級門檻（getLevelInfo 的 LV6 門檻還是 2500），不顯示「還差 -500 PT」
+const isMaxLevel = computed(() => !!player.value && (!player.value.nextExp || player.value.exp >= player.value.nextExp))
+const displayExpPct = computed(() => {
+  if (!player.value) return 0
+  if (isMaxLevel.value) return 100
+  return Math.min((displayExp.value / player.value.nextExp) * 100, 100)
+})
 </script>
 
 <template>
@@ -499,18 +527,18 @@ const displayExpPct = computed(() =>
           <!-- 🎬 影片 -->
           <video
             v-if="currentAdData?.type === 'video'"
-            :key="'v-' + currentAdData.id"
-            ref="videoEl"
+            :key="'v-' + currentAdData.id + '-' + adCycle"
             class="ad-video"
             autoplay playsinline
             :src="currentAdData.resolvedUrl"
             @ended="nextAd"
+            @error="onVideoError"
           ></video>
 
           <!-- 🖼 圖片 -->
           <img
             v-else-if="currentAdData?.type === 'image'"
-            :key="'i-' + currentAdData.id"
+            :key="'i-' + currentAdData.id + '-' + adCycle"
             class="ad-image"
             :src="currentAdData.resolvedUrl"
             :alt="currentAdData.title"
@@ -519,7 +547,7 @@ const displayExpPct = computed(() =>
           <!-- 📝 文字卡 -->
           <div
             v-else-if="currentAdData?.type === 'text'"
-            :key="'t-' + currentAdData.id"
+            :key="'t-' + currentAdData.id + '-' + adCycle"
             class="ad-text-slide"
           >
             <div class="ad-text-deco" :style="{ color: currentAdData.text_accent || '#D4AF37' }">◆</div>
@@ -533,7 +561,7 @@ const displayExpPct = computed(() =>
           <!-- 📱 QR 全版 -->
           <div
             v-else-if="currentAdData?.type === 'qr'"
-            :key="'q-' + currentAdData.id"
+            :key="'q-' + currentAdData.id + '-' + adCycle"
             class="ad-qr-slide"
           >
             <!-- 左側標語 -->
@@ -567,17 +595,6 @@ const displayExpPct = computed(() =>
           </div>
 
         </transition>
-
-        <!-- 影片資訊疊層 -->
-        <div v-if="started && currentAdData && ads.length > 1" class="ad-progress-overlay">
-          <div
-            v-for="(ad, i) in ads" :key="ad.id"
-            class="ad-prog-bar"
-            :class="{ active: i === currentAdIndex, past: i < currentAdIndex }"
-          >
-            <div v-if="i === currentAdIndex" class="ad-prog-fill"></div>
-          </div>
-        </div>
 
         <!-- QR Code 浮層（右下角，QR 全版廣告時隱藏）-->
         <div v-if="started && currentAdData?.type !== 'qr'" class="qr-float">
@@ -667,18 +684,21 @@ const displayExpPct = computed(() =>
 
         <!-- ── PAGE 4：經驗值 ── -->
         <div v-if="currentPage === 4" class="page page-exp">
-          <p class="exp-pre">距離下一個等級</p>
+          <p class="exp-pre">{{ isMaxLevel ? '你的累積經驗值' : '距離下一個等級' }}</p>
           <div class="exp-display-num">
             <span class="exp-cur">{{ displayExp.toLocaleString() }}</span>
-            <span class="exp-slash">/</span>
-            <span class="exp-max">{{ player?.nextExp.toLocaleString() }}</span>
+            <template v-if="!isMaxLevel">
+              <span class="exp-slash">/</span>
+              <span class="exp-max">{{ player?.nextExp?.toLocaleString() }}</span>
+            </template>
             <span class="exp-unit">PT</span>
           </div>
           <div class="exp-bar-outer">
             <div class="exp-bar-inner" :style="{ width: displayExpPct + '%' }"></div>
-            <span class="exp-pct-label">{{ Math.round(displayExpPct) }}%</span>
+            <span class="exp-pct-label">{{ isMaxLevel ? 'MAX' : Math.round(displayExpPct) + '%' }}</span>
           </div>
-          <p class="exp-post">
+          <p v-if="isMaxLevel" class="exp-post">已達<strong>最高等級</strong>，你是真正的冒險傳奇！</p>
+          <p v-else class="exp-post">
             還差 <strong>{{ (player?.nextExp - player?.exp).toLocaleString() }}</strong> PT 升級
           </p>
         </div>
@@ -748,8 +768,8 @@ const displayExpPct = computed(() =>
     <!-- 頁碼點點（show 階段） -->
     <div v-if="phase === 'show'" class="page-dots" aria-hidden="true">
       <div
-        v-for="i in PAGE_DURATIONS.length" :key="i"
-        class="dot" :class="{ active: currentPage === i - 1 }"
+        v-for="pg in pageSeq" :key="pg"
+        class="dot" :class="{ active: currentPage === pg }"
       ></div>
     </div>
 
@@ -758,7 +778,7 @@ const displayExpPct = computed(() =>
       <span class="footer-session">SESSION {{ sessionId.slice(0, 8).toUpperCase() }}</span>
       <span class="footer-dot-sep"></span>
       <span class="footer-status" :class="phase === 'waiting' ? 'waiting' : 'show'">
-        {{ phase === 'waiting' ? '等待玩家掃描...' : `第 ${currentPage + 1} / ${PAGE_DURATIONS.length} 頁` }}
+        {{ phase === 'waiting' ? '等待玩家掃描...' : `第 ${pageNo} / ${pageSeq.length} 頁` }}
       </span>
     </footer>
 
@@ -866,24 +886,6 @@ const displayExpPct = computed(() =>
 .no-content-hint { font-size: 1.2rem; color: #444; margin: 0; }
 .no-content-sub  { font-size: 0.8rem; color: #2a2a2a; margin: 0; font-family: monospace; }
 
-/* 頂部影片進度條（多支影片才顯示）*/
-.ad-progress-overlay {
-  position: absolute; top: 0; left: 0; right: 0; z-index: 10;
-  display: flex; gap: 4px; padding: 14px 16px 0;
-}
-.ad-prog-bar {
-  flex: 1; height: 3px; border-radius: 2px;
-  background: rgba(255,255,255,0.2); overflow: hidden; position: relative;
-}
-.ad-prog-bar.past { background: rgba(255,255,255,0.55); }
-.ad-prog-fill {
-  position: absolute; inset: 0; background: #fff;
-  transform-origin: left; transform: scaleX(0);
-  /* 動態 duration 由影片 @ended 控制，這裡用長一點的值保底 */
-  animation: prog-fill 120s linear forwards;
-}
-@keyframes prog-fill { to { transform: scaleX(1); } }
-
 /* QR Code 浮層（右下角）*/
 .qr-float {
   position: absolute; bottom: 28px; right: 28px; z-index: 20;
@@ -897,12 +899,12 @@ const displayExpPct = computed(() =>
   box-shadow: 0 8px 32px rgba(0,0,0,0.6);
 }
 .qr-float-frame {
-  position: relative; width: 160px; height: 160px;
+  position: relative; width: clamp(130px, 18vmin, 240px); height: clamp(130px, 18vmin, 240px);
   background: #fff; border-radius: 10px;
   padding: 6px; box-sizing: border-box; overflow: hidden;
 }
 .qr-float-hint {
-  font-size: 0.72rem; color: #D4AF37; letter-spacing: 1.5px; margin: 0;
+  font-size: clamp(0.72rem, 1.6vmin, 1.1rem); color: #D4AF37; letter-spacing: 1.5px; margin: 0;
 }
 
 /* 影片切換淡入淡出 */
@@ -1254,75 +1256,85 @@ const displayExpPct = computed(() =>
   object-fit: contain; z-index: 0; background: #000;
 }
 
-/* ── 廣告：文字卡 ── */
+/* ── 廣告：文字卡 ──
+   字級都跟著畫面大小走（vmin = 長寬較短的那邊），電視、直立螢幕、筆電都不會爆版 */
 .ad-text-slide {
   position: absolute; inset: 0; z-index: 0;
-  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 24px;
-  padding: 80px;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 3.5vmin; padding: 8vmin 10vw; box-sizing: border-box;
   background: radial-gradient(ellipse 70% 60% at 50% 50%, rgba(10,10,10,0.95), #000);
 }
-.ad-text-deco { font-size: 1.2rem; opacity: 0.6; animation: fade-up 0.5s ease both; }
+.ad-text-deco { font-size: 2.4vmin; opacity: 0.6; animation: fade-up 0.5s ease both; }
 .ad-text-title {
-  font-size: 4.5rem; font-weight: 900; text-align: center; line-height: 1.1;
-  margin: 0; letter-spacing: 2px;
+  font-size: clamp(2rem, 9vmin, 7.5rem); font-weight: 900; text-align: center; line-height: 1.2;
+  margin: 0; letter-spacing: 0.04em; max-width: 100%;
+  overflow-wrap: anywhere; text-wrap: balance;
   animation: fade-up 0.6s ease 0.15s both;
 }
 .ad-text-body {
-  font-size: 1.6rem; color: rgba(255,255,255,0.65); text-align: center;
-  max-width: 800px; line-height: 1.7; margin: 0;
+  font-size: clamp(1.1rem, 3.6vmin, 3rem); color: rgba(255,255,255,0.75); text-align: center;
+  max-width: min(100%, 34em); line-height: 1.7; margin: 0;
+  white-space: pre-line; overflow-wrap: anywhere; text-wrap: pretty;
   animation: fade-up 0.6s ease 0.3s both;
 }
 .ad-text-line {
-  width: 120px; height: 2px;
+  width: 16vmin; height: 2px;
   animation: fade-up 0.5s ease 0.45s both;
 }
 
-/* ── 廣告：QR 左標語 + 右 QR ── */
+/* ── 廣告：QR 左標語 + 右 QR（直立或偏方的螢幕改上下排）── */
 .ad-qr-slide {
+  --qr: min(46vmin, 520px);
   position: absolute; inset: 0; z-index: 0;
   display: flex; flex-direction: row; align-items: center; justify-content: center;
-  gap: 100px; padding: 60px 100px; box-sizing: border-box;
+  gap: 7vw; padding: 6vmin 7vw; box-sizing: border-box;
   background: radial-gradient(ellipse 80% 70% at 30% 50%, rgba(212,175,55,0.06), transparent 60%), #000;
 }
 .ad-qr-left {
-  flex: 1; display: flex; flex-direction: column; align-items: flex-start; gap: 20px;
+  flex: 0 1 auto; min-width: 0; max-width: 46vw;
+  display: flex; flex-direction: column; align-items: flex-start; gap: 2.4vmin;
 }
 .ad-qr-logo {
-  height: 52px; object-fit: contain;
+  height: clamp(36px, 7vmin, 90px); object-fit: contain;
   filter: drop-shadow(0 0 14px rgba(212,175,55,0.4));
   animation: fade-up 0.5s ease 0.05s both;
 }
 .ad-qr-eyebrow {
-  font-size: 0.8rem; font-weight: 700; letter-spacing: 8px;
-  color: #D4AF37; opacity: 0.5; margin: 0;
+  font-size: clamp(0.7rem, 1.6vmin, 1.2rem); font-weight: 700; letter-spacing: 0.6em;
+  color: #D4AF37; opacity: 0.6; margin: 0;
   animation: fade-up 0.5s ease 0.15s both;
 }
 .ad-qr-headline {
-  font-size: 3.8rem; font-weight: 900; line-height: 1.2; margin: 0;
-  color: #fff; letter-spacing: 1px;
+  font-size: clamp(1.8rem, 7vmin, 6rem); font-weight: 900; line-height: 1.25; margin: 0;
+  color: #fff; letter-spacing: 0.03em; word-break: keep-all;
   animation: fade-up 0.6s ease 0.25s both;
 }
 .ad-qr-desc {
-  font-size: 1rem; color: #555; letter-spacing: 1px; margin: 0; max-width: 420px;
+  font-size: clamp(0.95rem, 2.6vmin, 2rem); color: #aaa; letter-spacing: 0.05em; margin: 0; line-height: 1.6;
   animation: fade-up 0.5s ease 0.4s both;
 }
 .ad-qr-deco-line {
-  width: 80px; height: 2px;
+  width: 12vmin; height: 2px;
   background: linear-gradient(90deg, #D4AF37, transparent);
   animation: fade-up 0.5s ease 0.5s both;
 }
 .ad-qr-right {
-  flex-shrink: 0; display: flex; flex-direction: column; align-items: center; gap: 20px;
+  flex-shrink: 0; display: flex; flex-direction: column; align-items: center; gap: 2.4vmin;
 }
 .ad-qr-frame {
-  position: relative; width: 280px; height: 280px;
-  background: #fff; border-radius: 14px; padding: 10px; box-sizing: border-box; overflow: hidden;
+  position: relative; width: var(--qr); height: var(--qr);
+  background: #fff; border-radius: 14px; padding: calc(var(--qr) * 0.035); box-sizing: border-box; overflow: hidden;
   box-shadow: 0 0 60px rgba(212,175,55,0.12), 0 20px 60px rgba(0,0,0,0.6);
   animation: emblem-drop 0.8s cubic-bezier(0.175, 0.885, 0.32, 1.275) 0.3s both;
 }
 .ad-qr-hint {
-  font-size: 0.85rem; color: #D4AF37; letter-spacing: 2px; margin: 0;
+  font-size: clamp(0.85rem, 2.2vmin, 1.6rem); color: #D4AF37; letter-spacing: 0.2em; margin: 0;
   animation: fade-up 0.5s ease 0.7s both;
+}
+@media (max-aspect-ratio: 5/4) {
+  .ad-qr-slide { --qr: min(34vh, 70vw); flex-direction: column; gap: 3vh; padding: 4vh 6vw; }
+  .ad-qr-left { align-items: center; text-align: center; max-width: 100%; }
+  .ad-qr-deco-line { background: linear-gradient(90deg, transparent, #D4AF37, transparent); }
 }
 
 /* ── 換頁：舊頁往上飄走，新頁從下升起 ── */

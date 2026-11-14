@@ -16,6 +16,7 @@ import AdminPushLogs from '../components/AdminPushLogs.vue'
 import AdminPushMessage from '../components/AdminPushMessage.vue'
 import AdminPaperDoll from '../components/AdminPaperDoll.vue'
 import AdminDisplayAds from '../components/AdminDisplayAds.vue'
+import AdminDisplayStats from '../components/AdminDisplayStats.vue'
 import AdminPoints from '../components/AdminPoints.vue'
 import AdminGroupSettings from '../components/AdminGroupSettings.vue'
 import AdminLineFeatures from '../components/AdminLineFeatures.vue'
@@ -388,6 +389,7 @@ const goToMember = async (legacyId) => {
 
       <div v-if="currentTab === 'display_ads'" class="panel active">
         <AdminDisplayAds />
+        <AdminDisplayStats />
       </div>
 
       <div v-if="currentTab === 'points'" class="panel active">

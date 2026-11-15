@@ -71,7 +71,17 @@ const sendToDisplay = async () => {
     const disciples     = (refsRes.data || []).map(r => r.display_name || '冒險者')
     const discipleCount = disciples.length
 
+    // 壽星：只送「今天生日／本月壽星」給電視，不送生日日期（台灣時間判斷）
+    let birthday = null
+    const bm = String(user.birthday || '').match(/^\d{4}-(\d{2})-(\d{2})/)
+    if (bm) {
+      const twNow = new Date(Date.now() + 8 * 3600_000)
+      const mm = twNow.getUTCMonth() + 1, dd = twNow.getUTCDate()
+      if (+bm[1] === mm) birthday = +bm[2] === dd ? 'today' : 'month'
+    }
+
     const playerData = {
+      birthday,
       doll,
       userId:       user.id,
       name:         user.display_name || profile?.displayName || '冒險者',

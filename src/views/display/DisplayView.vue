@@ -90,12 +90,57 @@ const playPage = () => {
   } catch (e) { console.warn('音效失敗', e) }
 }
 
+// 生日快樂歌（音樂盒音色），播的時候背景音樂先調小
+const BIRTHDAY_TUNE = [
+  // [半音（相對 C5）, 拍數]
+  [-5, .75], [-5, .25], [-3, 1], [-5, 1], [0, 1], [-1, 2],
+  [-5, .75], [-5, .25], [-3, 1], [-5, 1], [2, 1], [0, 2],
+]
+const playBirthday = () => {
+  try {
+    const ctx = getCtx()
+    const beat = 0.36
+    let t = ctx.currentTime + 0.15
+    for (const [semi, beats] of BIRTHDAY_TUNE) {
+      const f = 523.25 * Math.pow(2, semi / 12)
+      for (const [mul, vol] of [[1, 0.16], [2, 0.05], [3, 0.02]]) {
+        const o = ctx.createOscillator(), g = ctx.createGain()
+        o.connect(g); g.connect(ctx.destination)
+        o.type = 'sine'
+        o.frequency.setValueAtTime(f * mul, t)
+        g.gain.setValueAtTime(0, t)
+        g.gain.linearRampToValueAtTime(vol, t + 0.015)
+        g.gain.exponentialRampToValueAtTime(0.001, t + Math.max(beats * beat, 0.3) + 0.5)
+        o.start(t); o.stop(t + beats * beat + 0.6)
+      }
+      t += beats * beat
+    }
+    const total = (t - ctx.currentTime) * 1000
+    const before = bgm.volume
+    bgm.volume = Math.min(before, 0.2)
+    pageTimers.push(setTimeout(() => { if (phase.value === 'show') bgm.volume = before }, total + 300))
+  } catch (e) { console.warn('音效失敗', e) }
+}
+
+// 壽星頁的彩帶
+const CONFETTI_COLORS = ['#D4AF37', '#f5d76e', '#ff7aa2', '#7ad7ff', '#b98cff', '#ffffff']
+const confetti = Array.from({ length: 70 }, (_, i) => ({
+  id: i,
+  left: Math.random() * 100,
+  delay: Math.random() * 3.5,
+  dur: 3.2 + Math.random() * 2.8,
+  size: 8 + Math.random() * 10,
+  color: CONFETTI_COLORS[i % CONFETTI_COLORS.length],
+  spin: Math.random() > 0.5 ? 1 : -1,
+  round: Math.random() > 0.7,
+}))
+
 const BRAND_LOGO    = 'https://meee.com.tw/VInVFKh.png'
 const FALLBACK_BASE = 'https://meee.com.tw/hLmrwbm.png'
 const DOLL_LAYER_ORDER = DOLL_FRONT_LAYERS // 披風另外畫在底圖後面
 
-// 每頁停留毫秒數  0:登場 1:天數 2:場數 3:等級 4:EXP 5:弟子 6:總覽
-const PAGE_DURATIONS = [3800, 3200, 4500, 3600, 3200, 3800, 8000]
+// 每頁停留毫秒數  0:登場 1:天數 2:場數 3:等級 4:EXP 5:弟子 6:總覽 7:壽星（只有壽星才播，接在登場後面）
+const PAGE_DURATIONS = [3800, 3200, 4500, 3600, 3200, 3800, 8000, 7500]
 
 const started     = ref(false)
 const phase       = ref('waiting')  // 'waiting' | 'show'
@@ -292,7 +337,8 @@ const clearPageTimers = () => { pageTimers.forEach(clearTimeout); pageTimers = [
 
 const goToPage = (nextPage) => {
   currentPage.value = nextPage
-  if (nextPage > 0) playPage()
+  if (nextPage === 7) playBirthday()
+  else if (nextPage > 0) playPage()
   triggerPageAnimations(nextPage)
   schedulePage(nextPage)
 }
@@ -301,6 +347,7 @@ const goToPage = (nextPage) => {
 const pageSeq = ref([0, 1, 2, 3, 4, 5, 6])
 const buildPageSeq = (p) => [
   0,
+  ...(p.birthday ? [7] : []),
   ...(p.daysJoined > 0 ? [1] : []),
   ...(p.historyCount > 0 ? [2] : []),
   3, 4,
@@ -626,6 +673,22 @@ const displayExpPct = computed(() => {
           </div>
         </div>
 
+        <!-- ── PAGE 7：壽星（本月生日才有） ── -->
+        <div v-if="currentPage === 7" class="page page-birthday">
+          <div class="bday-confetti" aria-hidden="true">
+            <i v-for="c in confetti" :key="c.id" :style="{
+              left: c.left + '%', width: c.size + 'px', height: (c.round ? c.size : c.size * 0.45) + 'px',
+              background: c.color, borderRadius: c.round ? '50%' : '2px',
+              animationDelay: c.delay + 's', animationDuration: c.dur + 's', '--spin': c.spin,
+            }"></i>
+          </div>
+          <div class="bday-cake">🎂</div>
+          <p class="bday-eyebrow">HAPPY BIRTHDAY</p>
+          <h1 class="bday-name">{{ player?.name }}</h1>
+          <p class="bday-msg">{{ player?.birthday === 'today' ? '今天是你的生日！' : '這個月是你的壽星月！' }}</p>
+          <p class="bday-sub">劇光燈全體冒險者祝你生日快樂 🎉</p>
+        </div>
+
         <!-- ── PAGE 1：加入天數 ── -->
         <div v-if="currentPage === 1" class="page page-stat">
           <p class="stat-pre">你加入劇光燈已經</p>
@@ -737,7 +800,7 @@ const displayExpPct = computed(() => {
           <!-- 資訊卡 -->
           <div class="finale-card">
             <div class="finale-card-deco"></div>
-            <p class="finale-eyebrow">SPOTLIGHT PLAYER</p>
+            <p class="finale-eyebrow">{{ player?.birthday ? '🎂 BIRTHDAY STAR' : 'SPOTLIGHT PLAYER' }}</p>
             <h2 class="finale-name">{{ player?.name }}</h2>
             <p class="finale-title-text">{{ player?.title }}</p>
             <div class="finale-divider"><span>◆</span></div>
@@ -947,6 +1010,46 @@ const displayExpPct = computed(() => {
 }
 
 /* ── PAGE 0：登場 ── */
+.page-birthday {
+  overflow: hidden;
+  background: radial-gradient(ellipse 75% 60% at 50% 45%, rgba(255,122,162,0.14) 0%, rgba(212,175,55,0.08) 40%, transparent 75%);
+}
+.bday-confetti { position: absolute; inset: 0; pointer-events: none; z-index: 0; }
+.bday-confetti i {
+  position: absolute; top: -6%; display: block; opacity: 0.9;
+  animation: bday-fall linear infinite both;
+}
+@keyframes bday-fall {
+  0%   { transform: translate3d(0, 0, 0) rotate(0deg); }
+  50%  { transform: translate3d(3vw, 55vh, 0) rotate(calc(var(--spin) * 360deg)); }
+  100% { transform: translate3d(-2vw, 112vh, 0) rotate(calc(var(--spin) * 720deg)); }
+}
+.bday-cake {
+  font-size: clamp(4rem, 16vmin, 11rem); line-height: 1; z-index: 1; margin-bottom: 2vmin;
+  animation: bday-pop 0.9s cubic-bezier(0.175, 0.885, 0.32, 1.4) 0.1s both, bday-bob 2.4s ease-in-out 1s infinite;
+}
+@keyframes bday-pop { 0% { transform: scale(0) rotate(-20deg); opacity: 0; } 100% { transform: scale(1) rotate(0); opacity: 1; } }
+@keyframes bday-bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-1.5vmin); } }
+.bday-eyebrow {
+  font-size: clamp(0.9rem, 2.4vmin, 1.6rem); font-weight: 800; letter-spacing: 0.6em; color: #ff9ab8;
+  margin: 0 0 1.5vmin; z-index: 1; animation: fade-up 0.6s ease 0.5s both;
+}
+.bday-name {
+  font-size: clamp(2.6rem, 11vmin, 8rem); font-weight: 900; line-height: 1.05; margin: 0 0 2.5vmin; z-index: 1;
+  text-align: center; word-break: keep-all; overflow-wrap: anywhere;
+  background: linear-gradient(135deg, #fff3c4 0%, #D4AF37 45%, #ff9ab8 100%);
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+  animation: name-crash 0.8s cubic-bezier(0.215, 0.61, 0.355, 1) 0.7s both;
+}
+.bday-msg {
+  font-size: clamp(1.3rem, 4.6vmin, 3.4rem); font-weight: 800; color: #fff; margin: 0 0 1.2vmin; z-index: 1;
+  animation: fade-up 0.6s ease 1.3s both;
+}
+.bday-sub {
+  font-size: clamp(1rem, 2.8vmin, 2rem); color: #c9b98a; margin: 0; z-index: 1;
+  animation: fade-up 0.6s ease 1.7s both;
+}
+
 .page-arrival { background: radial-gradient(ellipse 80% 60% at 50% 40%, rgba(212,175,55,0.08) 0%, transparent 70%); }
 .arrival-beams {
   position: absolute; inset: 0; pointer-events: none;

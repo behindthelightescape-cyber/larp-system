@@ -433,6 +433,8 @@ const now = ref(new Date())
 let clockTimer = null
 
 onMounted(async () => {
+  // 電視畫面整頁鎖住，不能上下滑
+  document.documentElement.style.overflow = document.body.style.overflow = 'hidden'
   // audio unlock 改由 handleStart 處理
   document.addEventListener('fullscreenchange', onFullscreenChange)
   document.addEventListener('keydown', onKeydown)
@@ -449,6 +451,7 @@ onMounted(async () => {
 })
 onUnmounted(() => {
   document.removeEventListener('fullscreenchange', onFullscreenChange)
+  document.documentElement.style.overflow = document.body.style.overflow = ''
   document.removeEventListener('keydown', onKeydown)
   activeRafs.forEach(h => cancelAnimationFrame(h))
   activeRafs.clear()
@@ -785,7 +788,10 @@ const displayExpPct = computed(() => {
 <style scoped>
 /* ── 根 ── */
 .tv-root {
-  width: 100vw; height: 100vh; overflow: hidden;
+  /* 固定貼滿螢幕：App 外框底下留給選單的 80px 不會把頁面撐出捲軸 */
+  position: fixed; inset: 0; z-index: 10;
+  width: 100%; height: 100%; overflow: hidden;
+  touch-action: none; overscroll-behavior: none;
   background: #000000;
   padding: 2px; box-sizing: border-box;
 }

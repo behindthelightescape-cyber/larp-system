@@ -158,7 +158,8 @@ watch(() => userStore.isLoading, (loading) => {
 
 <style scoped>
 .scan-root {
-  min-height: 100vh;
+  /* 固定貼滿手機螢幕，不會因為 App 外框留給選單的空間而上下滑 */
+  position: fixed; inset: 0; overflow-y: auto; overscroll-behavior: none;
   display: flex; align-items: center; justify-content: center;
   background: #060606; padding: 24px; box-sizing: border-box;
   position: relative; overflow: hidden;

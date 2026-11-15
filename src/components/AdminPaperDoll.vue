@@ -2,7 +2,7 @@
 import ImageDropZone from './ImageDropZone.vue'
 import { ref, computed, onMounted, nextTick } from 'vue'
 import { supabase } from '../supabase'
-import { WARDROBE_CATEGORIES } from '../config/paperdoll'
+import { WARDROBE_CATEGORIES, dollCanvasSize } from '../config/paperdoll'
 
 // ── 主 Tab ──
 const mainTab = ref('items') // 'items' | 'backgrounds' | 'base' | 'none_defaults'
@@ -380,11 +380,36 @@ const toggleActive = async (item) => {
   if (!error) item.is_active = !item.is_active
 }
 
+// 道具圖尺寸：披風 800×600（跟背景一樣大，燈燈站正中間），其他 400×600（跟燈燈底圖一樣大）
+const itemCanvasHint = computed(() => {
+  const [w, h] = dollCanvasSize(form.value.category)
+  return w === 800 ? `${w} × ${h} px 透明底 PNG（跟背景一樣大，燈燈站正中間）` : `${w} × ${h} px 透明底 PNG`
+})
+const sizeWarn = ref('')
+const readImageSize = (file) => new Promise((resolve) => {
+  const url = URL.createObjectURL(file)
+  const img = new Image()
+  img.onload = () => { resolve([img.naturalWidth, img.naturalHeight]); URL.revokeObjectURL(url) }
+  img.onerror = () => { resolve(null); URL.revokeObjectURL(url) }
+  img.src = url
+})
+const checkItemSize = async (file) => {
+  sizeWarn.value = ''
+  const got = await readImageSize(file)
+  if (!got) return
+  const [w, h] = dollCanvasSize(form.value.category)
+  // 比例對就好（例如 1600×1200 也行），比例不對才提醒
+  if (Math.abs(got[0] / got[1] - w / h) > 0.01) {
+    sizeWarn.value = `⚠️ 這張是 ${got[0]} × ${got[1]}，這個分類要 ${w} × ${h}（或同比例放大），不然位置會跑掉`
+  }
+}
+
 const handleFileUpload = async (event) => {
   const file = event.target.files[0]
   if (!file) return
   isUploading.value = true
   try {
+    await checkItemSize(file)
     const ext = file.name.split('.').pop()
     const filePath = `${Date.now()}_${Math.random().toString(36).substring(7)}.${ext}`
     const { error: uploadError } = await supabase.storage.from('wardrobe').upload(filePath, file)
@@ -617,7 +642,7 @@ const deleteItem = async (item) => {
                 <div class="upload-wrapper">
                   <div class="image-preview-box">
                     <img v-if="form.img_url" :src="form.img_url" class="preview-img" />
-                    <div v-else class="no-image-text">尚未上傳<br><span>400 × 600 px 透明底 PNG</span></div>
+                    <div v-else class="no-image-text">尚未上傳<br><span>{{ itemCanvasHint }}</span></div>
                   </div>
                   <div class="upload-controls">
                     <input type="file" id="wardrobeUpload" accept="image/*" class="hidden-file-input" @change="handleFileUpload" :disabled="isUploading" />
@@ -627,6 +652,7 @@ const deleteItem = async (item) => {
                       <span v-else>📁 選擇圖片</span>
                     </label>
                     <p v-if="form.img_url" class="upload-url">{{ form.img_url }}</p>
+                    <p v-if="sizeWarn" class="upload-url" style="color:#e5a54b">{{ sizeWarn }}</p>
                   </div>
                 </div>
               </ImageDropZone>

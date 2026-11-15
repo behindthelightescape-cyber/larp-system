@@ -1,6 +1,6 @@
 // 燈燈造型卡 Flex Message（造型室「分享」用）
 // 版面和 supabase/functions/line-webhook/index.ts 的 buildDollCard（！召喚）一致，修改時兩邊一起改。
-import { DOLL_BACK_LAYERS, DOLL_FRONT_LAYERS } from '../config/paperdoll'
+import { DOLL_BACK_LAYERS, DOLL_FRONT_LAYERS, DOLL_WIDE_LAYERS } from '../config/paperdoll'
 
 const GOLD = '#D4AF37'
 const LIFF_URL = 'https://liff.line.me/2009161687-icfQU9r6'
@@ -29,7 +29,15 @@ export const buildDollFlex = ({ name, baseUrl, layerUrls, level, title, bgUrl = 
     width: '46%',
     contents: [{ type: 'image', url, size: 'full', aspectRatio: '2:3', aspectMode: 'cover' }],
   })
-  const pick = (slots) => slots.map(s => layerUrls[s]).filter(Boolean).map(sceneLayer)
+  // 寬畫布（披風 800×600）：寬 92%、4:3 → 高度 69% 卡片寬，跟燈燈一樣高，左右置中（燈燈 27%～73%）
+  const wideLayer = (url) => ({
+    type: 'box', layout: 'vertical',
+    position: 'absolute', offsetBottom: '0px', offsetStart: '4%',
+    width: '92%',
+    contents: [{ type: 'image', url, size: 'full', aspectRatio: '4:3', aspectMode: 'cover' }],
+  })
+  const pick = (slots) => slots.filter(s => layerUrls[s])
+    .map(s => DOLL_WIDE_LAYERS.includes(s) ? wideLayer(layerUrls[s]) : sceneLayer(layerUrls[s]))
 
   const dollArea = [
     { type: 'image', url: bgUrl || SCENE_FRAME_URL, size: 'full', aspectRatio: '4:3', aspectMode: 'cover' },

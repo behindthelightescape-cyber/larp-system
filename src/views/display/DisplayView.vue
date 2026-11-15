@@ -1,5 +1,6 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { useRoute } from 'vue-router'
 import { supabase } from '../../supabase'
 import { DOLL_FRONT_LAYERS } from '../../config/paperdoll'
 
@@ -16,6 +17,8 @@ const nextShift = () => {
 }
 const pixelShift = ref('translate(0px,0px)')
 let burnTimer = null
+
+const route = useRoute()
 
 // ── 音效（Web Audio API 合成）──
 let audioCtx = null
@@ -68,6 +71,49 @@ const playArrival = () => {
     sparkG.gain.linearRampToValueAtTime(0.07, t + 1.1)
     sparkG.gain.linearRampToValueAtTime(0, t + 2.0)
     spark.start(t + 0.9); spark.stop(t + 2.0)
+  } catch (e) { console.warn('音效失敗', e) }
+}
+
+// 聖誕期間的登場音效：Jingle Bells 副歌（鈴鐺音色）＋雪橇鈴，播的時候背景音樂先調小
+// 壽星只播第一句（後面接生日快樂歌，不要疊在一起）
+const JINGLE_A = [[4, 1], [4, 1], [4, 2], [4, 1], [4, 1], [4, 2], [4, 1], [7, 1], [0, 1.5], [2, .5], [4, 4]]
+const JINGLE_B = [[5, 1], [5, 1], [5, 1.5], [5, .5], [5, 1], [4, 1], [4, 1], [4, .5], [4, .5], [4, 1], [2, 1], [2, 1], [4, 1], [2, 2], [7, 2]]
+const JINGLE_C = [[5, 1], [5, 1], [5, 1], [5, 1], [5, 1], [4, 1], [4, 1], [4, .5], [4, .5], [7, 1], [7, 1], [5, 1], [2, 1], [0, 4]]
+const playJingle = (short = false) => {
+  try {
+    const ctx = getCtx()
+    const beat = 0.24
+    const tune = short ? JINGLE_A : [...JINGLE_A, ...JINGLE_B, ...JINGLE_A, ...JINGLE_C]
+    let t = ctx.currentTime + 0.05
+    for (const [semi, beats] of tune) {
+      const f = 523.25 * Math.pow(2, semi / 12)
+      for (const [mul, vol, dec] of [[1, 0.15, 0.9], [2.76, 0.05, 0.35], [5.4, 0.025, 0.2]]) {
+        const o = ctx.createOscillator(), g = ctx.createGain()
+        o.connect(g); g.connect(ctx.destination)
+        o.type = 'sine'
+        o.frequency.setValueAtTime(f * mul, t)
+        g.gain.setValueAtTime(0, t)
+        g.gain.linearRampToValueAtTime(vol, t + 0.008)
+        g.gain.exponentialRampToValueAtTime(0.001, t + dec + beats * beat * 0.5)
+        o.start(t); o.stop(t + dec + beats * beat * 0.5 + 0.05)
+      }
+      t += beats * beat
+    }
+    // 雪橇鈴：一串很短的高頻雜訊
+    const end = t
+    const len = Math.floor(ctx.sampleRate * 0.04)
+    const buf = ctx.createBuffer(1, len, ctx.sampleRate)
+    const data = buf.getChannelData(0)
+    for (let i = 0; i < len; i++) data[i] = (Math.random() * 2 - 1) * (1 - i / len)
+    for (let bt = ctx.currentTime + 0.05; bt < end; bt += beat / 2) {
+      const src = ctx.createBufferSource(), hp = ctx.createBiquadFilter(), g = ctx.createGain()
+      src.buffer = buf; hp.type = 'highpass'; hp.frequency.value = 6500
+      src.connect(hp); hp.connect(g); g.connect(ctx.destination)
+      g.gain.value = 0.06
+      src.start(bt)
+    }
+    // 完整版播完，背景音樂調回正常（開頭由 bgmFadeIn 先停在小聲）
+    if (!short) pageTimers.push(setTimeout(() => { if (phase.value === 'show') bgm.volume = BGM_VOL }, (end - ctx.currentTime) * 1000 + 300))
   } catch (e) { console.warn('音效失敗', e) }
 }
 
@@ -393,14 +439,15 @@ const bgm = new Audio('https://spotlightlarp.com/wp-content/uploads/2026/03/Neon
 bgm.loop = true
 bgm.volume = 0
 
-const bgmFadeIn = () => {
+const BGM_VOL = 0.75
+const bgmFadeIn = (max = BGM_VOL) => {
   bgm.currentTime = 0
   bgm.play().catch(() => {})
   let v = 0
   const t = setInterval(() => {
-    v = Math.min(v + 0.05, 0.75)
+    v = Math.min(v + 0.05, max)
     bgm.volume = v
-    if (v >= 0.75) clearInterval(t)
+    if (v >= max) clearInterval(t)
   }, 80)
 }
 
@@ -428,7 +475,29 @@ const toggleFullscreen = () => {
   else enterFullscreen()
 }
 const onFullscreenChange = () => { isFullscreen.value = !!document.fullscreenElement }
-const onKeydown = (e) => { if (e.key === 'f' || e.key === 'F') toggleFullscreen() }
+const onKeydown = (e) => {
+  if (e.key === 'f' || e.key === 'F') toggleFullscreen()
+  // 本機開發預覽用（正式網站不會有）：按 D 播一位假玩家，按 B 播一位壽星
+  if (import.meta.env.DEV && started.value && (e.key === 'd' || e.key === 'b')) demoShow(e.key === 'b')
+}
+const demoShow = (bday) => {
+  {
+    startShow({
+      name: '測試冒險者', title: '迷霧偵探', level: 4, exp: 860, nextExp: 1200,
+      historyCount: 12, daysJoined: 230, discipleCount: 2, disciples: ['小明', '小華'],
+      scripts: ['雪夜山莊', '鐘樓之謎', '午夜列車'], doll: null, userId: null,
+      birthday: bday ? 'today' : null,
+    })
+  }
+}
+
+// 本機預覽：網址加 ?demo=wait 直接進待機、?demo=show 直接播假玩家
+if (import.meta.env.DEV && route.query.demo) {
+  setTimeout(() => {
+    started.value = true
+    if (route.query.demo === 'show') setTimeout(() => demoShow(false), 500)
+  }, 300)
+}
 
 const handleStart = () => {
   started.value = true
@@ -451,8 +520,9 @@ const startShow = async (playerData) => {
     displayLevel.value = displayGames.value = displayDays.value = displayExp.value = 0
     currentPage.value = 0
     phase.value = 'show'
-    playArrival()
-    bgmFadeIn()
+    const fullJingle = xmas.value && !playerData.birthday
+    if (xmas.value) playJingle(!fullJingle); else playArrival()
+    bgmFadeIn(fullJingle ? 0.2 : BGM_VOL)
     schedulePage(0)
   } catch (err) {
     console.error('startShow 失敗:', err)
@@ -521,6 +591,26 @@ const timeStr = computed(() =>
 const dateStr = computed(() =>
   now.value.toLocaleDateString('zh-TW', { year: 'numeric', month: '2-digit', day: '2-digit', weekday: 'short' })
 )
+// ── 節日主題 ──
+// 聖誕：台灣時間 12/1～12/26 自動開啟；網址加 ?theme=xmas 可提前預覽、?theme=off 關掉
+const xmas = computed(() => {
+  const q = String(route.query.theme || '')
+  if (q === 'xmas') return true
+  if (q === 'off') return false
+  const tw = new Date(now.value.getTime() + 8 * 3600_000)
+  return tw.getUTCMonth() === 11 && tw.getUTCDate() <= 26
+})
+const snow = Array.from({ length: 60 }, (_, i) => ({
+  id: i,
+  left: Math.random() * 100,
+  size: i % 6 === 0 ? 14 + Math.random() * 10 : 3 + Math.random() * 5,
+  flake: i % 6 === 0,
+  delay: -Math.random() * 14,
+  dur: 9 + Math.random() * 9,
+  drift: (Math.random() * 2 - 1) * 6,
+  op: 0.35 + Math.random() * 0.5,
+}))
+
 // 滿等：經驗值已經超過最後一級門檻（getLevelInfo 的 LV6 門檻還是 2500），不顯示「還差 -500 PT」
 const isMaxLevel = computed(() => !!player.value && (!player.value.nextExp || player.value.exp >= player.value.nextExp))
 const displayExpPct = computed(() => {
@@ -548,9 +638,18 @@ const displayExpPct = computed(() => {
       />
     </div>
 
+    <!-- 聖誕下雪 -->
+    <div v-if="xmas" class="xmas-snow" aria-hidden="true">
+      <i v-for="f in snow" :key="f.id" :class="{ flake: f.flake }" :style="{
+        left: f.left + '%', '--sz': f.size + 'px', '--drift': f.drift + 'vw', opacity: f.op,
+        animationDelay: f.delay + 's', animationDuration: f.dur + 's',
+      }">{{ f.flake ? '❄' : '' }}</i>
+    </div>
+
     <!-- Header -->
     <header class="tv-header">
       <img :src="BRAND_LOGO" class="tv-logo" alt="劇光燈 Spotlight" />
+      <div v-if="xmas" class="xmas-chip">🎄 MERRY CHRISTMAS</div>
       <div class="tv-clock">
         <span class="clock-time">{{ timeStr }}</span>
         <span class="clock-date">{{ dateStr }}</span>
@@ -646,7 +745,7 @@ const displayExpPct = computed(() => {
 
         <!-- QR Code 浮層（右下角，QR 全版廣告時隱藏）-->
         <div v-if="started && currentAdData?.type !== 'qr'" class="qr-float">
-          <div class="qr-float-inner">
+          <div class="qr-float-inner" :class="{ 'xmas-frame': xmas }">
             <div class="qr-float-frame">
               <div class="qr-scan-line"></div>
               <img v-if="qrDataUrl" :src="qrDataUrl" class="qr-img" alt="QR Code" />
@@ -667,7 +766,7 @@ const displayExpPct = computed(() => {
         <!-- ── PAGE 0：登場 ── -->
         <div v-if="currentPage === 0" class="page page-arrival">
           <div class="arrival-beams" aria-hidden="true"></div>
-          <p class="arrival-eyebrow">PLAYER ARRIVED</p>
+          <p class="arrival-eyebrow">{{ xmas ? '🎄 MERRY CHRISTMAS' : 'PLAYER ARRIVED' }}</p>
           <h1 class="arrival-name">{{ player?.name }}</h1>
           <div class="arrival-title">
             <span class="arrival-gem">✦</span>
@@ -792,7 +891,7 @@ const displayExpPct = computed(() => {
 
           <!-- 紙娃娃 -->
           <div class="finale-doll">
-            <img v-if="dollLayers.cape" class="doll-clothing" :src="dollLayers.cape" alt="" />
+            <img v-if="dollLayers.cape" class="doll-clothing doll-wide" :src="dollLayers.cape" alt="" />
             <img class="doll-base" :src="dollBaseUrl" alt="角色" />
             <template v-for="slot in DOLL_LAYER_ORDER" :key="slot">
               <img v-if="dollLayers[slot]" class="doll-clothing" :src="dollLayers[slot]" alt="" />
@@ -802,7 +901,7 @@ const displayExpPct = computed(() => {
           <!-- 資訊卡 -->
           <div class="finale-card">
             <div class="finale-card-deco"></div>
-            <p class="finale-eyebrow">{{ player?.birthday ? '🎂 BIRTHDAY STAR' : 'SPOTLIGHT PLAYER' }}</p>
+            <p class="finale-eyebrow">{{ player?.birthday ? '🎂 BIRTHDAY STAR' : xmas ? '🎄 CHRISTMAS ADVENTURER' : 'SPOTLIGHT PLAYER' }}</p>
             <h2 class="finale-name">{{ player?.name }}</h2>
             <p class="finale-title-text">{{ player?.title }}</p>
             <div class="finale-divider"><span>◆</span></div>
@@ -954,6 +1053,34 @@ const displayExpPct = computed(() => {
 .no-content-sub  { font-size: 0.8rem; color: #2a2a2a; margin: 0; font-family: monospace; }
 
 /* QR Code 浮層（右下角）*/
+/* ── 聖誕主題 ── */
+.xmas-snow { position: absolute; inset: 0; z-index: 15; pointer-events: none; overflow: hidden; }
+.xmas-snow i {
+  position: absolute; top: -5%; display: block;
+  width: var(--sz); height: var(--sz); border-radius: 50%;
+  background: #fff; box-shadow: 0 0 6px rgba(255,255,255,0.6);
+  font-style: normal; animation: xmas-fall linear infinite;
+}
+.xmas-snow i.flake {
+  background: none; box-shadow: none; width: auto; height: auto;
+  font-size: var(--sz); line-height: 1; color: #eaf6ff; text-shadow: 0 0 8px rgba(180,220,255,0.7);
+}
+@keyframes xmas-fall {
+  0%   { transform: translate3d(0, 0, 0) rotate(0deg); }
+  50%  { transform: translate3d(var(--drift), 55vh, 0) rotate(180deg); }
+  100% { transform: translate3d(0, 110vh, 0) rotate(360deg); }
+}
+.xmas-chip {
+  font-size: clamp(0.8rem, 1.8vmin, 1.3rem); font-weight: 800; letter-spacing: 0.25em;
+  color: #fff; padding: 0.45em 1.2em; border-radius: 999px;
+  background: linear-gradient(90deg, #b3202a, #d63a3a 50%, #1f7a3d);
+  box-shadow: 0 0 18px rgba(214,58,58,0.35);
+}
+.qr-float-inner.xmas-frame {
+  border-color: transparent;
+  box-shadow: 0 0 0 3px #c62f2f, 0 0 0 6px #1f7a3d, 0 0 30px rgba(214,58,58,0.35);
+}
+
 .qr-float {
   position: absolute; bottom: 28px; right: 28px; z-index: 20;
 }
@@ -1275,8 +1402,14 @@ const displayExpPct = computed(() => {
   0%  { opacity: 0; transform: translateY(80px); }
   100%{ opacity: 1; transform: translateY(0); }
 }
-.doll-base     { display: block; height: 500px; width: auto; }
+.doll-base     { display: block; height: 500px; width: auto; position: relative; } /* relative：披風（absolute）才會畫在燈燈後面 */
 .doll-clothing { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: contain; pointer-events: none; }
+/* 寬畫布圖層（披風）：800×600，跟背景一樣大，燈燈站正中間 → 高度對齊底圖、左右置中，超出底圖的部分照樣顯示 */
+.doll-wide {
+  position: absolute; top: 0; left: 50%;
+  height: 100%; width: auto; max-width: none;
+  transform: translateX(-50%); object-fit: fill;
+}
 
 .finale-card {
   position: relative; z-index: 1; flex-shrink: 0; max-width: 380px;

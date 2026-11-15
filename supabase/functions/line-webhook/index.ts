@@ -222,6 +222,8 @@ const buildDollCard = (
   // 披風畫在底圖後面，其餘畫在底圖前面。修改時兩邊一起改。
   const BACK_SLOTS = ['cape']
   const FRONT_SLOTS = ['bottom', 'top', 'hand', 'hat', 'expr', 'face']
+  // 寬畫布分類（800×600，燈燈站正中間），和 src/config/paperdoll.js 的 DOLL_WIDE_LAYERS 一致
+  const WIDE_SLOTS = ['cape']
   const pick = (slots: string[]) => slots
     .map(slot => layers.find(l => l.slot === slot))
     .filter((l): l is { slot: string; url: string } => !!l)
@@ -234,12 +236,20 @@ const buildDollCard = (
     width: '46%',
     contents: [{ type: 'image', url, size: 'full', aspectRatio: '2:3', aspectMode: 'cover' }],
   })
+  // 寬畫布：寬 92%、4:3 → 高度 69% 卡片寬，跟燈燈一樣高，左右置中
+  const wideLayer = (url: string) => ({
+    type: 'box', layout: 'vertical',
+    position: 'absolute', offsetBottom: '0px', offsetStart: '4%',
+    width: '92%',
+    contents: [{ type: 'image', url, size: 'full', aspectRatio: '4:3', aspectMode: 'cover' }],
+  })
+  const layerFor = (l: { slot: string; url: string }) => WIDE_SLOTS.includes(l.slot) ? wideLayer(l.url) : sceneLayer(l.url)
   // 有背景：背景圖撐出場景；沒背景：透明 4:3 墊底圖撐出場景，底色用和首頁一樣的暗金漸層
   const dollArea = [
     { type: 'image', url: bgUrl || SCENE_FRAME_URL, size: 'full', aspectRatio: '4:3', aspectMode: 'cover' },
-    ...pick(BACK_SLOTS).map(l => sceneLayer(l.url)),
+    ...pick(BACK_SLOTS).map(layerFor),
     sceneLayer(baseUrl),
-    ...pick(FRONT_SLOTS).map(l => sceneLayer(l.url)),
+    ...pick(FRONT_SLOTS).map(layerFor),
   ]
   const sceneBackground = bgUrl
     ? undefined

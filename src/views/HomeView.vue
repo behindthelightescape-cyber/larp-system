@@ -204,7 +204,7 @@ onMounted(() => {
             <div class="scene-floor"></div>
             <div class="showcase-doll-float" :style="canEditDoll ? null : { cursor: 'default' }" @click="openPaperDoll">
               <div class="showcase-doll">
-                <img v-if="dollLayers.cape" class="doll-layer doll-clothing" :src="dollLayers.cape" alt="" />
+                <img v-if="dollLayers.cape" class="doll-layer doll-clothing doll-wide" :src="dollLayers.cape" alt="" />
                 <img class="doll-layer doll-base" :src="baseImgUrl || FALLBACK_BASE" alt="燈燈" />
                 <template v-for="slot in dollLayerOrder" :key="slot">
                   <img v-if="dollLayers[slot]" class="doll-layer doll-clothing" :src="dollLayers[slot]" alt="" />
@@ -516,13 +516,22 @@ onMounted(() => {
 }
 .doll-base {
   grid-area: 1 / 1;
+  position: relative; /* 讓疊圖順序照 HTML 順序（披風是 absolute，不然會蓋到燈燈前面） */
   width: 100%; height: 100%;
   object-fit: contain;
 }
 .doll-clothing {
   grid-area: 1 / 1;
+  position: relative; /* 讓疊圖順序照 HTML 順序（披風是 absolute，不然會蓋到燈燈前面） */
   width: 100%; height: 100%;
   object-fit: contain; pointer-events: none;
+}
+
+/* 寬畫布圖層（披風）：800×600，跟背景一樣大，燈燈站正中間 → 高度對齊底圖、左右置中，超出底圖的部分照樣顯示 */
+.doll-wide {
+  position: absolute; top: 0; left: 50%;
+  height: 100%; width: auto; max-width: none;
+  transform: translateX(-50%); object-fit: fill;
 }
 
 /* 場景卡：上方 4:3 場景（背景 + 燈燈），下方名字稱號 */

@@ -24,3 +24,9 @@ export const WARDROBE_CATEGORIES = [
 // 圖層順序（從後到前）。披風畫在底圖「後面」，其餘畫在底圖前面。
 export const DOLL_BACK_LAYERS = ['cape']
 export const DOLL_FRONT_LAYERS = ['bottom', 'top', 'hand', 'hat', 'expr', 'face']
+
+// 寬畫布分類：圖片用 800×600（跟背景一樣大），燈燈站正中間（左右各留 200px），超出燈燈的部分不會被切掉。
+// 其他分類維持 400×600（跟燈燈底圖一樣大）。
+// 修改時 supabase/functions/line-webhook/index.ts 的 WIDE_SLOTS 也要一起改。
+export const DOLL_WIDE_LAYERS = ['cape']
+export const dollCanvasSize = (category) => DOLL_WIDE_LAYERS.includes(category) ? [800, 600] : [400, 600]

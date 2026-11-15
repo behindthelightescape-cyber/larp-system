@@ -34,7 +34,7 @@
         <div class="doll-stage">
           <!-- 披風在角色後面 -->
           <template v-if="equipped.cape && !equipped.cape.is_none">
-            <img v-if="equipped.cape.img_url" class="layer-img layer-clothing" :src="equipped.cape.img_url" :alt="equipped.cape.name" />
+            <img v-if="equipped.cape.img_url" class="layer-img layer-clothing doll-wide" :src="equipped.cape.img_url" :alt="equipped.cape.name" />
             <span v-else class="emoji-overlay cape">{{ equipped.cape.emoji }}</span>
           </template>
           <!-- 底圖 -->
@@ -628,13 +628,21 @@ const obtainDesc = (item) => {
 }
 .layer-img {
   grid-area: 1 / 1;
+  position: relative; /* 讓疊圖順序照 HTML 順序（披風是 absolute，不然會蓋到燈燈前面） */
   width: 100%; height: 100%;
   object-fit: contain;
 }
 .layer-clothing {
   grid-area: 1 / 1;
+  position: relative; /* 讓疊圖順序照 HTML 順序（披風是 absolute，不然會蓋到燈燈前面） */
   width: 100%; height: 100%;
   object-fit: contain; pointer-events: none;
+}
+/* 寬畫布圖層（披風）：800×600，跟背景一樣大，燈燈站正中間 → 高度對齊底圖、左右置中，超出底圖的部分照樣顯示 */
+.doll-wide {
+  position: absolute; top: 0; left: 50%;
+  height: 100%; width: auto; max-width: none;
+  transform: translateX(-50%); object-fit: fill;
 }
 .emoji-overlay {
   position: absolute; left: 50%; transform: translateX(-50%);

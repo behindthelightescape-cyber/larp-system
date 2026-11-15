@@ -167,38 +167,35 @@ const subscribeAds = () => {
     .subscribe()
 }
 
-// 偵測玩家掃碼，收到對應 session 就啟動展示
+// 偵測玩家掃碼：手機寫好資料後，對這台電視自己的頻道（display-scan-<session>）喊一聲 → 馬上去查
+// 玩家資料不走 Realtime 廣播（以前整張表的變動會廣播給所有連線的人），只用 RPC 憑 session 編號查那一筆
+const fetchSession = async () => {
+  if (phase.value !== 'waiting' || !sessionId.value) return
+  let { data, error } = await supabase.rpc('display_session_get', { p_session: sessionId.value })
+  if (error) {
+    // RPC 還沒建（SQL 還沒跑）時的舊查法，SQL 跑完就不會走到這裡
+    const r = await supabase.from('display_sessions').select('player_data')
+      .eq('session_id', sessionId.value).not('player_data', 'is', null).maybeSingle()
+    data = r.data?.player_data
+  }
+  if (data && phase.value === 'waiting') startShow(data)
+}
+
 let sessionChannel = null
 const subscribeSession = () => {
-  sessionChannel = supabase.channel('display-session-watch')
-    .on(
-      'postgres_changes',
-      { event: '*', schema: 'public', table: 'display_sessions' },
-      (payload) => {
-        const row = payload.new
-        if (row?.session_id === sessionId.value && row?.player_data) {
-          startShow(row.player_data)
-        }
-      }
-    )
+  if (sessionChannel) supabase.removeChannel(sessionChannel)
+  sessionChannel = supabase.channel(`display-scan-${sessionId.value}`)
+    .on('broadcast', { event: 'scanned' }, () => { fetchSession() })
     .subscribe()
 }
 
-// 輪詢保底（以防 Realtime 未啟用或 RLS 擋住事件）
+// 輪詢保底（頻道沒連上時也查得到）
 let pollTimer = null
 const startPolling = () => {
   stopPolling()
-  pollTimer = setInterval(async () => {
+  pollTimer = setInterval(() => {
     if (phase.value !== 'waiting') { stopPolling(); return }
-    const { data } = await supabase
-      .from('display_sessions')
-      .select('player_data')
-      .eq('session_id', sessionId.value)
-      .not('player_data', 'is', null)
-      .maybeSingle()
-    if (data?.player_data) {
-      startShow(data.player_data)
-    }
+    fetchSession()
   }, 2500)
 }
 const stopPolling = () => { if (pollTimer) { clearInterval(pollTimer); pollTimer = null } }
@@ -323,7 +320,6 @@ const schedulePage = (page) => {
       currentPage.value = 0
       // 回到廣告：換下一支並重新計時（不然圖片／文字廣告會停住不動）
       nextAd()
-      sessionChannel?.unsubscribe()
       await generateSession()
       subscribeSession()
       startPolling()
@@ -459,8 +455,8 @@ onUnmounted(() => {
   clearPageTimers()
   clearSlideTimer()
   stopPolling()
-  adsChannel?.unsubscribe()
-  sessionChannel?.unsubscribe()
+  if (adsChannel) supabase.removeChannel(adsChannel)
+  if (sessionChannel) supabase.removeChannel(sessionChannel)
   clearInterval(clockTimer)
   clearInterval(burnTimer)
   audioCtx?.close()

@@ -21,57 +21,55 @@ const sendToDisplay = async () => {
 
     const levelInfo = userStore.getLevelInfo(user.total_exp || 0)
 
-    // 歷史場次 + 劇本名稱
-    const { data: histData } = await supabase
-      .from('game_participants')
-      .select('games(scripts(title))')
-      .eq('user_id', user.id)
+    // 歷史場次、弟子、穿搭同時查（以前一個一個排隊查，掃完要等比較久電視才動）
+    // 弟子（被我推坑的人）：users 有 RLS，玩家只讀得到自己那列，直接查會是 0 → 用 RPC（跟師門樹同一支）
+    // 穿搭：畫面端沒登入讀不到，所以在手機（本人登入）這邊先查好圖片網址一起送過去
+    const loadDoll = async () => {
+      try {
+        const [{ data: base }, { data: eq }, { data: noneDefaults }] = await Promise.all([
+          supabase.from('wardrobe_bases').select('img_url').eq('is_default', true).eq('is_active', true).maybeSingle(),
+          supabase.from('user_wardrobe_equipped').select('equipped, background_id').eq('user_id', user.id).maybeSingle(),
+          supabase.from('wardrobe_none_defaults').select('category, img_url'),
+        ])
+        const doll = { base: base?.img_url || null, layers: {}, bg: null }
+        const ids = Object.values(eq?.equipped || {}).filter(Boolean)
+        const [bgRes, itemsRes] = await Promise.all([
+          eq?.background_id
+            ? supabase.from('wardrobe_backgrounds').select('img_url').eq('id', eq.background_id).maybeSingle()
+            : Promise.resolve({ data: null }),
+          ids.length
+            ? supabase.from('wardrobe_items').select('id, img_url').in('id', ids)
+            : Promise.resolve({ data: [] }),
+        ])
+        doll.bg = bgRes.data?.img_url || null
+        for (const [cat, id] of Object.entries(eq?.equipped || {})) {
+          const url = itemsRes.data?.find(i => i.id === id)?.img_url
+          if (url) doll.layers[cat] = url
+        }
+        // 沒裝備的部位補預設圖（跟首頁一樣，例如預設表情）
+        for (const nd of noneDefaults || []) {
+          if (nd.img_url && !doll.layers[nd.category]) doll.layers[nd.category] = nd.img_url
+        }
+        return doll
+      } catch (e) {
+        console.warn('讀取穿搭失敗，畫面會顯示預設燈燈', e)
+        return null
+      }
+    }
+
+    const [{ data: histData }, refsRes, doll] = await Promise.all([
+      supabase.from('game_participants').select('games(scripts(title))').eq('user_id', user.id),
+      user.my_referral_code
+        ? supabase.rpc('get_disciples_by_codes', { p_codes: [user.my_referral_code] })
+        : Promise.resolve({ data: [] }),
+      loadDoll(),
+    ])
 
     const scripts = (histData || [])
       .map(h => h.games?.scripts?.title)
       .filter(Boolean)
-
-    // 弟子（被我推坑的人）：users 有 RLS，玩家只讀得到自己那列，直接查會是 0 → 用 RPC（跟師門樹同一支）
-    let disciples    = []
-    let discipleCount = 0
-    if (user.my_referral_code) {
-      const { data: refs } = await supabase.rpc('get_disciples_by_codes', { p_codes: [user.my_referral_code] })
-      disciples     = (refs || []).map(r => r.display_name || '冒險者')
-      discipleCount = disciples.length
-    }
-
-    // 穿搭：畫面端沒登入讀不到，所以在手機（本人登入）這邊先查好圖片網址一起送過去
-    let doll = null
-    try {
-      const { data: base } = await supabase
-        .from('wardrobe_bases').select('img_url')
-        .eq('is_default', true).eq('is_active', true).maybeSingle()
-      doll = { base: base?.img_url || null, layers: {}, bg: null }
-      const { data: eq } = await supabase
-        .from('user_wardrobe_equipped').select('equipped, background_id')
-        .eq('user_id', user.id).maybeSingle()
-      if (eq?.background_id) {
-        const { data: bg } = await supabase
-          .from('wardrobe_backgrounds').select('img_url').eq('id', eq.background_id).maybeSingle()
-        doll.bg = bg?.img_url || null
-      }
-      const ids = Object.values(eq?.equipped || {}).filter(Boolean)
-      if (ids.length) {
-        const { data: items } = await supabase
-          .from('wardrobe_items').select('id, img_url').in('id', ids)
-        for (const [cat, id] of Object.entries(eq.equipped)) {
-          const url = items?.find(i => i.id === id)?.img_url
-          if (url) doll.layers[cat] = url
-        }
-      }
-      // 沒裝備的部位補預設圖（跟首頁一樣，例如預設表情）
-      const { data: noneDefaults } = await supabase.from('wardrobe_none_defaults').select('category, img_url')
-      for (const nd of noneDefaults || []) {
-        if (nd.img_url && !doll.layers[nd.category]) doll.layers[nd.category] = nd.img_url
-      }
-    } catch (e) {
-      console.warn('讀取穿搭失敗，畫面會顯示預設燈燈', e)
-    }
+    const disciples     = (refsRes.data || []).map(r => r.display_name || '冒險者')
+    const discipleCount = disciples.length
 
     const playerData = {
       doll,
@@ -93,6 +91,11 @@ const sendToDisplay = async () => {
       .upsert({ session_id: sessionId, user_id: user.id, player_data: playerData }, { onConflict: 'session_id' })
 
     if (dbErr) throw dbErr
+
+    // 叫電視馬上去拿（沒喊到也沒關係，電視每 2.5 秒會自己查一次）
+    try {
+      await supabase.channel(`display-scan-${sessionId}`).httpSend('scanned', { at: Date.now() })
+    } catch (e) { console.warn('通知電視失敗，等電視自己查', e) }
 
     status.value = 'success'
   } catch (err) {

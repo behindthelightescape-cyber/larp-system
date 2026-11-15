@@ -436,12 +436,69 @@ const buildRulesCard = (rulesText: string) => ({
 
 // ── LINE 回覆訊息 ──────────────────────────────────────────────────────────
 // 使用 replyToken 回覆，每個 token 只能用一次且有時效限制
-const lineReply = (replyToken: string, messages: unknown[]) =>
+const lineReplyRaw = (replyToken: string, messages: unknown[]) =>
   fetch('https://api.line.me/v2/bot/message/reply', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${LINE_CHANNEL_TOKEN}` },
     body: JSON.stringify({ replyToken, messages }),
   })
+
+// ── 漏回的工作訊息（公車表指令、車友名單）：存起來，同群組下一次有 token 時補回 ──────────
+// 不用 push（群組推播照人數算額度）。表：line_pending_replies（supabase/line_pending_replies.sql）
+const PENDING_TTL_MS = 2 * 3600_000
+const PENDING_HEAD = { type: 'text', text: '🙏 燈燈剛剛漏回了，補上：' }
+const isTokenGone = (err: string) => /reply ?token/i.test(err)
+type Pending = { gid: string; ids: number[]; msgs: unknown[]; used: boolean }
+const pendingByToken = new Map<string, Pending>() // 用 token 當 key：同一個 isolate 同時處理好幾個請求也不會混
+
+const savePending = async (groupId: string, messages: unknown[], tag: string) => {
+  if (!groupId || !messages.length) return
+  try { await dbInsert('line_pending_replies', { group_id: groupId, messages, tag }) }
+  catch (e) { console.error('savePending:', e) }
+}
+
+// 每個事件開始前：這個群組有沒有還沒補的
+const beginPending = async (event: Record<string, unknown>) => {
+  const src = event.source as Record<string, unknown> | undefined
+  const token = event.replyToken as string | undefined
+  if (src?.type !== 'group' || !src.groupId || !token) return
+  const gid = String(src.groupId)
+  try {
+    const since = new Date(Date.now() - PENDING_TTL_MS).toISOString()
+    const rows = await dbGet(`line_pending_replies?group_id=eq.${encodeURIComponent(gid)}&delivered_at=is.null&created_at=gte.${encodeURIComponent(since)}&order=created_at.asc&select=id,messages`)
+    if (Array.isArray(rows) && rows.length) {
+      pendingByToken.set(token, { gid, ids: rows.map((r: any) => r.id), msgs: rows.flatMap((r: any) => r.messages || []), used: false })
+    }
+  } catch (e) { console.error('beginPending:', e) }
+}
+
+// 事件處理完：token 沒被用掉（例如只是聊天）→ 拿來補回
+const flushPending = async (event: Record<string, unknown>) => {
+  const token = event.replyToken as string | undefined
+  if (!token) return
+  const p = pendingByToken.get(token)
+  if (p && !p.used && p.msgs.length) await lineReply(token, [])
+  pendingByToken.delete(token)
+}
+
+// 所有回覆都走這裡：這個 token 有待補的 → 補的放前面、這次的放後面（一次最多 5 則，放不下就先不補）
+const lineReply = async (replyToken: string, messages: unknown[]): Promise<Response> => {
+  const p = pendingByToken.get(replyToken)
+  if (!p) return lineReplyRaw(replyToken, messages)
+  p.used = true
+  const room = 5 - messages.length
+  if (!p.msgs.length || room < 2) return lineReplyRaw(replyToken, messages)
+  const res = await lineReplyRaw(replyToken, [PENDING_HEAD, ...p.msgs].slice(0, room).concat(messages))
+  if (res.ok) {
+    await dbPatch('line_pending_replies', `id=in.(${p.ids.join(',')})`, { delivered_at: new Date().toISOString() })
+    p.msgs = []
+    return res
+  }
+  const err = await res.clone().text()
+  console.error('pending reply failed', res.status, err.slice(0, 300))
+  if (isTokenGone(err) || !messages.length) return res // token 也失效了：留著下次補
+  return lineReplyRaw(replyToken, messages)            // 補的那幾則有問題：至少把這次的回掉
+}
 
 // 群組成員的 LINE 名稱（不需要對方加好友）
 const groupMemberName = async (groupId: string, userId: string): Promise<string> => {
@@ -547,22 +604,25 @@ const isBusGroup = async (groupId: string) => {
 
 // 回覆失敗（多半是 Flex 格式被 LINE 退）→ 記下錯誤（後台查得到），再用純文字補回
 // 公車表指令的回覆：已經改了公車表，回覆卻失敗（例如 replyToken 失效）→ 記錯誤到 line_command_log 方便查原因
-// 不用 push 補發：群組推播是照人數算額度
+// token 失效的存進 line_pending_replies，下次同群組有人說話時補回（不用 push：群組推播照人數算額度）
 const busReplyFor = (groupId: string) => async (replyToken: string, messages: unknown[]): Promise<Response> => {
   const res = await lineReply(replyToken, messages)
   if (res.ok) return res
   const err = (await res.text()).slice(0, 900)
   console.error('bus reply failed', res.status, err)
   await dbInsert('line_command_log', { command: '__error:bus', line_user_id: `${res.status} ${err}`, group_id: groupId || null })
+  if (isTokenGone(err)) await savePending(groupId, messages, 'bus') // 下次同群組有人說話時補回
   return new Response(err, { status: res.status }) // body 已讀過，換一個給呼叫端（公車文會再用純文字重回）
 }
 
-const replyOr = async (replyToken: string, messages: unknown[], fallback: string, tag: string) => {
+// pendingGid：工作類（車友名單）才給；token 失效時存起來下次補回。娛樂類（選單）不給 → 失敗就算了
+const replyOr = async (replyToken: string, messages: unknown[], fallback: string, tag: string, pendingGid = '') => {
   const res = await lineReply(replyToken, messages)
   if (res.ok) return
   const err = (await res.text()).slice(0, 900)
   console.error(tag, 'reply failed', res.status, err)
   await dbInsert('line_command_log', { command: `__error:${tag}`, line_user_id: `${res.status} ${err}` })
+  if (isTokenGone(err)) { if (pendingGid) await savePending(pendingGid, messages, tag); return }
   if (fallback) await lineReply(replyToken, [{ type: 'text', text: fallback }])
 }
 
@@ -632,6 +692,8 @@ const handleEvents = async (events: Record<string, unknown>[]) => {
   const background: Promise<void>[] = []
 
   for (const event of events) {
+    await beginPending(event)
+    try {
     console.log('event.type:', event.type)
     background.push(trackMembers(event).catch(e => console.error('trackMembers error:', e)))
 
@@ -643,14 +705,14 @@ const handleEvents = async (events: Record<string, unknown>[]) => {
       if (src?.type === 'group' && src.groupId) {
         const gid = String(src.groupId)
         if (event.type === 'postback' && pb?.data === 'roster|join') {
-          try { await replyOr(event.replyToken as string, [await rosterJoin(gid, String(src.userId || ''))], '✅ 記到名單囉', 'rosterJoin') }
+          try { await replyOr(event.replyToken as string, [await rosterJoin(gid, String(src.userId || ''))], '✅ 記到名單囉', 'rosterJoin', gid) }
           catch (e) { console.error('roster join:', e); await lineReply(event.replyToken as string, [{ type: 'text', text: '😢 燈燈記名單時跌倒了，等一下再試試看' }]) }
           continue
         }
         if (event.type === 'message' && m?.type === 'text'
             && /^[!！]?\s*(名單|車友名單|同步名單|名單同步)$/.test(String(m.text || '').trim())
             && await isBusGroup(gid)) {
-          try { await replyOr(event.replyToken as string, [await rosterCommand(gid)], '😢 名單卡片出不來，工程這邊查一下', 'roster') }
+          try { await replyOr(event.replyToken as string, [await rosterCommand(gid)], '😢 名單卡片出不來，工程這邊查一下', 'roster', gid) }
           catch (e) { console.error('roster:', e); await lineReply(event.replyToken as string, [{ type: 'text', text: '😢 燈燈翻名單時跌倒了，等一下再試試看' }]) }
           continue
         }
@@ -985,6 +1047,10 @@ const handleEvents = async (events: Record<string, unknown>[]) => {
 
       const replyRes = await lineReply(replyToken, [buildLineageCard(user, disciples)])
       console.log('sect reply status:', replyRes.status, await replyRes.text())
+    }
+    } finally {
+      // 這個事件沒用掉 token（例如只是聊天）→ 拿來補回漏回的工作訊息
+      try { await flushPending(event) } catch (e) { console.error('flushPending:', e) }
     }
   }
   await Promise.allSettled(background)

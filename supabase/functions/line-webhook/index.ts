@@ -546,25 +546,15 @@ const isBusGroup = async (groupId: string) => {
 }
 
 // 回覆失敗（多半是 Flex 格式被 LINE 退）→ 記下錯誤（後台查得到），再用純文字補回
-// 公車表指令的回覆：已經改了公車表，回覆卻失敗（例如 replyToken 過期）→ 記錯誤，改用 push 補發到群組，
-// 不然導遊會以為燈燈沒做事（push 算額度，但只有失敗才會用到）
+// 公車表指令的回覆：已經改了公車表，回覆卻失敗（例如 replyToken 失效）→ 記錯誤到 line_command_log 方便查原因
+// 不用 push 補發：群組推播是照人數算額度
 const busReplyFor = (groupId: string) => async (replyToken: string, messages: unknown[]): Promise<Response> => {
   const res = await lineReply(replyToken, messages)
   if (res.ok) return res
   const err = (await res.text()).slice(0, 900)
   console.error('bus reply failed', res.status, err)
   await dbInsert('line_command_log', { command: '__error:bus', line_user_id: `${res.status} ${err}`, group_id: groupId || null })
-  // 只有 token 失效才補發；訊息格式錯（例如 textV2 不支援）讓呼叫端自己換純文字重回
-  if (groupId && /reply token/i.test(err)) {
-    const p = await fetch('https://api.line.me/v2/bot/message/push', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${LINE_CHANNEL_TOKEN}` },
-      body: JSON.stringify({ to: groupId, messages }),
-    })
-    if (p.ok) return new Response('{}', { status: 200 })
-    console.error('bus push fallback failed', p.status, (await p.text()).slice(0, 300))
-  }
-  return new Response(err, { status: res.status })
+  return new Response(err, { status: res.status }) // body 已讀過，換一個給呼叫端（公車文會再用純文字重回）
 }
 
 const replyOr = async (replyToken: string, messages: unknown[], fallback: string, tag: string) => {

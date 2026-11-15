@@ -95,6 +95,8 @@ const BIRTHDAY_TUNE = [
   // [半音（相對 C5）, 拍數]
   [-5, .75], [-5, .25], [-3, 1], [-5, 1], [0, 1], [-1, 2],
   [-5, .75], [-5, .25], [-3, 1], [-5, 1], [2, 1], [0, 2],
+  [-5, .75], [-5, .25], [7, 1], [4, 1], [0, 1], [-1, 1], [-3, 2.5],
+  [5, .75], [5, .25], [4, 1], [0, 1], [2, 1], [0, 3],
 ]
 const playBirthday = () => {
   try {
@@ -140,7 +142,7 @@ const FALLBACK_BASE = 'https://meee.com.tw/hLmrwbm.png'
 const DOLL_LAYER_ORDER = DOLL_FRONT_LAYERS // 披風另外畫在底圖後面
 
 // 每頁停留毫秒數  0:登場 1:天數 2:場數 3:等級 4:EXP 5:弟子 6:總覽 7:壽星（只有壽星才播，接在登場後面）
-const PAGE_DURATIONS = [3800, 3200, 4500, 3600, 3200, 3800, 8000, 7500]
+const PAGE_DURATIONS = [3800, 3200, 4500, 3600, 3200, 3800, 8000, 11500]
 
 const started     = ref(false)
 const phase       = ref('waiting')  // 'waiting' | 'show'
@@ -686,7 +688,7 @@ const displayExpPct = computed(() => {
           <p class="bday-eyebrow">HAPPY BIRTHDAY</p>
           <h1 class="bday-name">{{ player?.name }}</h1>
           <p class="bday-msg">{{ player?.birthday === 'today' ? '今天是你的生日！' : '這個月是你的壽星月！' }}</p>
-          <p class="bday-sub">劇光燈全體冒險者祝你生日快樂 🎉</p>
+          <p class="bday-sub">劇光燈全體祝您生日快樂</p>
         </div>
 
         <!-- ── PAGE 1：加入天數 ── -->

@@ -1261,14 +1261,14 @@ const displayExpPct = computed(() => {
 .ad-text-slide {
   position: absolute; inset: 0; z-index: 0;
   display: flex; flex-direction: column; align-items: center; justify-content: center;
-  gap: 3.5vmin; padding: 8vmin 10vw; box-sizing: border-box;
+  gap: 3.5vmin; padding: 8vmin 7vw; box-sizing: border-box;
   background: radial-gradient(ellipse 70% 60% at 50% 50%, rgba(10,10,10,0.95), #000);
 }
 .ad-text-deco { font-size: 2.4vmin; opacity: 0.6; animation: fade-up 0.5s ease both; }
 .ad-text-title {
   font-size: clamp(2rem, 9vmin, 7.5rem); font-weight: 900; text-align: center; line-height: 1.2;
   margin: 0; letter-spacing: 0.04em; max-width: 100%;
-  overflow-wrap: anywhere; text-wrap: balance;
+  word-break: keep-all; overflow-wrap: anywhere; /* 中文標題只在空格斷行（「雙11預售票 限時開賣中」），沒空格又太長才硬斷 */
   animation: fade-up 0.6s ease 0.15s both;
 }
 .ad-text-body {
@@ -1280,6 +1280,10 @@ const displayExpPct = computed(() => {
 .ad-text-line {
   width: 16vmin; height: 2px;
   animation: fade-up 0.5s ease 0.45s both;
+}
+/* 橫的螢幕：左右各留出右下角浮動 QR 的寬度，文字才不會被 QR 蓋到（左右對稱才會置中）；直立的 QR 在文字下方，不用留 */
+@media (min-aspect-ratio: 1/1) {
+  .ad-text-slide { padding: 6vmin calc(clamp(130px, 18vmin, 240px) + 72px); }
 }
 
 /* ── 廣告：QR 左標語 + 右 QR（直立或偏方的螢幕改上下排）── */

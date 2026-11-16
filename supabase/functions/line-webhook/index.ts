@@ -865,13 +865,30 @@ const handleEvents = async (events: Record<string, unknown>[]) => {
     const user = users?.[0]
     console.log('user found:', !!user)
 
-    // 尚未加入的玩家：給提示訊息 + 快速回覆按鈕引導加入
+    // 尚未加入的玩家：用卡片按鈕引導加入
+    // （原本用快速回覆，但電腦版 LINE 不顯示、群組裡別人一說話就消失，所以改成卡片內的按鈕）
     if (!user) {
       await lineReply(replyToken, [{
-        type: 'text',
-        text: '⚔️ 你還不是劇光燈的冒險者！\n\n點下方按鈕開始你的冒險吧！',
-        quickReply: {
-          items: [{ type: 'action', action: { type: 'uri', label: '立即加入', uri: LIFF_URL } }],
+        type: 'flex',
+        altText: '你還不是劇光燈的冒險者！點此加入',
+        contents: {
+          type: 'bubble',
+          size: 'kilo',
+          styles: { body: { backgroundColor: '#0d0d0d' }, footer: { backgroundColor: '#0d0d0d' } },
+          body: {
+            type: 'box', layout: 'vertical', paddingAll: '16px', spacing: 'sm',
+            contents: [
+              { type: 'text', text: '⚔️ 你還不是劇光燈的冒險者！', color: GOLD, weight: 'bold', size: 'md', wrap: true },
+              { type: 'text', text: '點下方按鈕加入，就能使用燈燈的各種功能', color: '#aaaaaa', size: 'sm', wrap: true },
+            ],
+          },
+          footer: {
+            type: 'box', layout: 'vertical', paddingAll: '12px', paddingTop: '0px',
+            contents: [{
+              type: 'button', style: 'primary', color: GOLD, height: 'sm',
+              action: { type: 'uri', label: '立即加入', uri: LIFF_URL },
+            }],
+          },
         },
       }])
       continue

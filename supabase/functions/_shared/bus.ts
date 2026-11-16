@@ -250,6 +250,11 @@ export function appQuery(groupRow: any): { script: string; date: string; time: s
     const t = new Date(new Date(g.start_at).getTime() + 8 * 3600_000)
     date = t.toISOString().slice(0, 10)
     if (g.hasTime) time = t.toISOString().slice(11, 16)
+    // 群組名稱沒寫時間：綁過公車表、而且是同一天 → 用表上的時間（同一天兩團才分得出來）
+    else if (Array.isArray(groupRow?.sheet_row)) {
+      const d = parseDates(groupRow.sheet_row[6] || '')[0]
+      if (d && d[0] === t.getUTCMonth() + 1 && d[1] === t.getUTCDate()) time = hhmm(groupRow.sheet_row[8] || '')
+    }
   } else if (Array.isArray(groupRow?.sheet_row) && groupRow.sheet_row[0]) {
     const row: string[] = groupRow.sheet_row
     const d = parseDates(row[6] || '')[0]
@@ -568,6 +573,8 @@ export async function handleBusEvent(event: any, ctx: Ctx): Promise<boolean> {
       if (!found.hit) {
         await say(found.many?.length
           ? `⚠️ 公車管家裡同一天有好幾團《${script}》：\n${found.many.map((x: any) => `・${x.title} ${x.time || ''}`).join('\n')}\n請把群組名稱的時間寫清楚唷`
+          : found.other?.length
+          ? `⚠️ 公車管家裡同一天的《${script}》時間都對不上（這個群組是 ${time}）：\n${found.other.map((x: any) => `・${x.title} ${x.time || '時間待定'}`).join('\n')}\n這團還沒成團的話請先在 App 按「一鍵成團」；時間寫錯就改群組名稱或 App 裡的時間`
           : `⚠️ 公車管家裡還沒有這團\n請先在 App 按「一鍵成團」，我才發得了${NOTICE_LABEL[kind]}`)
         return true
       }

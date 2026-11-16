@@ -216,13 +216,22 @@ export function noticeMessage(text: string) {
 // 找出這個 LINE 群組對應的公車管家團：劇本名稱＋日期（＋時間），排除取消的
 const normT = (x: string) => x.replace(/[\s　《》「」『』]/g, '').toLowerCase()
 // deno-lint-ignore no-explicit-any
-export async function findAppGroup(q: { script: string; date: string; time?: string }): Promise<{ hit?: any; many?: any[] }> {
+export async function findAppGroup(q: { script: string; date: string; time?: string }): Promise<{ hit?: any; many?: any[]; other?: any[] }> {
   const s = normT(q.script)
   const all = (await listGroups()).filter(g => g.status !== 'cancelled' && g.date === q.date)
   const byTitle = all.filter(g => { const t = normT(s_(g.title)); return t && (t === s || t.includes(s) || s.includes(t)) })
-  const byTime = q.time ? byTitle.filter(g => hhmm(g.time) === q.time) : byTitle
-  const list = byTime.length ? byTime : byTitle
-  return list.length === 1 ? { hit: list[0] } : { many: list }
+  // 有時間：只認時間一樣的；App 裡還沒填時間的團也算候選，但時間明確不同的絕不能拿來湊
+  // （以前時間對不上就退回「同劇本同一天」，同一天兩團時 A 群組會被對到 B 團、把人加錯團）
+  if (q.time) {
+    const same = byTitle.filter(g => hhmm(g.time) === q.time)
+    if (same.length) return same.length === 1 ? { hit: same[0] } : { many: same }
+    const undecided = byTitle.filter(g => hhmm(g.time) === '時間待定')
+    if (undecided.length === 1) return { hit: undecided[0] }
+    if (undecided.length > 1) return { many: undecided }
+    return { other: byTitle } // 同一天有這本、但時間都不一樣 → 當作這團還沒在 App 成團
+  }
+  // 沒時間：同劇本同一天只有一團才算
+  return byTitle.length === 1 ? { hit: byTitle[0] } : { many: byTitle }
 }
 
 // ── 寫入：LINE 群組成員 → 團員名單 ─────────────────────────────────────────────

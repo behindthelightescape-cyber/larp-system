@@ -274,7 +274,9 @@ export const useUserStore = defineStore('user', () => {
     if (!userData.value) return
     try {
       const { data: game } = await supabase.from('games').select('*').eq('id', gameId).single()
-      if (!game || game.status !== 'open') return alert('這場遊戲已經結束或不存在囉！')
+      if (!game) return alert('這場遊戲不存在喔！')
+      if (game.status === 'closed') return alert('這場遊戲已經額滿或關閉囉！\n如果你有參加這場，請找現場 GM 協助補登～')
+      if (game.status !== 'open') return alert('這場遊戲已經結束囉！')
 
       const { data: existing } = await supabase.from('game_participants').select('*').eq('game_id', gameId).eq('user_id', userData.value.id).single()
       if (existing) return alert('你已經登記過這場遊戲囉！')
@@ -352,7 +354,10 @@ export const useUserStore = defineStore('user', () => {
 
     } catch (err) {
       console.error('加入遊戲失敗:', err.message)
-      alert('❌ 加入遊戲失敗，請稍後再試！\n' + (err.message || ''))
+      const m = err.message || ''
+      if (m.includes('GAME_FULL') || m.includes('GAME_CLOSED')) return alert('這場遊戲已經額滿或關閉囉！\n如果你有參加這場，請找現場 GM 協助補登～')
+      if (m.includes('ALREADY_JOINED')) return alert('你已經登記過這場遊戲囉！')
+      alert('❌ 加入遊戲失敗，請稍後再試！\n' + m)
     }
   }
 

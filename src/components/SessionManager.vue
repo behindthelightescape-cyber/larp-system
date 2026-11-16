@@ -48,7 +48,7 @@ const loadSessions = async () => {
     let query = supabase
       .from('games')
       .select(`
-        id, play_time, gm_name, status, qr_payload, base_exp,
+        id, play_time, gm_name, status, no_cap, qr_payload, base_exp,
         scripts ( title, cover_url, player_limit ),
         game_participants (
           exp_gained,
@@ -119,6 +119,38 @@ const openQrScanner = (game) => {
 const generateQrUrl = (game) => {
   const targetId = game.qr_payload || game.id
   return `https://liff.line.me/2009161687-icfQU9r6?game_id=${targetId}`
+}
+
+// ── 人數上限（跟資料庫 player_cap() 同規則：範圍取最高、有「N 人」用總數、否則各角色加總）──
+const playerCap = (t) => {
+  if (!t) return null
+  const s = String(t).replace(/(\d+)\s*[~～－—至到-]\s*(\d+)/g, '$2')
+  const m = s.match(/(\d+)\s*人/)
+  if (m) return +m[1]
+  const sum = (s.match(/\d+/g) || []).reduce((a, x) => a + +x, 0)
+  return sum || null
+}
+const capLabel = (game) => {
+  if (game.no_cap) return '不限'
+  const cap = playerCap(game.scripts?.player_limit)
+  return cap ? `${cap} 人` : '不限'
+}
+
+// 關閉／重新開放掃碼（重新開放後這場不再限人數）
+const togglingIds = new Set()
+const setGameOpen = async (game, open) => {
+  if (togglingIds.has(game.id)) return
+  const msg = open
+    ? `重新開放「${game.scripts?.title || '未知劇本'}」的掃碼？
+重新開放後這場不再限制人數，要停止請再按「關閉掃碼」。`
+    : `關閉「${game.scripts?.title || '未知劇本'}」的掃碼？關閉後玩家就掃不進來。`
+  if (!confirm(msg)) return
+  togglingIds.add(game.id)
+  const patch = open ? { status: 'open', no_cap: true } : { status: 'closed' }
+  const { error } = await supabase.from('games').update(patch).eq('id', game.id)
+  togglingIds.delete(game.id)
+  if (error) return alert('更新失敗：' + error.message)
+  Object.assign(game, patch)
 }
 
 // ── 刪除場次（含扣回 EXP）──────────────────────────────────────────────────
@@ -356,7 +388,8 @@ const openPlayerDetail = async (event, user) => {
 
             <div class="players-section">
               <div class="players-header">
-                <span>👥 已掃碼入座玩家 ({{ game.game_participants?.length || 0 }} / {{ game.scripts?.player_limit || '?' }})</span>
+                <span>👥 已掃碼入座玩家 ({{ game.game_participants?.length || 0 }} / {{ capLabel(game) }})</span>
+                <span v-if="game.status === 'closed'" style="color: #e74c3c; font-size: 0.75rem; margin-left: 6px;">已關閉</span>
               </div>
               
               <div class="players-list">
@@ -411,8 +444,17 @@ const openPlayerDetail = async (event, user) => {
           <p style="color: #ccc; margin-top: 20px; font-weight: bold;">
             請玩家使用 LINE 掃描上方條碼補登經驗值！
           </p>
-          <div v-if="selectedGameForQr.status === 'closed'" style="color: #e74c3c; font-size: 0.85rem; margin-top: 10px;">
-            ⚠️ 注意：此場次已關閉，但仍可提供漏掃玩家補掃。
+          <p style="color: #888; font-size: 0.85rem; margin: 8px 0 0;">
+            已掃 {{ selectedGameForQr.game_participants?.length || 0 }} / {{ capLabel(selectedGameForQr) }}（{{ selectedGameForQr.scripts?.player_limit || '劇本未填人數' }}）
+          </p>
+          <div v-if="selectedGameForQr.status === 'closed'" style="margin-top: 10px;">
+            <div style="color: #e74c3c; font-size: 0.85rem; margin-bottom: 8px;">
+              ⚠️ 此場次已關閉（額滿會自動關閉），玩家目前掃不進來。
+            </div>
+            <button class="btn btn-gold btn-small" @click="setGameOpen(selectedGameForQr, true)">🔓 重新開放掃碼（不限人數）</button>
+          </div>
+          <div v-else-if="selectedGameForQr.status === 'open'" style="margin-top: 10px;">
+            <button class="btn btn-small" style="background: #333; color: #ccc;" @click="setGameOpen(selectedGameForQr, false)">🔒 關閉掃碼</button>
           </div>
         </div>
       </div>

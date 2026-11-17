@@ -100,14 +100,27 @@ export async function readSheet(): Promise<BusRow[]> {
   return out
 }
 
+// 時間（19:00）、時長（3.5）要跟手打一樣寫成真的時間／數字；用 RAW 會變成文字（格子裡顯示 '19:00），公式跟 App 都抓不到
+// 其他一律 RAW：使用者打的字不會被當成公式
+const typedValue = (v: string) => /^\d{1,2}:\d{2}$/.test(v) || /^\d{1,2}(\.\d+)?$/.test(v)
+type CellData = { range: string; values: string[][] }
+async function postValues(data: CellData[], tok?: string) {
+  const token = tok || await googleToken()
+  for (const [opt, part] of [
+    ['RAW', data.filter(d => !typedValue(d.values[0][0]))],
+    ['USER_ENTERED', data.filter(d => typedValue(d.values[0][0]))],
+  ] as const) {
+    if (!part.length) continue
+    const res = await fetch(`${API}:batchUpdate`, {
+      method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ valueInputOption: opt, data: part }),
+    })
+    if (!res.ok) throw new Error(`寫入公車表失敗（${res.status}）：${(await res.text()).slice(0, 200)}`)
+  }
+}
+
 async function writeCell(a1: string, value: string) {
-  const range = `'${SHEET_NAME}'!${a1}`
-  const res = await fetch(`${API}/${encodeURIComponent(range)}?valueInputOption=RAW`, {
-    method: 'PUT',
-    headers: { Authorization: `Bearer ${await googleToken()}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ range, majorDimension: 'ROWS', values: [[value]] }),
-  })
-  if (!res.ok) throw new Error(`寫入公車表失敗（${res.status}）：${(await res.text()).slice(0, 200)}`)
+  await postValues([{ range: `'${SHEET_NAME}'!${a1}`, values: [[value]] }])
 }
 
 // ── 比對：群組名稱 ↔ 車次 ────────────────────────────────────────────────────
@@ -388,11 +401,7 @@ async function reposition(code: string) {
 }
 
 async function writeCells(cells: [string, string][]) {
-  const res = await fetch(`${API}:batchUpdate`, {
-    method: 'POST', headers: { Authorization: `Bearer ${await googleToken()}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ valueInputOption: 'RAW', data: cells.map(([a1, v]) => ({ range: `'${SHEET_NAME}'!${a1}`, values: [[v]] })) }),
-  })
-  if (!res.ok) throw new Error(`寫入公車表失敗（${res.status}）：${(await res.text()).slice(0, 200)}`)
+  await postValues(cells.map(([a1, v]) => ({ range: `'${SHEET_NAME}'!${a1}`, values: [[v]] })))
 }
 
 // 「12/20」→「星期日」、「12/1、3」→「星期二、四」；讀不出日期就空白
@@ -457,11 +466,7 @@ async function insertRow(rowNum: number, values: string[], code: string, L: Layo
     .filter(({ v, c }) => v !== '' && canWrite(L, c))
     .map(({ v, c }) => ({ range: `'${SHEET_NAME}'!${LETTER(c)}${rowNum}`, values: [[v]] }))
   data.push({ range: `'${SHEET_NAME}'!Z${rowNum}`, values: [[code]] })
-  const res2 = await fetch(`${API}:batchUpdate`, {
-    method: 'POST', headers: { Authorization: `Bearer ${tok}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ valueInputOption: 'RAW', data }),
-  })
-  if (!res2.ok) throw new Error(`公車表寫入新列失敗（${res2.status}）：${(await res2.text()).slice(0, 200)}`)
+  await postValues(data, tok)
 }
 
 const groupKey = (name: string) => {

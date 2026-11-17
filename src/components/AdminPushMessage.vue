@@ -403,9 +403,14 @@ const canSend = computed(() =>
 
 // ===== 發送方式：立即 / 預約 =====
 const sendMode = ref('now') // 'now' | 'schedule'
-// datetime-local 的值（台灣時間 YYYY-MM-DDTHH:mm），預設明天 12:00
+// datetime-local 的值（台灣時間 YYYY-MM-DDTHH:mm），預設「今天下一個整點」（以前預設明天，常不小心約到隔天）
 const twNow = () => new Date(Date.now() + 8 * 3600e3).toISOString()
-const defaultSendAt = () => `${new Date(Date.now() + 8 * 3600e3 + 86400e3).toISOString().slice(0, 10)}T12:00`
+const defaultSendAt = () => {
+  const t = new Date(Date.now() + 8 * 3600e3)
+  t.setUTCMinutes(0, 0, 0)
+  t.setUTCHours(t.getUTCHours() + 1)
+  return t.toISOString().slice(0, 16)
+}
 const sendAt = ref(defaultSendAt())
 const minSendAt = computed(() => twNow().slice(0, 16))
 const sendAtIso = computed(() => (sendAt.value ? `${sendAt.value}:00+08:00` : ''))
@@ -413,7 +418,18 @@ const sendAtValid = computed(() => {
   const t = Date.parse(sendAtIso.value)
   return !isNaN(t) && t > Date.now() + 60e3
 })
-const sendAtLabel = computed(() => sendAt.value.replace('T', ' '))
+// 「今天」「明天」「後天」或「11/20（四）」，標在時間前面，避免約錯天
+const sendDayTag = computed(() => {
+  if (!sendAt.value) return ''
+  const day = (iso) => Date.parse(iso.slice(0, 10) + 'T00:00:00Z') / 86400e3
+  const diff = day(sendAt.value) - day(twNow())
+  if (diff === 0) return '今天'
+  if (diff === 1) return '明天'
+  if (diff === 2) return '後天'
+  const d = new Date(sendAt.value.slice(0, 10) + 'T00:00:00Z')
+  return `${d.getUTCMonth() + 1}/${d.getUTCDate()}（${'日一二三四五六'[d.getUTCDay()]}）`
+})
+const sendAtLabel = computed(() => `${sendDayTag.value} ${sendAt.value.replace('T', ' ')}`)
 
 const canSubmit = computed(() => canSend.value && (sendMode.value === 'now' || sendAtValid.value))
 
@@ -990,6 +1006,9 @@ const testSend = async () => {
         <label>發送時間（台灣時間）
           <input v-model="sendAt" type="datetime-local" :min="minSendAt" class="input" style="width: 230px; color-scheme: dark;" />
         </label>
+        <span v-if="sendDayTag" :style="{ fontSize: '1.1rem', fontWeight: 'bold', marginLeft: '10px', color: sendDayTag === '今天' ? '#2ecc71' : '#e67e22' }">
+          {{ sendDayTag === '今天' ? '📅 今天' : '⚠️ ' + sendDayTag }}
+        </span>
       </div>
       <p v-if="sendMode === 'schedule'" class="hint">
         系統每小時整點檢查一次，會在你選的時間之後的第一個整點送出（例：選 14:30，15:00 左右送出；選 15:00，15:00 送出）。名單會在發送當下依條件重新計算，人數可能跟現在略有不同。
